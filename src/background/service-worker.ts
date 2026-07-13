@@ -103,7 +103,13 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       return true;
     }
 
-    case "GET_API_KEY_STATUS":
+    case "GET_API_KEY_STATUS": {
+      // Only respond to messages from this extension (content scripts / popup),
+      // not from other extensions or web pages sharing the runtime.
+      if (sender.id !== chrome.runtime.id) {
+        sendResponse({ hasKey: false });
+        break;
+      }
       // Let popup/content know if any API key is configured
       chrome.storage.sync.get(["apiKeys"], (result) => {
         const keys = result.apiKeys as Record<string, string> | undefined;
@@ -111,6 +117,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ hasKey: hasAnyKey });
       });
       return true; // keep channel open for async response
+    }
 
     default:
       // Ignore unknown messages

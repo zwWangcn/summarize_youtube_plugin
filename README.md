@@ -1,5 +1,7 @@
 # 🤖 视频 AI 总结 — Chrome 扩展
 
+> 🌐 简体中文 | [English](README.en.md)
+
 AI 驱动的 YouTube / Bilibili 视频内容总结工具。一键提取字幕，流式生成结构化中文总结。支持 **8 家 AI 供应商、20+ 模型**自由切换。
 
 ## 为什么用 Chrome 扩展？
@@ -317,7 +319,7 @@ src/
 | 运行环境 | WSL / Docker | 浏览器 |
 | 反爬处理 | 依赖第三方库 | 原生页面解析 ✅ |
 | 部署 | FastAPI + Celery + Redis | 纯客户端 ✅ |
-| API Key | 服务器 .env | 本地加密存储 ✅ |
+| API Key | 服务器 .env | 本地存储（不上传给开发者）✅ |
 | Bilibili 登录 | 手动 SESSDATA | 浏览器自动 cookies ✅ |
 | URL 输入 | 手动粘贴 | 自动检测页面 ✅ |
 | 启动 | docker compose up | 点击按钮 ✅ |
