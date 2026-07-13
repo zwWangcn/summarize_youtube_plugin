@@ -1,0 +1,54 @@
+{
+  "manifest_version": 3,
+  "name": "视频 AI 总结",
+  "version": "1.1.0",
+  "description": "AI 驱动的 YouTube / Bilibili 视频内容总结工具，支持 DeepSeek、GPT、Claude、Gemini、Kimi、Qwen、GLM、Grok 等多家模型",
+  "icons": {
+    "16": "assets/icons/icon16.png",
+    "48": "assets/icons/icon48.png",
+    "128": "assets/icons/icon128.png"
+  },
+  "action": {
+    "default_popup": "src/popup/popup.html",
+    "default_title": "视频 AI 总结",
+    "default_icon": {
+      "16": "assets/icons/icon16.png",
+      "48": "assets/icons/icon48.png",
+      "128": "assets/icons/icon128.png"
+    }
+  },
+  "permissions": [
+    "storage",
+    "scripting"
+  ],
+  "host_permissions": [
+    "https://api.deepseek.com/*",
+    "https://api.openai.com/*",
+    "https://api.anthropic.com/*",
+    "https://generativelanguage.googleapis.com/*",
+    "https://api.moonshot.ai/*",
+    "https://dashscope.aliyuncs.com/*",
+    "https://open.bigmodel.cn/*",
+    "https://api.x.ai/*",
+    "https://api.bilibili.com/*",
+    "https://www.youtube.com/*",
+    "https://youtube.com/*",
+    "https://m.youtube.com/*"
+  ],
+  "background": {
+    "service_worker": "src/background/service-worker.ts",
+    "type": "module"
+  },
+  "content_scripts": [
+    {
+      "matches": ["https://www.youtube.com/*", "https://youtube.com/*", "https://m.youtube.com/*"],
+      "js": ["src/content/youtube.ts"],
+      "run_at": "document_end"
+    },
+    {
+      "matches": ["https://www.bilibili.com/video/*", "https://bilibili.com/video/*"],
+      "js": ["src/content/bilibili.ts"],
+      "run_at": "document_end"
+    }
+  ]
+}

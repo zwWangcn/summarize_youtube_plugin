@@ -1,0 +1,86 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>视频 AI 总结</title>
+  <link rel="stylesheet" href="./popup.css" />
+</head>
+<body>
+  <div class="container">
+    <header class="header">
+      <h1>视频 AI 总结</h1>
+      <p class="subtitle">YouTube / Bilibili 视频内容一键总结</p>
+    </header>
+
+    <main class="main">
+      <!-- Provider selector -->
+      <section class="section">
+        <label class="label" for="provider">AI 供应商</label>
+        <select id="provider" class="input">
+        </select>
+      </section>
+
+      <!-- Model selector -->
+      <section class="section">
+        <label class="label" for="model">模型</label>
+        <select id="model" class="input">
+        </select>
+      </section>
+
+      <!-- Model info card -->
+      <section id="modelInfo" class="model-info">
+        <div class="info-row">
+          <span class="info-label">参数等级</span>
+          <span id="infoParamSize" class="info-value">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">输入 / 输出</span>
+          <span id="infoPricing" class="info-value">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">上下文窗口</span>
+          <span id="infoContext" class="info-value">—</span>
+        </div>
+        <div class="info-row">
+          <span class="info-label">简介</span>
+          <span id="infoDesc" class="info-value">—</span>
+        </div>
+      </section>
+
+      <!-- API Key -->
+      <section class="section">
+        <label class="label" for="apiKey">
+          <span id="apiKeyLabel">API Key</span>
+        </label>
+        <div class="input-row">
+          <input
+            type="password"
+            id="apiKey"
+            class="input"
+            placeholder="sk-..."
+            autocomplete="off"
+          />
+          <button id="toggleKey" class="btn-icon" title="显示/隐藏">显示</button>
+        </div>
+        <p class="hint">
+          在
+          <a id="apiKeyLink" href="#" target="_blank" rel="noopener">获取 API Key</a>
+        </p>
+      </section>
+
+      <!-- Status -->
+      <div id="status" class="status"></div>
+
+      <!-- Save -->
+      <button id="saveBtn" class="btn-primary">保存设置</button>
+    </main>
+
+    <footer class="footer">
+      <p>打开 YouTube 或 Bilibili 视频页面，点击"AI 总结"按钮即可使用</p>
+    </footer>
+  </div>
+
+  <script type="module" src="./popup.ts"></script>
+</body>
+</html>

@@ -1,0 +1,45 @@
+{
+  "name": "summarize-youtube-extension",
+  "version": "1.1.0",
+  "description": "Chrome extension for AI-powered YouTube & Bilibili video summarization",
+  "type": "module",
+  "license": "MIT",
+  "author": "zwang",
+  "homepage": "https://github.com/zwWangcn/summarize_youtube_plugin",
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/zwWangcn/summarize_youtube_plugin.git"
+  },
+  "bugs": {
+    "url": "https://github.com/zwWangcn/summarize_youtube_plugin/issues"
+  },
+  "keywords": [
+    "chrome-extension",
+    "youtube",
+    "bilibili",
+    "ai",
+    "summarizer",
+    "video-summary",
+    "deepseek",
+    "openai",
+    "claude",
+    "gemini",
+    "manifest-v3"
+  ],
+  "scripts": {
+    "dev": "vite",
+    "build": "tsc && vite build",
+    "preview": "vite preview"
+  },
+  "dependencies": {
+    "dompurify": "^3.2.4",
+    "marked": "^15.0.9"
+  },
+  "devDependencies": {
+    "@crxjs/vite-plugin": "2.0.0-beta.28",
+    "@types/chrome": "^0.0.313",
+    "@types/dompurify": "^3.2.0",
+    "typescript": "^5.8.3",
+    "vite": "^6.3.1"
+  }
+}
