@@ -29,6 +29,7 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "test": "vitest run",
     "preview": "vite preview"
   },
   "dependencies": {
@@ -40,6 +41,7 @@
     "@types/chrome": "^0.0.313",
     "@types/dompurify": "^3.2.0",
     "typescript": "^5.8.3",
-    "vite": "^6.3.1"
+    "vite": "^6.3.1",
+    "vitest": "^4.1.10"
   }
 }

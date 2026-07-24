@@ -6,17 +6,21 @@
 import type { AIRequest, BuiltRequest, ProviderAdapter, StreamChunk } from "./types";
 
 function buildBody(params: AIRequest): string {
-  return JSON.stringify({
+  const body: Record<string, unknown> = {
     model: params.model,
     messages: [
       { role: "system", content: params.systemPrompt },
-      { role: "user", content: `以下是视频字幕内容：\n\n${params.transcript}` },
+      { role: "user", content: params.userPrompt },
     ],
     stream: true,
     stream_options: { include_usage: true },
-    temperature: 0.3,
-    max_tokens: 16384,
-  });
+    temperature: params.temperature ?? 0.3,
+    max_tokens: params.maxOutputTokens ?? 16384,
+  };
+  if (params.disableThinking) {
+    body.thinking = { type: "disabled" };
+  }
+  return JSON.stringify(body);
 }
 
 export const openaiCompatAdapter: ProviderAdapter = {

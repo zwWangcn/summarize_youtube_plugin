@@ -120,6 +120,7 @@ export function renderStreaming(target: HTMLElement, markdown: string): void {
  */
 export function renderTranscript(target: HTMLElement, text: string): void {
   target.innerHTML = `<pre class="vas-transcript">${escapeHtml(text)}</pre>`;
+  linkifyTimestampsInDom(target);
 }
 
 function escapeHtml(str: string): string {

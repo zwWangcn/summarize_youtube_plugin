@@ -4,10 +4,29 @@
 
 import { Panel } from "./ui/panel";
 import { renderMarkdown, renderStreaming, renderTranscript } from "./ui/renderer";
-import { summarizeTextStream, AIServiceError, ContentFilteredError, NoApiKeyError } from "../service/ai";
-import { formatTranscript } from "../utils/text";
+import {
+  summarizeTextStream,
+  getActiveAIIdentity,
+  AIServiceError,
+  ContentFilteredError,
+  NoApiKeyError,
+} from "../service/ai";
+import { formatTime, formatTranscript } from "../utils/text";
 import type { YouTubePlayer } from "./extractors/caption-interceptor";
+import type { Transcript } from "./transcript";
+import { isChineseLanguage, transcriptToText } from "./transcript";
 import { UserError } from "../utils/errors";
+import {
+  translateTranscript,
+  TranslationFormatError,
+  type TranslatedSegment,
+} from "../service/transcript-translation";
+import {
+  getCachedTranslation,
+  setCachedTranslation,
+  invalidateTranslation,
+  type TranslationCacheIdentity,
+} from "../service/translation-cache";
 import {
   getCachedSummary,
   setCachedSummary,
@@ -18,7 +37,7 @@ import {
 // Types
 // ---------------------------------------------------------------------------
 export interface Extractor {
-  getTranscript: () => Promise<string>;
+  getTranscript: () => Promise<Transcript>;
   getVideoTitle: () => string;
   getVideoId: () => string;
   isOnVideoPage: () => boolean;
@@ -26,6 +45,7 @@ export interface Extractor {
 
 export interface ContentScriptConfig {
   source: string;
+  enableTranslation?: boolean;
   /** Find injection target — used on initial load + SPA rebuilds */
   findInjectTarget: () => HTMLElement | null;
 }
@@ -200,7 +220,12 @@ function handleError(err: unknown, panel: Panel): void {
   if (err instanceof UserError) {
     panel.showError(err.message);
     console.warn(`[vas] ${err.code}:`, err.detail ?? err.message);
-  } else if (err instanceof AIServiceError || err instanceof ContentFilteredError || err instanceof NoApiKeyError) {
+  } else if (
+    err instanceof AIServiceError ||
+    err instanceof ContentFilteredError ||
+    err instanceof NoApiKeyError ||
+    err instanceof TranslationFormatError
+  ) {
     panel.showError(err.message);
     console.warn("[vas] AI error:", err.message);
   } else {
@@ -219,8 +244,49 @@ export async function initContentScript(
   if (document.getElementById("vas-root")) return;
 
   // ── Shared state ───────────────────────────────────────────────────
-  let transcriptText = "";
+  let transcriptData: Transcript | null = null;
+  let transcriptVideoId = "";
+  let translatedSegments: TranslatedSegment[] | null = null;
+  let translationIdentityKey = "";
+  let translationCacheTimestamp: number | null = null;
   let currentPanel: Panel | null = null;
+
+  function clearTranscriptState(): void {
+    transcriptData = null;
+    transcriptVideoId = "";
+    translatedSegments = null;
+    translationIdentityKey = "";
+    translationCacheTimestamp = null;
+  }
+
+  async function ensureTranscript(panel: Panel): Promise<Transcript> {
+    const videoId = extractor.getVideoId();
+    if (transcriptData && transcriptVideoId === videoId) return transcriptData;
+    const transcript = await extractor.getTranscript();
+    if (!transcript.segments.length) {
+      throw new UserError(
+        "未能提取到有效字幕文本，请确认该视频有字幕且语言可识别",
+        "EMPTY_TRANSCRIPT",
+      );
+    }
+    transcriptData = transcript;
+    transcriptVideoId = videoId;
+    if (config.enableTranslation && isChineseLanguage(transcript.languageCode)) {
+      panel.setTranslationAvailable(false);
+    }
+    return transcript;
+  }
+
+  function formatTranslated(
+    segments: TranslatedSegment[],
+    withTimestamps: boolean,
+  ): string {
+    return segments.map((segment) => (
+      withTimestamps
+        ? `[${formatTime(segment.start)}] ${segment.text}`
+        : segment.text
+    )).join("\n");
+  }
 
   function getPanel(): Panel {
     if (!currentPanel || !document.getElementById("vas-root")) {
@@ -232,6 +298,7 @@ export async function initContentScript(
       }
       const newTarget = config.findInjectTarget() || document.body;
       currentPanel = new Panel(callbacks);
+      currentPanel.setTranslationAvailable(Boolean(config.enableTranslation));
       const t = extractor.getVideoTitle();
       if (t) currentPanel.setTitle(t);
       currentPanel.setTheme(isYouTubeDarkMode());
@@ -288,14 +355,8 @@ export async function initContentScript(
       panel.open();
 
       try {
-        transcriptText = await extractor.getTranscript();
-
-        if (!transcriptText || !transcriptText.trim()) {
-          throw new UserError(
-            "未能提取到有效字幕文本，请确认该视频有字幕且语言可识别",
-            "EMPTY_TRANSCRIPT",
-          );
-        }
+        const transcript = await ensureTranscript(panel);
+        const transcriptText = transcriptToText(transcript);
 
         panel.setTitle(videoTitle);
         panel.setLoadingMessage("AI 正在生成总结...");
@@ -345,14 +406,8 @@ export async function initContentScript(
       panel.open();
 
       try {
-        transcriptText = await extractor.getTranscript();
-
-        if (!transcriptText || !transcriptText.trim()) {
-          throw new UserError(
-            "未能提取到有效字幕文本，请确认该视频有字幕且语言可识别",
-            "EMPTY_TRANSCRIPT",
-          );
-        }
+        const transcript = await ensureTranscript(panel);
+        const transcriptText = transcriptToText(transcript);
 
         panel.setTitle(extractor.getVideoTitle());
         const formatted = formatTranscript(transcriptText, withTimestamps);
@@ -362,6 +417,107 @@ export async function initContentScript(
         handleError(err, panel);
       }
     },
+
+    onTranslate: config.enableTranslation
+      ? async (withTimestamps: boolean, forceRefresh: boolean) => {
+          const panel = getPanel();
+
+          panel.setMode("loading");
+          panel.setLoadingMessage("正在获取字幕...");
+          panel.open();
+
+          try {
+            const transcript = await ensureTranscript(panel);
+            if (isChineseLanguage(transcript.languageCode)) {
+              const original = formatTranscript(transcriptToText(transcript), withTimestamps);
+              renderTranscript(panel.getContentElement(), original);
+              panel.setMode("transcript");
+              panel.setTranslationAvailable(false);
+              panel.showWarning("当前已是中文字幕，无需翻译");
+              return;
+            }
+
+            const ai = await getActiveAIIdentity();
+            const identity: TranslationCacheIdentity = {
+              videoId: extractor.getVideoId(),
+              sourceLanguage: transcript.languageCode,
+              providerId: ai.providerId,
+              modelId: ai.modelId,
+            };
+            const identityKey = JSON.stringify(identity);
+
+            if (!forceRefresh && translatedSegments && translationIdentityKey === identityKey) {
+              renderTranscript(
+                panel.getContentElement(),
+                formatTranslated(translatedSegments, withTimestamps),
+              );
+              panel.setMode("translation");
+              panel.setTranslationCachedView(true);
+              if (translationCacheTimestamp) {
+                panel.showCacheHint(`缓存于 ${formatCacheAge(Date.now() - translationCacheTimestamp)}`);
+              }
+              return;
+            } else if (forceRefresh) {
+              await invalidateTranslation(identity);
+              translatedSegments = null;
+              translationCacheTimestamp = null;
+            } else {
+              const cached = await getCachedTranslation(identity);
+              if (cached) {
+                translatedSegments = cached.segments;
+                translationIdentityKey = identityKey;
+                translationCacheTimestamp = cached.timestamp;
+                renderTranscript(
+                  panel.getContentElement(),
+                  formatTranslated(cached.segments, withTimestamps),
+                );
+                panel.setMode("translation");
+                panel.setTranslationCachedView(true);
+                panel.showCacheHint(`缓存于 ${formatCacheAge(Date.now() - cached.timestamp)}`);
+                return;
+              }
+            }
+
+            panel.setLoadingMessage("AI 正在校正并翻译字幕...");
+            const result = await translateTranscript(
+              transcript,
+              (completed, total, partial, formatRetry) => {
+                const retryHint = formatRetry ? "（正在修复输出格式）" : "";
+                panel.showTranslationProgress(
+                  `AI 正在校正并翻译字幕... ${completed}/${total}${retryHint}`,
+                );
+                if (partial.length) {
+                  renderTranscript(
+                    panel.getContentElement(),
+                    formatTranslated(partial, withTimestamps),
+                  );
+                }
+              },
+            );
+            let cacheWriteFailed = false;
+            try {
+              await setCachedTranslation(identity, result);
+            } catch (error) {
+              cacheWriteFailed = true;
+              console.warn("[vas] Translation cache write failed:", error);
+            }
+            translatedSegments = result;
+            translationIdentityKey = identityKey;
+            translationCacheTimestamp = cacheWriteFailed ? null : Date.now();
+            renderTranscript(
+              panel.getContentElement(),
+              formatTranslated(result, withTimestamps),
+            );
+            panel.setMode("translation");
+            panel.setTranslationCachedView(true);
+            if (cacheWriteFailed) {
+              panel.showWarning("翻译已完成，但本地缓存写入失败");
+            }
+          } catch (err) {
+            handleError(err, panel);
+          }
+        }
+      : undefined,
 
     onClose: () => {},
 
@@ -403,6 +559,7 @@ export async function initContentScript(
     }
 
     currentPanel = new Panel(callbacks);
+    currentPanel.setTranslationAvailable(Boolean(config.enableTranslation));
     const videoTitle = extractor.getVideoTitle();
     if (videoTitle) currentPanel.setTitle(videoTitle);
     currentPanel.setTheme(isYouTubeDarkMode());
@@ -442,6 +599,7 @@ export async function initContentScript(
 
   // ── SPA navigation: inject on enter, destroy on leave ──────────────
   watchNavigation(() => {
+    clearTranscriptState();
     if (extractor.isOnVideoPage()) {
       // Entered a video page (or navigated to a new video)
       if (!document.getElementById("vas-root")) {
@@ -455,6 +613,7 @@ export async function initContentScript(
         setTimeout(() => {
           const p = getPanel();
           p.reset();
+          p.setTranslationAvailable(Boolean(config.enableTranslation));
           const t = extractor.getVideoTitle();
           if (t) p.setTitle(t);
           p.setTheme(isYouTubeDarkMode());

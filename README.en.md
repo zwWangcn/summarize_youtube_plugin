@@ -9,6 +9,7 @@ An AI-powered summarizer for YouTube / Bilibili videos. Extract captions with on
 - **Free model switching** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok, 20+ models, one-click switch in the popup
 - **One-click AI summary** — streams a structured Markdown summary
 - **Raw captions** — click timestamps to seek
+- **Smart subtitle translation** — translates YouTube captions into Simplified Chinese while repairing broken segmentation and clear ASR errors
 - **Real-time streaming** — token-level, character-by-character output
 - **SPA navigation awareness** — auto-detects video switches
 - **Multi-language captions** — picks the best track (YouTube: ja > en > zh; Bilibili: zh > en)
@@ -38,6 +39,12 @@ Each adapter normalizes its streaming response into a unified `StreamChunk { tok
 3. **Direct fetch** — extracts the caption URL from `ytInitialPlayerResponse` and fetches it directly — fallback.
 
 **Bilibili** — the browser carries cookies automatically; calls `api.bilibili.com` directly.
+
+### Subtitle Translation and Repair
+
+The **Translate Captions** action on YouTube uses the currently selected AI model to generate Simplified Chinese captions. It merges fragments split at incorrect semantic boundaries, conservatively fixes recognition errors that are clear from context, and displays each validated segment immediately. It does not download audio or perform audio-level timestamp alignment; translated timestamps are derived from the corresponding source captions and remain clickable.
+
+Long transcripts are processed in consecutive chunks without truncating the end. Results are cached for seven days by video, source language, provider, and model, with a manual regenerate action. Chinese source captions do not trigger an AI request.
 
 ### SPA Navigation Awareness
 
@@ -92,6 +99,7 @@ Dev hot-reload: `npm run dev`
 2. Click the **🤖 AI Summary** button next to the title
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
+5. On non-Chinese YouTube videos, click **Translate Captions** for repaired Simplified Chinese subtitles
 
 ## License
 

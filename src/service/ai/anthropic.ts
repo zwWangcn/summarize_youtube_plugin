@@ -12,11 +12,12 @@ function buildBody(params: AIRequest): string {
     messages: [
       {
         role: "user" as const,
-        content: [{ type: "text" as const, text: `以下是视频字幕内容：\n\n${params.transcript}` }],
+        content: [{ type: "text" as const, text: params.userPrompt }],
       },
     ],
     stream: true,
-    max_tokens: 16384,
+    max_tokens: params.maxOutputTokens ?? 16384,
+    temperature: params.temperature ?? 0.3,
   });
 }
 

@@ -92,7 +92,7 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 
 - **触发按钮**：普通 DOM 元素，注入到视频播放器容器内，通过 `bindToPlayer()` 跟随播放器 hover 状态显隐
 - **面板**：Shadow DOM host 注入到 `<body>`（`position: fixed`），样式完全隔离
-- **状态机**：`idle → loading → summary|transcript|error`，由 `setMode()` 驱动 UI 切换
+- **状态机**：`idle → loading → summary|transcript|translation|error`，由 `setMode()` 驱动 UI 切换
 - 回调通过 `PanelCallbacks` 接口注入，业务逻辑在 shared.ts 中
 
 ### AI 流式调用（service/ai.ts）
@@ -101,6 +101,14 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 - `summarizeTextStream()` 返回 `AsyncGenerator<string>`，token 级别 yield
 - 内置重试（最多 2 次，指数退避，仅 5xx 与网络错误）：4xx（Key 错误、请求格式错等）标记为不可重试直接抛出；已向调用方交付过 token 的流不再重试（重试会从头重新生成，导致前端内容重复拼接）
 - `ContentFilteredError`：各适配器将供应商的内容过滤信号统一映射为 `finishReason: "content_filter"`（OpenAI `content_filter`、Gemini `SAFETY`/`RECITATION` 等及 `promptFeedback.blockReason`、Anthropic `refusal`），由 `summarizeTextStream` 识别并抛出该错误
+
+### YouTube 字幕翻译
+
+- 字幕内部使用 `Transcript` / `TranscriptSegment` 保存语言、开始时间、持续时间和原文；总结与原文视图再转换为旧文本格式
+- `transcript-translation.ts` 按连续时间片分块，要求模型逐行返回覆盖源字幕 ID 的 NDJSON；每行本地校验后立即渲染，并使用源片段时间生成可点击时间戳
+- DeepSeek 翻译请求显式关闭默认 thinking 模式；翻译流有首次响应与停滞超时，避免长时间无反馈
+- 翻译固定输出简体中文，保守修正 ASR 错词与断句，不做音频级时间校准；中文字幕不发起翻译请求
+- `translation-cache.ts` 按视频、源语言、供应商、模型和流程版本缓存 7 天
 
 ### 提示词模板（service/prompts.ts）
 
@@ -132,6 +140,8 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 | `src/service/model-registry.ts` | 供应商+模型元数据注册表（PROVIDERS 数组），添加新模型只需改此文件 |
 | `src/service/prompts.ts` | 平台差异化提示词模板 |
 | `src/service/summary-cache.ts` | chrome.storage.local 持久化缓存 + LRU 淘汰 |
+| `src/service/transcript-translation.ts` | YouTube 字幕分块、AI 翻译、结构化输出校验 |
+| `src/service/translation-cache.ts` | 翻译结果 7 天缓存 |
 | `src/service/storage.ts` | Chrome Storage 封装（API Key/模型选择持久化） |
 | `src/background/service-worker.ts` | 后台 Service Worker：消息路由、拦截器注入 |
 | `src/utils/text.ts` | 时间格式化、字幕拼接、时间戳切换 |

@@ -6,9 +6,12 @@
 export interface AIRequest {
   model: string;
   systemPrompt: string;
-  transcript: string;
+  userPrompt: string;
   apiKey: string;
   baseURL: string;
+  maxOutputTokens?: number;
+  temperature?: number;
+  disableThinking?: boolean;
 }
 
 /** 构建结果 */

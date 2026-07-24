@@ -27,12 +27,12 @@ function buildBody(params: AIRequest): string {
     contents: [
       {
         role: "user",
-        parts: [{ text: `以下是视频字幕内容：\n\n${params.transcript}` }],
+        parts: [{ text: params.userPrompt }],
       },
     ],
     generationConfig: {
-      temperature: 0.3,
-      maxOutputTokens: 16384,
+      temperature: params.temperature ?? 0.3,
+      maxOutputTokens: params.maxOutputTokens ?? 16384,
     },
   });
 }

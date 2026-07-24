@@ -20,11 +20,12 @@ import { linkifyTimestampsInDom } from "./renderer";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "error";
+export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "translation" | "error";
 
 export interface PanelCallbacks {
   onSummarize: () => void;
   onTranscript: (withTimestamps: boolean) => void;
+  onTranslate?: (withTimestamps: boolean, forceRefresh: boolean) => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -54,6 +55,7 @@ export class Panel {
   private titleEl: HTMLElement;
   private summarizeBtn: HTMLButtonElement;
   private transcriptBtn: HTMLButtonElement;
+  private translateBtn: HTMLButtonElement;
   private copyBtn: HTMLButtonElement;
   private timestampToggle: HTMLElement;
   private timestampCheckbox: HTMLInputElement;
@@ -63,6 +65,7 @@ export class Panel {
   private startTime = 0;
 
   private isCachedView = false;
+  private isTranslationCachedView = false;
   private cacheHintEl: HTMLElement | null = null;
 
   // Bind-to-player lifecycle
@@ -111,12 +114,14 @@ export class Panel {
     this.warningEl = this.panel.querySelector(".vas-warning")!;
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
     this.transcriptBtn = this.panel.querySelector(".vas-btn-transcript")!;
+    this.translateBtn = this.panel.querySelector(".vas-btn-translate")!;
     this.copyBtn = this.panel.querySelector(".vas-btn-copy")!;
     this.timestampToggle = this.panel.querySelector(".vas-timestamp-toggle")!;
     this.timestampCheckbox = this.panel.querySelector(".vas-timestamp-checkbox")!;
     this.cacheHintEl = this.panel.querySelector(".vas-cache-hint")!;
     this.resizeHandle = this.panel.querySelector(".vas-resize-handle")!;
     this.resetWidthBtn = this.panel.querySelector(".vas-btn-reset-width")!;
+    if (!this.callbacks.onTranslate) this.translateBtn.style.display = "none";
 
     this.attachEvents();
     this.setMode("idle");
@@ -233,6 +238,7 @@ export class Panel {
       <div class="vas-toolbar">
         <button class="vas-btn vas-btn-primary vas-btn-summarize">AI 总结</button>
         <button class="vas-btn vas-btn-transcript">字幕原文</button>
+        <button class="vas-btn vas-btn-translate">翻译字幕</button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
           <input type="checkbox" class="vas-timestamp-checkbox" checked /> 时间戳
@@ -267,12 +273,21 @@ export class Panel {
       this.timestampToggle.style.display = "flex";
       this.callbacks.onTranscript(this.timestampCheckbox.checked);
     });
+    this.translateBtn.addEventListener("click", () => {
+      this.timestampToggle.style.display = "flex";
+      this.callbacks.onTranslate?.(
+        this.timestampCheckbox.checked,
+        this.mode === "translation" && this.isTranslationCachedView,
+      );
+    });
     // Copy button
     this.copyBtn.addEventListener("click", () => this.copyContent());
     // Timestamp toggle
     this.timestampCheckbox.addEventListener("change", () => {
       if (this.mode === "transcript") {
         this.callbacks.onTranscript(this.timestampCheckbox.checked);
+      } else if (this.mode === "translation") {
+        this.callbacks.onTranslate?.(this.timestampCheckbox.checked, false);
       }
     });
     // Resize handle
@@ -397,7 +412,9 @@ export class Panel {
     this.timestampToggle.style.display = "none";
     this.copyBtn.style.display = "none";
     this.isCachedView = false;
+    this.isTranslationCachedView = false;
     this.setSummarizeButtonText("AI 总结");
+    this.setTranslateButtonText("翻译字幕");
     this.hideCacheHint();
   }
 
@@ -425,7 +442,11 @@ export class Panel {
 
   setMode(mode: PanelMode): void {
     // 从内容模式切换到 loading 时，保持当前面板高度防止跳动
-    if (mode === "loading" && (this.mode === "summary" || this.mode === "transcript")) {
+    if (mode === "loading" && (
+      this.mode === "summary" ||
+      this.mode === "transcript" ||
+      this.mode === "translation"
+    )) {
       const currentHeight = this.panel.getBoundingClientRect().height;
       if (currentHeight > 120) {
         this.panel.style.minHeight = `${currentHeight}px`;
@@ -447,10 +468,20 @@ export class Panel {
         this.contentEl.style.display = "block";
         this.copyBtn.style.display = "inline-flex";
         this.timestampToggle.style.display = "none";
+        if (this.isTranslationCachedView) this.setTranslateButtonText("翻译字幕");
         this.setButtonsDisabled(false);
         this.stopElapsedTimer();
         break;
       case "transcript":
+        if (this.isTranslationCachedView) this.setTranslateButtonText("翻译字幕");
+        this.contentEl.style.display = "block";
+        this.copyBtn.style.display = "inline-flex";
+        this.timestampToggle.style.display = "flex";
+        this.setButtonsDisabled(false);
+        this.stopElapsedTimer();
+        break;
+      case "translation":
+        if (this.isTranslationCachedView) this.setTranslateButtonText("重新翻译");
         this.contentEl.style.display = "block";
         this.copyBtn.style.display = "inline-flex";
         this.timestampToggle.style.display = "flex";
@@ -475,6 +506,11 @@ export class Panel {
     if (el) el.textContent = msg;
   }
 
+  showTranslationProgress(msg: string): void {
+    this.setLoadingMessage(msg);
+    this.contentEl.style.display = "block";
+  }
+
   setContent(html: string): void {
     this.contentEl.innerHTML = html;
     linkifyTimestampsInDom(this.contentEl);
@@ -497,6 +533,24 @@ export class Panel {
   setButtonsDisabled(disabled: boolean): void {
     this.summarizeBtn.disabled = disabled;
     this.transcriptBtn.disabled = disabled;
+    this.translateBtn.disabled = disabled;
+  }
+
+  setTranslateButtonText(text: string): void {
+    this.translateBtn.textContent = text;
+  }
+
+  setTranslationCachedView(cached: boolean): void {
+    this.isTranslationCachedView = cached;
+    this.setTranslateButtonText(cached ? "重新翻译" : "翻译字幕");
+  }
+
+  setTranslationAvailable(available: boolean): void {
+    if (!this.callbacks.onTranslate) {
+      this.translateBtn.style.display = "none";
+      return;
+    }
+    this.translateBtn.style.display = available ? "" : "none";
   }
 
   // ---- Copy ----
