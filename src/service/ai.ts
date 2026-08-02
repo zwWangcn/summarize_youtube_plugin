@@ -116,6 +116,9 @@ export async function* summarizeTextStream(
   yield* streamAIText(
     getSystemPrompt(source),
     `以下是视频字幕内容：\n\n${text}`,
+    // DeepSeek V4 defaults to thinking mode. Summaries favor immediate,
+    // deterministic output; this flag is only forwarded to DeepSeek.
+    { disableThinking: true },
   );
 }
 

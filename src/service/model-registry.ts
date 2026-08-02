@@ -47,11 +47,11 @@ export interface ProviderInfo {
 // ---------------------------------------------------------------------------
 
 export const PROVIDERS: ProviderInfo[] = [
-  // ---- DeepSeek（存量）----
+  // ---- DeepSeek ----
   {
     id: "deepseek",
     name: "DeepSeek",
-    baseURL: "https://api.deepseek.com/v1",
+    baseURL: "https://api.deepseek.com",
     apiFormat: "openai-compat",
     docsUrl: "https://platform.deepseek.com/api_keys",
     iconLetter: "DS",
@@ -60,19 +60,19 @@ export const PROVIDERS: ProviderInfo[] = [
         id: "deepseek-v4-flash",
         name: "DeepSeek V4 Flash",
         provider: "deepseek",
-        description: "快速经济，推荐日常使用",
-        paramSize: "—",
-        pricing: { input: 0.28, output: 1.10, currency: "USD" },
-        contextWindow: 128_000,
+        description: "V4 Flash 0731，快速经济，推荐日常使用",
+        paramSize: "284B MoE / 13B active",
+        pricing: { input: 0.14, output: 0.28, currency: "USD" },
+        contextWindow: 1_000_000,
       },
       {
         id: "deepseek-v4-pro",
         name: "DeepSeek V4 Pro",
         provider: "deepseek",
         description: "更强推理，适合复杂内容",
-        paramSize: "—",
-        pricing: { input: 0.55, output: 2.19, currency: "USD" },
-        contextWindow: 128_000,
+        paramSize: "1.6T MoE / 49B active",
+        pricing: { input: 0.435, output: 0.87, currency: "USD" },
+        contextWindow: 1_000_000,
       },
     ],
   },
