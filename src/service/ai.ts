@@ -4,7 +4,7 @@
  */
 
 import { getApiKey, getSettings } from "./storage";
-import { getSystemPrompt } from "./prompts";
+import { buildSummaryUserPrompt, getSystemPrompt } from "./prompts";
 import { getProvider } from "./model-registry";
 import { openaiCompatAdapter } from "./ai/openai-compat";
 import { anthropicAdapter } from "./ai/anthropic";
@@ -138,7 +138,7 @@ export async function* summarizeTextStream(
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
-  const transcriptPrompt = `The following is the complete video transcript:\n\n${text}`;
+  const transcriptPrompt = buildSummaryUserPrompt(text, outputLanguage);
   yield* streamAIText(
     getSystemPrompt(outputLanguage),
     transcriptPrompt,

@@ -8,7 +8,7 @@ import {
   type StreamAIOptions,
 } from "./ai";
 import { AI_STREAM_PORT, type AIStreamEvent, type AIStreamRequest } from "./ai-stream-protocol";
-import { getSystemPrompt } from "./prompts";
+import { buildSummaryUserPrompt, getSystemPrompt } from "./prompts";
 import { getSettings } from "./storage";
 import type { OutputLanguage } from "../utils/i18n";
 
@@ -52,7 +52,7 @@ export async function* summarizeTextStream(
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
-  const transcriptPrompt = `The following is the complete video transcript:\n\n${text}`;
+  const transcriptPrompt = buildSummaryUserPrompt(text, outputLanguage);
   yield* streamAIText(
     getSystemPrompt(outputLanguage),
     transcriptPrompt,

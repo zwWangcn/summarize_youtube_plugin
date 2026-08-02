@@ -1,6 +1,10 @@
 import { describe, expect, it } from "vitest";
 import { OUTPUT_LANGUAGES } from "../utils/i18n";
-import { buildTargetLanguageRules, getSystemPrompt } from "./prompts";
+import {
+  buildSummaryUserPrompt,
+  buildTargetLanguageRules,
+  getSystemPrompt,
+} from "./prompts";
 import { buildTranslationSystemPrompt } from "./transcript-translation";
 
 describe("localized AI prompts", () => {
@@ -12,6 +16,26 @@ describe("localized AI prompts", () => {
     expect(prompt).toContain("Markdown");
     expect(prompt).not.toContain("总结使用**简体中文**");
   });
+
+  it.each(OUTPUT_LANGUAGES)(
+    "repeats the $englishName output language around the transcript",
+    (language) => {
+      const transcript = "[00:00] 日本語の字幕";
+      const prompt = buildSummaryUserPrompt(transcript, language.code);
+      const reminder =
+        `Regardless of the transcript's language, write the complete summary in ${language.englishName} (${language.code}) only.`;
+
+      expect(prompt.startsWith(reminder)).toBe(true);
+      expect(prompt.endsWith(
+        language.code === "zh-CN"
+          ? `${reminder} Use Simplified Chinese characters, not Traditional Chinese.`
+          : language.code === "zh-TW"
+            ? `${reminder} Use Traditional Chinese characters, not Simplified Chinese.`
+            : reminder,
+      )).toBe(true);
+      expect(prompt).toContain(`<<<START OF VIDEO TRANSCRIPT>>>\n${transcript}\n<<<END OF VIDEO TRANSCRIPT>>>`);
+    },
+  );
 
   it.each(OUTPUT_LANGUAGES)("builds a $englishName caption translation prompt", (language) => {
     const prompt = buildTranslationSystemPrompt(language.code);
