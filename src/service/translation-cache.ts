@@ -7,17 +7,25 @@ export interface TranslationCacheIdentity {
   modelId: string;
 }
 
+export interface CachedTranslationSection {
+  chunkId: number;
+  targetStart: number;
+  targetEnd: number;
+  segments: TranslatedSegment[];
+  timestamp: number;
+}
+
 export interface CachedTranslation extends TranslationCacheIdentity {
   targetLanguage: "zh-CN";
   pipelineVersion: number;
-  segments: TranslatedSegment[];
+  sections: Record<string, CachedTranslationSection>;
   timestamp: number;
 }
 
 const STORAGE_KEY = "vas-translations";
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
-const PIPELINE_VERSION = 1;
+const PIPELINE_VERSION = 2;
 
 type CacheIndex = Record<string, CachedTranslation>;
 
@@ -44,7 +52,13 @@ async function writeIndex(index: CacheIndex): Promise<void> {
 
 function removeExpired(index: CacheIndex, now: number): void {
   for (const key of Object.keys(index)) {
-    if (now - index[key].timestamp > CACHE_TTL_MS) delete index[key];
+    const entry = index[key];
+    if (
+      entry.pipelineVersion !== PIPELINE_VERSION ||
+      now - entry.timestamp > CACHE_TTL_MS
+    ) {
+      delete index[key];
+    }
   }
 }
 
@@ -52,32 +66,31 @@ export async function getCachedTranslation(
   identity: TranslationCacheIdentity,
 ): Promise<CachedTranslation | null> {
   const index = await readIndex();
-  const key = makeKey(identity);
-  const cached = index[key];
-  if (!cached) return null;
-  if (Date.now() - cached.timestamp > CACHE_TTL_MS) {
-    delete index[key];
-    await writeIndex(index);
-    return null;
-  }
-  return cached;
+  const now = Date.now();
+  removeExpired(index, now);
+  const cached = index[makeKey(identity)];
+  await writeIndex(index);
+  return cached ?? null;
 }
 
-export async function setCachedTranslation(
+export async function setCachedTranslationSection(
   identity: TranslationCacheIdentity,
-  segments: TranslatedSegment[],
-): Promise<void> {
+  section: Omit<CachedTranslationSection, "timestamp">,
+): Promise<CachedTranslation> {
   const index = await readIndex();
   const now = Date.now();
   removeExpired(index, now);
   const key = makeKey(identity);
-  index[key] = {
+  const current = index[key];
+  const next: CachedTranslation = {
     ...identity,
     targetLanguage: "zh-CN",
     pipelineVersion: PIPELINE_VERSION,
-    segments,
+    sections: { ...(current?.sections ?? {}) },
     timestamp: now,
   };
+  next.sections[String(section.chunkId)] = { ...section, timestamp: now };
+  index[key] = next;
 
   const keys = Object.keys(index);
   if (keys.length > MAX_CACHE_ENTRIES) {
@@ -86,6 +99,20 @@ export async function setCachedTranslation(
       .slice(0, keys.length - MAX_CACHE_ENTRIES)
       .forEach((oldKey) => delete index[oldKey]);
   }
+  await writeIndex(index);
+  return next;
+}
+
+export async function invalidateTranslationSection(
+  identity: TranslationCacheIdentity,
+  chunkId: number,
+): Promise<void> {
+  const index = await readIndex();
+  const key = makeKey(identity);
+  const current = index[key];
+  if (!current) return;
+  delete current.sections[String(chunkId)];
+  current.timestamp = Date.now();
   await writeIndex(index);
 }
 

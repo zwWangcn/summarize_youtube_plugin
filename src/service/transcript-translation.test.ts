@@ -30,6 +30,19 @@ describe("buildTranslationChunks", () => {
   it("returns no chunks for an empty transcript", () => {
     expect(buildTranslationChunks([])).toEqual([]);
   });
+
+  it("assigns stable ids and never splits an oversized caption", () => {
+    const segments = [
+      segment("a".repeat(20), 0),
+      segment("b".repeat(200), 1),
+      segment("c".repeat(20), 2),
+    ];
+    const chunks = buildTranslationChunks(segments, 60);
+
+    expect(chunks.map((chunk) => chunk.id)).toEqual([0, 1, 2]);
+    expect(chunks.map(({ targetStart, targetEnd }) => [targetStart, targetEnd]))
+      .toEqual([[0, 0], [1, 1], [2, 2]]);
+  });
 });
 
 describe("validateTranslationOutput", () => {

@@ -3,7 +3,7 @@ import type { Transcript, TranscriptSegment } from "../content/transcript";
 
 // 12k chars keeps Japanese/other dense scripts plus JSON safely below the
 // smallest configured providers' 16k output-token ceiling.
-const TARGET_CHARS_PER_CHUNK = 12_000;
+export const TARGET_CHARS_PER_CHUNK = 4_000;
 const CONTEXT_SEGMENTS = 4;
 const MAX_FORMAT_ATTEMPTS = 2;
 
@@ -13,7 +13,8 @@ export interface TranslatedSegment {
   text: string;
 }
 
-interface TranslationChunk {
+export interface TranslationChunk {
+  id: number;
   targetStart: number;
   targetEnd: number;
   contextStart: number;
@@ -64,6 +65,7 @@ export function buildTranslationChunks(
     }
     const targetEnd = end - 1;
     chunks.push({
+      id: chunks.length,
       targetStart: start,
       targetEnd,
       contextStart: Math.max(0, start - CONTEXT_SEGMENTS),
@@ -206,6 +208,7 @@ async function translateChunk(
   transcript: Transcript,
   chunk: TranslationChunk,
   onPartial?: (items: ModelTranslation[], attempt: number) => void,
+  signal?: AbortSignal,
 ): Promise<ModelTranslation[]> {
   let previousOutput = "";
   let lastError: Error | null = null;
@@ -237,6 +240,7 @@ async function translateChunk(
           firstResponseTimeoutMs: 30_000,
           inactivityTimeoutMs: 45_000,
           maxRetries: 1,
+          signal,
         },
       )) {
         rawOutput += token;
@@ -260,6 +264,34 @@ async function translateChunk(
   throw lastError ?? new TranslationFormatError("字幕翻译格式校验失败");
 }
 
+function toTranslatedSegments(
+  transcript: Transcript,
+  items: ModelTranslation[],
+): TranslatedSegment[] {
+  return items.map((item) => {
+    const first = transcript.segments[item.sourceStartId];
+    const last = transcript.segments[item.sourceEndId];
+    const end = last.start + last.duration;
+    return {
+      start: first.start,
+      duration: Math.max(0, end - first.start),
+      text: item.translatedText,
+    };
+  });
+}
+
+export async function translateTranscriptChunk(
+  transcript: Transcript,
+  chunk: TranslationChunk,
+  onProgress?: (partial: TranslatedSegment[], formatRetry: boolean) => void,
+  signal?: AbortSignal,
+): Promise<TranslatedSegment[]> {
+  const items = await translateChunk(transcript, chunk, (partialItems, attempt) => {
+    onProgress?.(toTranslatedSegments(transcript, partialItems), attempt > 0);
+  }, signal);
+  return toTranslatedSegments(transcript, items);
+}
+
 export async function translateTranscript(
   transcript: Transcript,
   onProgress?: (
@@ -274,25 +306,15 @@ export async function translateTranscript(
 
   for (let index = 0; index < chunks.length; index++) {
     const chunk = chunks[index];
-    const toTranslatedSegments = (items: ModelTranslation[]): TranslatedSegment[] => items.map((item) => {
-      const first = transcript.segments[item.sourceStartId];
-      const last = transcript.segments[item.sourceEndId];
-      const end = last.start + last.duration;
-      return {
-        start: first.start,
-        duration: Math.max(0, end - first.start),
-        text: item.translatedText,
-      };
-    });
     const items = await translateChunk(transcript, chunk, (partialItems, attempt) => {
       onProgress?.(
         index,
         chunks.length,
-        [...translated, ...toTranslatedSegments(partialItems)],
+        [...translated, ...toTranslatedSegments(transcript, partialItems)],
         attempt > 0,
       );
     });
-    translated.push(...toTranslatedSegments(items));
+    translated.push(...toTranslatedSegments(transcript, items));
     onProgress?.(index + 1, chunks.length, [...translated], false);
   }
 

@@ -27,6 +27,7 @@ export interface StreamAIOptions {
   firstResponseTimeoutMs?: number;
   inactivityTimeoutMs?: number;
   maxRetries?: number;
+  signal?: AbortSignal;
 }
 
 // ---------------------------------------------------------------------------
@@ -136,6 +137,9 @@ export async function* streamAIText(
 
   const maxRetries = options.maxRetries ?? MAX_RETRIES;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    if (options.signal?.aborted) {
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
     if (attempt > 0) {
       const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
       await new Promise((r) => setTimeout(r, delay));
@@ -154,6 +158,8 @@ export async function* streamAIText(
       });
 
       const controller = new AbortController();
+      const abortFromCaller = () => controller.abort();
+      options.signal?.addEventListener("abort", abortFromCaller, { once: true });
       let timeoutKind: "first-response" | "inactivity" = "first-response";
       let timeoutId: ReturnType<typeof setTimeout> | null = null;
       const armTimeout = (kind: "first-response" | "inactivity", ms?: number) => {
@@ -228,6 +234,9 @@ export async function* streamAIText(
         return;
       } catch (error) {
         if (controller.signal.aborted) {
+          if (options.signal?.aborted) {
+            throw new DOMException("The operation was aborted", "AbortError");
+          }
           const message = timeoutKind === "first-response"
             ? "AI 首次响应超时，请稍后重试"
             : "AI 响应流停滞，请稍后重试";
@@ -236,6 +245,7 @@ export async function* streamAIText(
         throw error;
       } finally {
         if (timeoutId) clearTimeout(timeoutId);
+        options.signal?.removeEventListener("abort", abortFromCaller);
       }
     } catch (e) {
       lastError = e as Error;
