@@ -5,6 +5,7 @@ import {
 } from "../service/ai";
 import { TranslationFormatError } from "../service/transcript-translation";
 import { UserError } from "../utils/errors";
+import { t } from "../utils/i18n";
 
 export interface ErrorPresenter {
   showError(message: string): void;
@@ -29,7 +30,7 @@ export function handleError(err: unknown, panel: ErrorPresenter): void {
     panel.showError(err.message);
     console.debug("[vas] AI error:", err.message);
   } else {
-    panel.showError("出了点问题，请稍后重试");
+    panel.showError(t("errorUnexpected"));
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
     console.debug("[vas] Unexpected error:", detail);
   }

@@ -11,6 +11,7 @@ import type {
   TranslatedSegment,
   TranslationChunk,
 } from "../../service/transcript-translation";
+import { t } from "../../utils/i18n";
 
 /** 配置 marked（options 可以在运行时设置） */
 marked.setOptions({
@@ -169,7 +170,7 @@ export function renderTranscriptSections(
   if (state.loadedStart > 0) {
     const top = document.createElement("div");
     top.className = "vas-load-sentinel vas-load-before";
-    top.textContent = "向上滚动加载更早字幕";
+    top.textContent = t("loadEarlierCaptions");
     target.appendChild(top);
   }
 
@@ -184,9 +185,12 @@ export function renderTranscriptSections(
 
     const header = document.createElement("div");
     header.className = "vas-section-header";
-    header.textContent =
-      `第 ${chunkId + 1}/${state.chunks.length} 段 · ` +
-      `${formatTime(first.start)}–${formatTime(last.start + last.duration)}`;
+    header.textContent = t("sectionRange", [
+      String(chunkId + 1),
+      String(state.chunks.length),
+      formatTime(first.start),
+      formatTime(last.start + last.duration),
+    ]);
     section.appendChild(header);
 
     const body = document.createElement("div");
@@ -205,7 +209,7 @@ export function renderTranscriptSections(
       if (state.view === "translation") {
         const hint = document.createElement("div");
         hint.className = "vas-untranslated-hint";
-        hint.textContent = "本段尚未翻译，可点击“翻译本段”";
+        hint.textContent = t("sectionNotTranslated");
         body.appendChild(hint);
       }
     }
@@ -216,7 +220,7 @@ export function renderTranscriptSections(
   if (state.loadedEnd < state.chunks.length - 1) {
     const bottom = document.createElement("div");
     bottom.className = "vas-load-sentinel vas-load-after";
-    bottom.textContent = "向下滚动加载后续字幕";
+    bottom.textContent = t("loadLaterCaptions");
     target.appendChild(bottom);
   }
 }

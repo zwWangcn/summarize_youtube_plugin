@@ -14,6 +14,7 @@
  */
 
 import { UserError } from "../../utils/errors";
+import { t } from "../../utils/i18n";
 import type { Transcript, TranscriptSegment } from "../transcript";
 
 // ---------------------------------------------------------------------------
@@ -269,7 +270,7 @@ export async function getCaptionedText(
       if (match) {
         done(match);
       } else {
-        fail(new UserError("自动获取字幕超时，请在播放器中点击 CC 按钮开启字幕后重试", "YT_INTERCEPTOR_TIMEOUT"));
+        fail(new UserError(t("errorCaptionTimeout"), "YT_INTERCEPTOR_TIMEOUT"));
       }
     }, timeoutMs);
 

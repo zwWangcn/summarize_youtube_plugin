@@ -11,6 +11,7 @@ const identity: TranslationCacheIdentity = {
   sourceLanguage: "en",
   providerId: "openai",
   modelId: "gpt-test",
+  targetLanguage: "zh-CN",
 };
 
 describe("section translation cache", () => {
@@ -62,5 +63,16 @@ describe("section translation cache", () => {
     });
 
     expect(await getCachedTranslation({ ...identity, modelId: "other-model" })).toBeNull();
+  });
+
+  it("isolates caches by target language", async () => {
+    await setCachedTranslationSection(identity, {
+      chunkId: 0,
+      targetStart: 0,
+      targetEnd: 0,
+      segments: [{ start: 0, duration: 1, text: "译文" }],
+    });
+
+    expect(await getCachedTranslation({ ...identity, targetLanguage: "en" })).toBeNull();
   });
 });

@@ -16,6 +16,7 @@
 
 import panelStyles from "./styles.css?inline";
 import { linkifyTimestampsInDom } from "./renderer";
+import { t } from "../../utils/i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -176,7 +177,7 @@ export class Panel {
       transition: "opacity 0.3s ease, background 0.2s",
     });
 
-    btn.textContent = "AI 总结";
+    btn.textContent = t("aiSummary");
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "rgba(0, 0, 0, 0.8)";
     });
@@ -244,37 +245,37 @@ export class Panel {
     el.className = "vas-panel vas-collapsed";
     el.innerHTML = `
       <div class="vas-header">
-        <span class="vas-header-title">视频 AI 总结</span>
+        <span class="vas-header-title">${t("extensionName")}</span>
         <div class="vas-header-actions">
-          <button class="vas-btn-icon vas-btn-reset-width" title="恢复默认宽度" style="display:none">↺</button>
-          <button class="vas-btn-icon vas-btn-close" title="关闭">✕</button>
+          <button class="vas-btn-icon vas-btn-reset-width" title="${t("resetWidthTitle")}" style="display:none">↺</button>
+          <button class="vas-btn-icon vas-btn-close" title="${t("closeTitle")}">✕</button>
         </div>
       </div>
       <div class="vas-toolbar">
-        <button class="vas-btn vas-btn-primary vas-btn-summarize">AI 总结</button>
-        <button class="vas-btn vas-btn-transcript">字幕原文</button>
+        <button class="vas-btn vas-btn-primary vas-btn-summarize">${t("aiSummary")}</button>
+        <button class="vas-btn vas-btn-transcript">${t("rawTranscript")}</button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
-          <input type="checkbox" class="vas-timestamp-checkbox" checked /> 时间戳
+          <input type="checkbox" class="vas-timestamp-checkbox" checked /> ${t("timestamp")}
         </label>
-        <button class="vas-btn vas-btn-copy" title="复制" style="display:none">复制</button>
+        <button class="vas-btn vas-btn-copy" title="${t("copy")}" style="display:none">${t("copy")}</button>
       </div>
       <div class="vas-transcript-tools" style="display:none">
-        <div class="vas-view-switch" role="group" aria-label="字幕语言">
-          <button class="vas-view-option vas-view-source vas-active">原文</button>
-          <button class="vas-view-option vas-view-translation">译文</button>
+        <div class="vas-view-switch" role="group" aria-label="${t("captionLanguageAria")}">
+          <button class="vas-view-option vas-view-source vas-active">${t("sourceView")}</button>
+          <button class="vas-view-option vas-view-translation">${t("translationView")}</button>
         </div>
         <span class="vas-transcript-range"></span>
         <span class="vas-transcript-tools-spacer"></span>
-        <button class="vas-btn vas-translate-current">翻译本段</button>
-        <button class="vas-btn vas-translate-all">翻译全文</button>
+        <button class="vas-btn vas-translate-current">${t("translateSection")}</button>
+        <button class="vas-btn vas-translate-all">${t("translateAll")}</button>
         <span class="vas-translation-progress"></span>
       </div>
       <div class="vas-error" style="display:none"></div>
       <div class="vas-warning" style="display:none"></div>
       <div class="vas-loading" style="display:none">
         <div class="vas-spinner"></div>
-        <span class="vas-loading-msg">正在启动...</span>
+        <span class="vas-loading-msg">${t("starting")}</span>
         <span class="vas-elapsed"></span>
       </div>
       <div class="vas-cache-hint" style="display:none"></div>
@@ -438,11 +439,14 @@ export class Panel {
 
   reset(): void {
     this.close();
+    this.panel.style.minHeight = "";
+    this.contentEl.replaceChildren();
     this.setMode("idle");
     this.timestampToggle.style.display = "none";
     this.copyBtn.style.display = "none";
+    this.setTranslationActionsBusy(false);
     this.isCachedView = false;
-    this.setSummarizeButtonText("AI 总结");
+    this.setSummarizeButtonText(t("aiSummary"));
     this.setTranscriptView("source");
     this.setTranslationProgress("");
     this.hideCacheHint();
@@ -461,7 +465,7 @@ export class Panel {
     this.contentEl.innerHTML = `
       <div class="vas-thinking">
         <div class="vas-thinking-dot"></div>
-        <span>AI 正在思考...</span>
+        <span>${t("aiThinking")}</span>
       </div>`;
     this.loadingEl.style.display = "none";
     this.contentEl.style.display = "block";
@@ -487,6 +491,8 @@ export class Panel {
 
     switch (mode) {
       case "idle":
+        this.setButtonsDisabled(false);
+        this.stopElapsedTimer();
         break;
       case "loading":
         this.loadingEl.style.display = "flex";
@@ -574,7 +580,9 @@ export class Panel {
 
   setCurrentSectionTranslated(translated: boolean): void {
     this.translateCurrentBtn.dataset.translated = String(translated);
-    this.translateCurrentBtn.textContent = translated ? "重新翻译本段" : "翻译本段";
+    this.translateCurrentBtn.textContent = t(
+      translated ? "retranslateSection" : "translateSection",
+    );
   }
 
   setTranslationActionsBusy(busy: boolean): void {
@@ -605,7 +613,7 @@ export class Panel {
       document.execCommand("copy");
       document.body.removeChild(ta);
     }
-    this.showToast("已复制到剪贴板");
+    this.showToast(t("copied"));
   }
 
   private showToast(message: string): void {
@@ -711,10 +719,10 @@ export class Panel {
   private startElapsedTimer(): void {
     this.startTime = Date.now();
     this.stopElapsedTimer();
-    this.elapsedEl.textContent = "已用 0s";
+    this.elapsedEl.textContent = t("elapsedSeconds", "0");
     this.elapsedTimer = setInterval(() => {
       const secs = Math.floor((Date.now() - this.startTime) / 1000);
-      this.elapsedEl.textContent = `已用 ${secs}s`;
+      this.elapsedEl.textContent = t("elapsedSeconds", String(secs));
     }, 1000);
   }
 

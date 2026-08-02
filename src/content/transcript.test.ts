@@ -1,6 +1,7 @@
 import { describe, expect, it } from "vitest";
 import {
   isChineseLanguage,
+  isTranscriptInOutputLanguage,
   transcriptToText,
   type Transcript,
 } from "./transcript";
@@ -13,6 +14,15 @@ describe("transcript helpers", () => {
     expect(isChineseLanguage("zh-TW")).toBe(true);
     expect(isChineseLanguage("en")).toBe(false);
     expect(isChineseLanguage("ja")).toBe(false);
+  });
+
+  it("matches source captions to output languages and distinguishes Chinese scripts", () => {
+    expect(isTranscriptInOutputLanguage("en-US", "en")).toBe(true);
+    expect(isTranscriptInOutputLanguage("ja", "ja")).toBe(true);
+    expect(isTranscriptInOutputLanguage("zh-Hans", "zh-CN")).toBe(true);
+    expect(isTranscriptInOutputLanguage("zh-TW", "zh-TW")).toBe(true);
+    expect(isTranscriptInOutputLanguage("zh-TW", "zh-CN")).toBe(false);
+    expect(isTranscriptInOutputLanguage("zh", "zh-TW")).toBe(false);
   });
 
   it("converts structured segments to the legacy timestamp format", () => {

@@ -1,10 +1,12 @@
 import type { TranslatedSegment } from "./transcript-translation";
+import type { OutputLanguage } from "../utils/i18n";
 
 export interface TranslationCacheIdentity {
   videoId: string;
   sourceLanguage: string;
   providerId: string;
   modelId: string;
+  targetLanguage: OutputLanguage;
 }
 
 export interface CachedTranslationSection {
@@ -16,7 +18,6 @@ export interface CachedTranslationSection {
 }
 
 export interface CachedTranslation extends TranslationCacheIdentity {
-  targetLanguage: "zh-CN";
   pipelineVersion: number;
   sections: Record<string, CachedTranslationSection>;
   timestamp: number;
@@ -34,7 +35,7 @@ function makeKey(identity: TranslationCacheIdentity): string {
     "youtube",
     identity.videoId,
     identity.sourceLanguage,
-    "zh-CN",
+    identity.targetLanguage,
     identity.providerId,
     identity.modelId,
     PIPELINE_VERSION,
@@ -84,7 +85,6 @@ export async function setCachedTranslationSection(
   const current = index[key];
   const next: CachedTranslation = {
     ...identity,
-    targetLanguage: "zh-CN",
     pipelineVersion: PIPELINE_VERSION,
     sections: { ...(current?.sections ?? {}) },
     timestamp: now,

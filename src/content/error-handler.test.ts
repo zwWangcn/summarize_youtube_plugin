@@ -1,8 +1,21 @@
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 import { AIServiceError } from "../service/ai";
 import { handleError, type ErrorPresenter } from "./error-handler";
 
 describe("handleError", () => {
+  beforeEach(() => {
+    Object.defineProperty(globalThis, "chrome", {
+      configurable: true,
+      value: {
+        i18n: {
+          getMessage: vi.fn((key: string) => key === "errorUnexpected"
+            ? "出了点问题，请稍后重试"
+            : key),
+        },
+      },
+    });
+  });
+
   afterEach(() => {
     vi.restoreAllMocks();
   });

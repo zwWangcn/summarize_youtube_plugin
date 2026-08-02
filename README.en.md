@@ -2,19 +2,20 @@
 
 > 🌐 [简体中文](README.md) | English
 
-An AI-powered summarizer for YouTube / Bilibili videos. Extract captions with one click and stream structured Chinese summaries, with 8 AI providers and 20+ models to switch between.
+An AI-powered summarizer for YouTube / Bilibili videos. Extract captions with one click and stream structured summaries, with 8 AI providers and 20+ models to switch between.
 
 ## Features
 
 - **Free model switching** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok, 20+ models, one-click switch in the popup
 - **One-click AI summary** — streams a structured Markdown summary
+- **Multilingual output** — YouTube summaries and caption translations support Chinese (Simplified and Traditional), English, Japanese, Korean, Spanish, French, and German
+- **Localized UI** — follows Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English, with English as the fallback
 - **Raw captions** — click timestamps to seek
 - **Section-based subtitle translation** — translates the current YouTube caption section or resumes the full transcript
 - **Real-time streaming** — token-level, character-by-character output
 - **SPA navigation awareness** — auto-detects video switches
 - **Multi-language captions** — picks the best track (YouTube: ja > en > zh; Bilibili: zh > en)
-- **Auto-translation fallback** — translates automatically when the output isn't Chinese
-- **Summary cache** — 7-day TTL, LRU eviction
+- **Language-isolated cache** — each output language has its own 7-day cache with LRU eviction
 
 ## How It Works
 
@@ -44,7 +45,11 @@ Each adapter normalizes its streaming response into a unified `StreamChunk { tok
 
 Translation now lives inside **Raw Captions**. Captions are split by source character count, open near the current playback position, and load in either direction as you scroll. Scrolling never triggers an AI request. Translate the current section, retry one section, or use **Translate All** to fill only missing sections, then switch between Source and Translation views.
 
-The extension still repairs broken segmentation conservatively and keeps translated timestamps clickable. Each completed section is cached for seven days by video, source language, provider, and model, so full translation resumes after closing the panel. Chinese source captions do not trigger an AI request.
+The extension still repairs broken segmentation conservatively and keeps translated timestamps clickable. Each completed section is cached for seven days by video, source language, target language, provider, and model, so full translation resumes after closing the panel. Captions already written in the selected target language do not trigger a translation request.
+
+### UI and Output Language
+
+The manifest, popup, and YouTube panel use Chrome's native i18n system and follow Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. Other Chrome UI languages fall back to English. **YouTube output language** is a separate popup setting: it is initialized from Chrome once, then remains fixed until the user changes it. Supported output languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German. Bilibili summaries remain Simplified Chinese for now.
 
 ### SPA Navigation Awareness
 
@@ -59,13 +64,13 @@ The panel is injected into `<body>` (`position: fixed`) via Shadow DOM, fully is
 `fetch` + `ReadableStream` parses SSE line by line → `adapter.parseStreamChunk()` extracts tokens → `AsyncGenerator` yields them one by one.
 
 - Content-filter signals are normalized into `ContentFilteredError`
-- Auto-translation fallback when Chinese output ratio < 30%
+- YouTube uses an English modular system prompt with a controlled target-language constraint
 - Retries only on 5xx and network errors (max 2, exponential backoff); no retry on 4xx
 - API keys live in `chrome.storage.sync`, never sent through any server
 
 ### Summary Cache
 
-`chrome.storage.local`, 7-day TTL with lazy cleanup, max 50 entries, LRU eviction when exceeded.
+`chrome.storage.local`, 7-day TTL with lazy cleanup, max 50 entries, LRU eviction when exceeded. YouTube summary and caption-translation cache identities include the target language, so results are never reused across languages.
 
 ## Usage
 
@@ -91,7 +96,7 @@ Dev hot-reload: `npm run dev`
    - [Tongyi Qwen](https://bailian.console.aliyun.com/#/api-key)
    - [Zhipu GLM](https://open.bigmodel.cn/usercenter/apikeys)
    - [xAI Grok](https://console.x.ai)
-2. Click the extension icon → pick a provider → pick a model → enter the API key → save
+2. Click the extension icon → pick a provider, model, and YouTube output language → enter the API key → save
 
 ### Summarize a Video
 
@@ -99,7 +104,7 @@ Dev hot-reload: `npm run dev`
 2. Click the **🤖 AI Summary** button next to the title
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
-5. On non-Chinese YouTube videos, use **Translate Section** or **Translate All** inside the captions view
+5. When the YouTube caption language differs from the output language, use **Translate Section** or **Translate All** inside the captions view
 
 ## License
 

@@ -15,7 +15,7 @@ import {
 import { formatTime } from "../utils/text";
 import type { YouTubePlayer } from "./extractors/caption-interceptor";
 import type { Transcript } from "./transcript";
-import { isChineseLanguage, transcriptToText } from "./transcript";
+import { isTranscriptInOutputLanguage, transcriptToText } from "./transcript";
 import { UserError } from "../utils/errors";
 import {
   translateTranscriptChunk,
@@ -36,6 +36,12 @@ import {
 } from "../service/summary-cache";
 import { handleError } from "./error-handler";
 import { runSummaryCacheOperation } from "./summary-cache-operation";
+import { getSettings } from "../service/storage";
+import {
+  isOutputLanguage,
+  t,
+  type OutputLanguage,
+} from "../utils/i18n";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -50,6 +56,7 @@ export interface Extractor {
 export interface ContentScriptConfig {
   source: string;
   enableTranslation?: boolean;
+  enableLocalizedOutput?: boolean;
   /** Find injection target — used on initial load + SPA rebuilds */
   findInjectTarget: () => HTMLElement | null;
 }
@@ -152,15 +159,15 @@ function isYouTubeDarkMode(): boolean {
 /** 将毫秒时间差转为人类可读的相对时间。 */
 function formatCacheAge(ms: number): string {
   const secs = Math.floor(ms / 1000);
-  if (secs < 60) return "刚刚";
+  if (secs < 60) return t("cacheJustNow");
   const mins = Math.floor(secs / 60);
-  if (mins < 60) return `${mins} 分钟前`;
+  if (mins < 60) return t("cacheMinutesAgo", String(mins));
   const hours = Math.floor(mins / 60);
-  if (hours < 24) return `${hours} 小时前`;
+  if (hours < 24) return t("cacheHoursAgo", String(hours));
   const days = Math.floor(hours / 24);
-  if (days < 30) return `${days} 天前`;
+  if (days < 30) return t("cacheDaysAgo", String(days));
   const months = Math.floor(days / 30);
-  return `${months} 个月前`;
+  return t("cacheMonthsAgo", String(months));
 }
 
 // ---------------------------------------------------------------------------
@@ -222,6 +229,11 @@ export async function initContentScript(
 ): Promise<void> {
   if (document.getElementById("vas-root")) return;
 
+  let outputLanguage: OutputLanguage = "zh-CN";
+  if (config.enableLocalizedOutput) {
+    outputLanguage = (await getSettings()).outputLanguage;
+  }
+
   // ── Shared state ───────────────────────────────────────────────────
   let transcriptData: Transcript | null = null;
   let transcriptVideoId = "";
@@ -237,6 +249,7 @@ export async function initContentScript(
   let transcriptScrollTop = 0;
   let translationTask: Promise<void> | null = null;
   let translationAbort: AbortController | null = null;
+  let summaryAbort: AbortController | null = null;
   let translationProgressText = "";
   let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
@@ -244,6 +257,8 @@ export async function initContentScript(
   function clearTranscriptState(): void {
     transcriptStateVersion += 1;
     translationAbort?.abort();
+    summaryAbort?.abort();
+    summaryAbort = null;
     transcriptData = null;
     transcriptVideoId = "";
     transcriptChunks = [];
@@ -257,19 +272,39 @@ export async function initContentScript(
     transcriptScrollTop = 0;
   }
 
-  async function ensureTranscript(panel: Panel): Promise<Transcript> {
+  if (config.enableLocalizedOutput) {
+    chrome.storage.onChanged.addListener((changes, areaName) => {
+      const next = changes.outputLanguage?.newValue;
+      if (areaName !== "sync" || !isOutputLanguage(next) || next === outputLanguage) return;
+      outputLanguage = next;
+      clearTranscriptState();
+      currentPanel?.reset();
+      currentPanel?.setTranslationAvailable(Boolean(config.enableTranslation));
+    });
+  }
+
+  async function ensureTranscript(
+    panel: Panel,
+    expectedVersion: number = transcriptStateVersion,
+  ): Promise<Transcript> {
     const videoId = extractor.getVideoId();
     if (transcriptData && transcriptVideoId === videoId) return transcriptData;
     const transcript = await extractor.getTranscript();
+    if (expectedVersion !== transcriptStateVersion) {
+      throw new DOMException("The operation was aborted", "AbortError");
+    }
     if (!transcript.segments.length) {
       throw new UserError(
-        "未能提取到有效字幕文本，请确认该视频有字幕且语言可识别",
+        t("errorEmptyTranscript"),
         "EMPTY_TRANSCRIPT",
       );
     }
     transcriptData = transcript;
     transcriptVideoId = videoId;
-    if (config.enableTranslation && isChineseLanguage(transcript.languageCode)) {
+    if (
+      config.enableTranslation &&
+      isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)
+    ) {
       panel.setTranslationAvailable(false);
     }
     return transcript;
@@ -301,8 +336,12 @@ export async function initContentScript(
     const first = transcriptData.segments[chunk.targetStart];
     const last = transcriptData.segments[chunk.targetEnd];
     panel.setTranscriptRange(
-      `第 ${activeChunkId + 1}/${transcriptChunks.length} 段 · ` +
-      `${formatTime(first.start)}–${formatTime(last.start + last.duration)}`,
+      t("sectionRange", [
+        String(activeChunkId + 1),
+        String(transcriptChunks.length),
+        formatTime(first.start),
+        formatTime(last.start + last.duration),
+      ]),
     );
     panel.setCurrentSectionTranslated(Boolean(translatedSections[activeChunkId]));
     panel.setTranscriptView(transcriptView);
@@ -375,6 +414,7 @@ export async function initContentScript(
       sourceLanguage: transcript.languageCode,
       providerId: ai.providerId,
       modelId: ai.modelId,
+      targetLanguage: outputLanguage,
     };
     const key = JSON.stringify(identity);
     if (translationIdentityKey !== key) {
@@ -437,6 +477,11 @@ export async function initContentScript(
     const stateVersion = transcriptStateVersion;
     const controller = new AbortController();
     translationAbort = controller;
+    const assertCurrent = () => {
+      if (controller.signal.aborted || stateVersion !== transcriptStateVersion) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+    };
     panel.setTranslationActionsBusy(true);
     if (!isFullTranslation) {
       transcriptView = "translation";
@@ -445,39 +490,53 @@ export async function initContentScript(
 
     const task = (async () => {
       const identity = await ensureTranslationCache(stateVersion);
+      assertCurrent();
       if (forceRefresh && requestedChunkIds.length === 1) {
         const chunkId = requestedChunkIds[0];
         await invalidateTranslationSection(identity, chunkId);
+        assertCurrent();
         delete translatedSections[chunkId];
       }
       const pending = requestedChunkIds.filter(
         (chunkId) => forceRefresh || !translatedSections[chunkId],
       );
       if (!pending.length) {
-        translationProgressText = isFullTranslation ? "全文翻译已完成" : "本段已有译文";
+        translationProgressText = t(
+          isFullTranslation ? "translationAllAlreadyDone" : "translationSectionAlreadyDone",
+        );
         return;
       }
 
       for (let index = 0; index < pending.length; index++) {
+        assertCurrent();
         const chunkId = pending[index];
         const chunk = transcriptChunks[chunkId];
         translationProgressText = isFullTranslation
-          ? `正在翻译全文 ${Object.keys(translatedSections).length}/${transcriptChunks.length}`
-          : `正在翻译第 ${chunkId + 1}/${transcriptChunks.length} 段`;
+          ? t("translatingAllProgress", [
+            String(Object.keys(translatedSections).length),
+            String(transcriptChunks.length),
+          ])
+          : t("translatingSectionProgress", [
+            String(chunkId + 1),
+            String(transcriptChunks.length),
+          ]);
         panel.setTranslationProgress(translationProgressText);
 
         const result = await translateTranscriptChunk(
           transcript,
           chunk,
+          identity.targetLanguage,
           (partial, formatRetry) => {
+            if (controller.signal.aborted || stateVersion !== transcriptStateVersion) return;
             partialTranslatedSections[chunkId] = partial;
             translationProgressText = formatRetry
-              ? `第 ${chunkId + 1} 段正在修复输出格式`
+              ? t("repairingSectionFormat", String(chunkId + 1))
               : translationProgressText;
             if (panel.getMode() === "transcript") renderTranscriptReader(panel);
           },
           controller.signal,
         );
+        assertCurrent();
         delete partialTranslatedSections[chunkId];
         translatedSections[chunkId] = result;
         try {
@@ -487,18 +546,22 @@ export async function initContentScript(
             targetEnd: chunk.targetEnd,
             segments: result,
           });
+          assertCurrent();
         } catch (error) {
+          assertCurrent();
           const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
           console.debug("[vas] Translation section cache write failed:", detail);
-          panel.showWarning("本段翻译已完成，但本地缓存写入失败");
+          panel.showWarning(t("translationCacheWriteFailed"));
         }
         if (panel.getMode() === "transcript") renderTranscriptReader(panel);
       }
-      translationProgressText = isFullTranslation ? "全文翻译完成" : "本段翻译完成";
+      translationProgressText = t(
+        isFullTranslation ? "translationAllDone" : "translationSectionDone",
+      );
     })().catch((error: unknown) => {
       if ((error as Error)?.name === "AbortError") return;
-      const message = error instanceof Error ? error.message : "字幕翻译失败，请稍后重试";
-      translationProgressText = `翻译已停止：${message}`;
+      const message = error instanceof Error ? error.message : t("translationFailed");
+      translationProgressText = t("translationStopped", message);
       const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
       console.debug("[vas] Translation stopped:", detail);
       if (panel.getMode() === "transcript") panel.showWarning(message);
@@ -517,6 +580,20 @@ export async function initContentScript(
   const callbacks = {
     onSummarize: async () => {
       const panel = getPanel();
+      const requestedLanguage = outputLanguage;
+      summaryAbort?.abort();
+      const summaryController = new AbortController();
+      summaryAbort = summaryController;
+      let renderFrameId: number | null = null;
+      const assertCurrent = () => {
+        if (
+          summaryController.signal.aborted ||
+          summaryAbort !== summaryController ||
+          requestedLanguage !== outputLanguage
+        ) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
+      };
       let cacheFailed = false;
       const reportCacheFailure = () => {
         cacheFailed = true;
@@ -532,11 +609,12 @@ export async function initContentScript(
         if (isForceRefresh) {
           await runSummaryCacheOperation(
             "invalidation",
-            () => invalidateCache(config.source, videoId),
+            () => invalidateCache(config.source, videoId, requestedLanguage),
             reportCacheFailure,
           );
+          assertCurrent();
           panel.setCachedView(false);
-          panel.setSummarizeButtonText("AI 总结");
+          panel.setSummarizeButtonText(t("aiSummary"));
           panel.hideCacheHint();
         }
 
@@ -544,21 +622,22 @@ export async function initContentScript(
         if (!isForceRefresh) {
           const cached = await runSummaryCacheOperation(
             "read",
-            () => getCachedSummary(config.source, videoId),
+            () => getCachedSummary(config.source, videoId, requestedLanguage),
             reportCacheFailure,
           );
+          assertCurrent();
           if (cached) {
             // 缓存命中——直接显示
             panel.setTitle(videoTitle || cached.videoTitle);
             panel.setContent(renderMarkdown(cached.text));
             panel.setMode("summary");
             panel.setCachedView(true);
-            panel.setSummarizeButtonText("再次总结");
+            panel.setSummarizeButtonText(t("summarizeAgain"));
 
             // 显示缓存时间
             const elapsed = Date.now() - cached.timestamp;
             const hint = formatCacheAge(elapsed);
-            panel.showCacheHint(`缓存于 ${hint}`);
+            panel.showCacheHint(t("cachedAt", hint));
             panel.open();
             return;
           }
@@ -566,15 +645,16 @@ export async function initContentScript(
 
         // ── 缓存未命中或强制刷新——走 API ──
         panel.setMode("loading");
-        panel.setLoadingMessage("正在获取字幕...");
+        panel.setLoadingMessage(t("fetchingTranscript"));
         panel.setCachedView(false);
         panel.open();
 
         const transcript = await ensureTranscript(panel);
+        assertCurrent();
         const transcriptText = transcriptToText(transcript);
 
         panel.setTitle(videoTitle);
-        panel.setLoadingMessage("AI 正在生成总结...");
+        panel.setLoadingMessage(t("generatingSummary"));
 
         // 切换到流式内容展示——显示「AI 正在思考...」指示器，等首批 token 到达后替换
         panel.beginStreaming();
@@ -582,53 +662,73 @@ export async function initContentScript(
         // 流式渲染：使用 rAF 节流确保浏览器有机会 paint，避免假 stream
         const contentEl = panel.getContentElement();
         let buffer = "";
-        let rafId: number | null = null;
         let pendingRender = false;
 
-        for await (const chunk of summarizeTextStream(transcriptText, config.source)) {
+        for await (const chunk of summarizeTextStream(
+          transcriptText,
+          config.source,
+          requestedLanguage,
+          summaryController.signal,
+        )) {
           buffer += chunk;
           if (!pendingRender) {
             pendingRender = true;
-            rafId = requestAnimationFrame(() => {
-              renderStreaming(contentEl, buffer);
+            renderFrameId = requestAnimationFrame(() => {
+              if (!summaryController.signal.aborted && summaryAbort === summaryController) {
+                renderStreaming(contentEl, buffer);
+              }
               pendingRender = false;
             });
           }
         }
+        assertCurrent();
 
         // flush 最后一次渲染
-        if (rafId !== null) cancelAnimationFrame(rafId);
+        if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
+        renderFrameId = null;
         renderStreaming(contentEl, buffer);
 
         // 保存到缓存
         if (buffer.trim()) {
           await runSummaryCacheOperation(
             "write",
-            () => setCachedSummary(config.source, videoId, videoTitle, buffer),
+            () => setCachedSummary(
+              config.source,
+              videoId,
+              videoTitle,
+              buffer,
+              requestedLanguage,
+            ),
             reportCacheFailure,
           );
+          assertCurrent();
         }
 
         panel.setMode("summary");
         // API 获取的新内容，标记为可「再次总结」
         panel.setCachedView(true);
-        panel.setSummarizeButtonText("再次总结");
+        panel.setSummarizeButtonText(t("summarizeAgain"));
         if (cacheFailed) {
-          panel.showWarning("本地缓存暂时不可用，本次结果可能不会保存");
+          panel.showWarning(t("summaryCacheUnavailable"));
         }
       } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
         handleError(err, panel);
+      } finally {
+        if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
+        if (summaryAbort === summaryController) summaryAbort = null;
       }
     },
 
     onTranscript: async (withTimestamps: boolean) => {
       const panel = getPanel();
+      const stateVersion = transcriptStateVersion;
       panel.setMode("loading");
-      panel.setLoadingMessage("正在获取字幕...");
+      panel.setLoadingMessage(t("fetchingTranscript"));
       panel.open();
 
       try {
-        const transcript = await ensureTranscript(panel);
+        const transcript = await ensureTranscript(panel, stateVersion);
         panel.setTitle(extractor.getVideoTitle());
         transcriptWithTimestamps = withTimestamps;
         const isInitialOpen = !transcriptChunks.length;
@@ -637,18 +737,23 @@ export async function initContentScript(
           activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
           loadedChunkStart = Math.max(0, activeChunkId - 1);
           loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
-          if (config.enableTranslation && !isChineseLanguage(transcript.languageCode)) {
+          if (
+            config.enableTranslation &&
+            !isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)
+          ) {
             await ensureTranslationCache();
           }
         }
         panel.setMode("transcript");
         panel.setTranslationAvailable(
-          Boolean(config.enableTranslation) && !isChineseLanguage(transcript.languageCode),
+          Boolean(config.enableTranslation) &&
+          !isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage),
         );
         panel.setTranslationActionsBusy(Boolean(translationTask));
         renderTranscriptReader(panel, !isInitialOpen);
         if (isInitialOpen) {
           requestAnimationFrame(() => {
+            if (stateVersion !== transcriptStateVersion) return;
             const active = panel.getContentElement().querySelector<HTMLElement>(
               `[data-chunk-id="${activeChunkId}"]`,
             );
@@ -658,6 +763,7 @@ export async function initContentScript(
           });
         }
       } catch (err) {
+        if ((err as Error)?.name === "AbortError") return;
         handleError(err, panel);
       }
     },

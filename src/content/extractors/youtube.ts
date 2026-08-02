@@ -6,6 +6,7 @@
  */
 
 import { UserError } from "../../utils/errors";
+import { t } from "../../utils/i18n";
 import { getCaptionedText } from "./caption-interceptor";
 import type { Transcript, TranscriptSegment } from "../transcript";
 
@@ -122,7 +123,7 @@ async function fetchAndParseCaptions(
 
   if (!resp.ok) {
     throw new UserError(
-      "字幕加载失败，请刷新页面后重试",
+      t("errorYoutubeCaptionLoad"),
       "YT_CAPTION_FETCH",
       `HTTP ${resp.status}`,
     );
@@ -132,7 +133,7 @@ async function fetchAndParseCaptions(
 
   if (!xmlText || !xmlText.trim()) {
     throw new UserError(
-      "该视频暂无可用字幕，请尝试在播放器中手动开启字幕（CC 按钮）",
+      t("errorYoutubeCaptionUnavailable"),
       "YT_EMPTY_RESPONSE",
     );
   }
@@ -223,7 +224,7 @@ async function fetchCaptionsViaInnerTube(
 ): Promise<Transcript> {
   const apiKey = getApiKey();
   const videoId = getVideoIdFromUrl();
-  if (!apiKey || !videoId) throw new UserError("页面尚未加载完成，请刷新后重试", "YT_NO_API_KEY");
+  if (!apiKey || !videoId) throw new UserError(t("errorPageNotReady"), "YT_NO_API_KEY");
 
   const resp = await fetch(
     `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`,
@@ -245,19 +246,19 @@ async function fetchCaptionsViaInnerTube(
     },
   );
 
-  if (!resp.ok) throw new UserError("字幕服务暂时不可用，正在尝试其他方式…", "YT_INNERTUBE", `HTTP ${resp.status}`);
+  if (!resp.ok) throw new UserError(t("errorCaptionService"), "YT_INNERTUBE", `HTTP ${resp.status}`);
   const data = await resp.json();
 
   const tracks =
     (data?.captions?.playerCaptionsTracklistRenderer
       ?.captionTracks as CaptionTrack[]) ?? [];
 
-  if (!tracks.length) throw new UserError("该视频未提供字幕", "YT_NO_CAPTIONS");
+  if (!tracks.length) throw new UserError(t("errorNoCaptions"), "YT_NO_CAPTIONS");
 
   const track = pickCaptionTrack(tracks);
   if (!track) {
     const available = tracks.map((t) => t.languageCode).join(", ");
-    throw new UserError("该视频暂无中/英/日文字幕", "YT_NO_PREF_LANG", `available: ${available}`);
+    throw new UserError(t("errorNoPreferredYoutubeCaptions"), "YT_NO_PREF_LANG", `available: ${available}`);
   }
   return fetchAndParseCaptions(track.baseUrl, track.languageCode, track.kind === "asr");
 }
@@ -281,13 +282,13 @@ export async function getTranscript(): Promise<Transcript> {
 
   // 3. 最终回退：直接 fetch ytInitialPlayerResponse 中的 baseUrl
   const info = getVideoInfo();
-  if (!info) throw new UserError("请在 YouTube 视频页面使用此功能", "YT_NOT_VIDEO");
-  if (!info.captionTracks.length) throw new UserError("该视频未提供字幕", "YT_NO_CAPTIONS");
+  if (!info) throw new UserError(t("errorNotYoutubeVideo"), "YT_NOT_VIDEO");
+  if (!info.captionTracks.length) throw new UserError(t("errorNoCaptions"), "YT_NO_CAPTIONS");
 
   const track = pickCaptionTrack(info.captionTracks);
   if (!track) {
     const available = info.captionTracks.map((t) => t.languageCode).join(", ");
-    throw new UserError("该视频暂无中/英/日文字幕", "YT_NO_PREF_LANG", `available: ${available}`);
+    throw new UserError(t("errorNoPreferredYoutubeCaptions"), "YT_NO_PREF_LANG", `available: ${available}`);
   }
 
   return fetchAndParseCaptions(track.baseUrl, track.languageCode, track.kind === "asr");
@@ -341,5 +342,5 @@ function extractTitle(playerResponse: Record<string, unknown> | null): string {
     if (title) return title;
   }
   const dt = document.title || "";
-  return dt.replace(/\s*-\s*YouTube\s*$/, "").trim() || "未知标题";
+  return dt.replace(/\s*-\s*YouTube\s*$/, "").trim() || t("unknownTitle");
 }

@@ -8,6 +8,8 @@
  *   - 所有数据存于单一 key "vas-summaries" 下，避免 key 数量膨胀
  */
 
+import type { OutputLanguage } from "../utils/i18n";
+
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
@@ -16,6 +18,7 @@ export interface CachedSummary {
   videoTitle: string; // 视频标题（用于 UI 展示）
   videoId: string; // 视频 ID
   source: string; // "youtube" | "bilibili"
+  outputLanguage: OutputLanguage; // AI 输出语言
   timestamp: number; // 缓存时间 (Date.now())
 }
 
@@ -40,8 +43,12 @@ async function writeIndex(index: CacheIndex): Promise<void> {
   await chrome.storage.local.set({ [STORAGE_KEY]: index });
 }
 
-/** 构造缓存 key：source:videoId */
-function makeKey(source: string, videoId: string): string {
+/** 构造缓存 key：source:videoId:outputLanguage */
+function makeKey(source: string, videoId: string, outputLanguage: OutputLanguage): string {
+  return `${source}:${videoId}:${outputLanguage}`;
+}
+
+function makeLegacyKey(source: string, videoId: string): string {
   return `${source}:${videoId}`;
 }
 
@@ -56,10 +63,18 @@ function makeKey(source: string, videoId: string): string {
 export async function getCachedSummary(
   source: string,
   videoId: string,
+  outputLanguage: OutputLanguage,
 ): Promise<CachedSummary | null> {
   const index = await readIndex();
-  const key = makeKey(source, videoId);
-  const entry = index[key];
+  const key = makeKey(source, videoId, outputLanguage);
+  let entry = index[key];
+  const legacyKey = makeLegacyKey(source, videoId);
+  if (!entry && outputLanguage === "zh-CN" && index[legacyKey]) {
+    entry = { ...index[legacyKey], outputLanguage: "zh-CN" };
+    index[key] = entry;
+    delete index[legacyKey];
+    await writeIndex(index);
+  }
   if (!entry) return null;
 
   if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
@@ -80,6 +95,7 @@ export async function setCachedSummary(
   videoId: string,
   videoTitle: string,
   text: string,
+  outputLanguage: OutputLanguage,
 ): Promise<void> {
   const index = await readIndex();
 
@@ -104,12 +120,13 @@ export async function setCachedSummary(
   }
 
   // 3. 写入新条目
-  const key = makeKey(source, videoId);
+  const key = makeKey(source, videoId, outputLanguage);
   index[key] = {
     text,
     videoTitle,
     videoId,
     source,
+    outputLanguage,
     timestamp: now,
   };
 
@@ -122,10 +139,12 @@ export async function setCachedSummary(
 export async function invalidateCache(
   source: string,
   videoId: string,
+  outputLanguage: OutputLanguage,
 ): Promise<void> {
   const index = await readIndex();
-  const key = makeKey(source, videoId);
+  const key = makeKey(source, videoId, outputLanguage);
   delete index[key];
+  if (outputLanguage === "zh-CN") delete index[makeLegacyKey(source, videoId)];
   await writeIndex(index);
 }
 

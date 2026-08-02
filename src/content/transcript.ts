@@ -1,4 +1,5 @@
 import { formatTime } from "../utils/text";
+import type { OutputLanguage } from "../utils/i18n";
 
 export interface TranscriptSegment {
   start: number;
@@ -21,4 +22,18 @@ export function transcriptToText(transcript: Transcript): string {
 
 export function isChineseLanguage(languageCode: string): boolean {
   return /^zh(?:-|$)/i.test(languageCode);
+}
+
+export function isTranscriptInOutputLanguage(
+  languageCode: string,
+  outputLanguage: OutputLanguage,
+): boolean {
+  const normalized = languageCode.trim().toLowerCase().replaceAll("_", "-");
+  if (outputLanguage === "zh-CN") {
+    return normalized === "zh" || /^zh-(cn|sg|hans)(?:-|$)/.test(normalized);
+  }
+  if (outputLanguage === "zh-TW") {
+    return /^zh-(tw|hk|mo|hant)(?:-|$)/.test(normalized);
+  }
+  return normalized === outputLanguage || normalized.startsWith(`${outputLanguage}-`);
 }

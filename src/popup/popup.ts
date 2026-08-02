@@ -11,10 +11,12 @@ import {
   formatContextWindow,
 } from "../service/model-registry";
 import type { ProviderInfo, ModelInfo } from "../service/model-registry";
+import { OUTPUT_LANGUAGES, getUiLocale, t } from "../utils/i18n";
 
 // ── DOM refs ────────────────────────────────────────────────────────
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
+const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSelectElement;
 const apiKeyInput = document.getElementById("apiKey") as HTMLInputElement;
 const toggleKeyBtn = document.getElementById("toggleKey") as HTMLButtonElement;
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
@@ -34,6 +36,14 @@ let currentModel: ModelInfo | null = null;
 
 // ── Init ─────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
+  document.documentElement.lang = getUiLocale();
+  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n!);
+  });
+  document.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach((element) => {
+    element.title = t(element.dataset.i18nTitle!);
+  });
+
   // Populate provider dropdown
   for (const p of PROVIDERS) {
     const opt = document.createElement("option");
@@ -41,11 +51,18 @@ async function init(): Promise<void> {
     opt.textContent = `${p.name}`;
     providerSelect.appendChild(opt);
   }
+  for (const language of OUTPUT_LANGUAGES) {
+    const opt = document.createElement("option");
+    opt.value = language.code;
+    opt.textContent = language.nativeName;
+    outputLanguageSelect.appendChild(opt);
+  }
 
   // Load saved settings
   const settings = await getSettings();
   const savedProvider = settings.provider || "deepseek";
   const savedModel = settings.model || "deepseek-v4-flash";
+  outputLanguageSelect.value = settings.outputLanguage;
 
   // Set provider
   providerSelect.value = savedProvider;
@@ -83,9 +100,9 @@ function updateModelInfo(): void {
     return;
   }
   infoParamSize.textContent = currentModel.paramSize;
-  infoPricing.textContent = `${formatPricing(currentModel.pricing)} / 1M tokens`;
+  infoPricing.textContent = t("perMillionTokens", formatPricing(currentModel.pricing));
   infoContext.textContent = formatContextWindow(currentModel.contextWindow);
-  infoDesc.textContent = currentModel.description;
+  infoDesc.textContent = t(currentModel.descriptionKey);
 }
 
 // ── Update API Key UI for a given provider ───────────────────────────
@@ -136,7 +153,7 @@ let keyVisible = false;
 toggleKeyBtn.addEventListener("click", () => {
   keyVisible = !keyVisible;
   apiKeyInput.type = keyVisible ? "text" : "password";
-  toggleKeyBtn.textContent = keyVisible ? "隐藏" : "显示";
+  toggleKeyBtn.textContent = t(keyVisible ? "hideKey" : "showKey");
 });
 
 // Save
@@ -155,11 +172,13 @@ saveBtn.addEventListener("click", async () => {
       apiKeys,
       provider: pid,
       model: mid,
+      outputLanguage: outputLanguageSelect.value as typeof currentSettings.outputLanguage,
     });
-    showStatus("设置已保存", "success");
+    showStatus(t("settingsSaved"), "success");
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "保存失败";
-    showStatus(msg, "error");
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] Settings save failed:", detail);
+    showStatus(t("saveFailed"), "error");
   }
 });
 

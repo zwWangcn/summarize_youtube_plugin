@@ -10,10 +10,33 @@ import { openaiCompatAdapter } from "./ai/openai-compat";
 import { anthropicAdapter } from "./ai/anthropic";
 import { geminiAdapter } from "./ai/gemini";
 import type { ProviderAdapter } from "./ai/types";
+import { t, type OutputLanguage } from "../utils/i18n";
 
 const MAX_CHARS = 200_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
+
+function abortError(): DOMException {
+  return new DOMException("The operation was aborted", "AbortError");
+}
+
+function waitForRetryDelay(ms: number, signal?: AbortSignal): Promise<void> {
+  if (!signal) return new Promise((resolve) => setTimeout(resolve, ms));
+  if (signal.aborted) return Promise.reject(abortError());
+
+  return new Promise((resolve, reject) => {
+    const timer = setTimeout(() => {
+      signal.removeEventListener("abort", onAbort);
+      resolve();
+    }, ms);
+    const onAbort = () => {
+      clearTimeout(timer);
+      signal.removeEventListener("abort", onAbort);
+      reject(abortError());
+    };
+    signal.addEventListener("abort", onAbort, { once: true });
+  });
+}
 
 export interface ActiveAIIdentity {
   providerId: string;
@@ -47,7 +70,7 @@ export class AIServiceError extends Error {
 
 export class ContentFilteredError extends Error {
   constructor() {
-    super("内容被安全过滤器拦截");
+    super(t("errorContentFiltered"));
     this.name = "ContentFilteredError";
   }
 }
@@ -55,8 +78,8 @@ export class ContentFilteredError extends Error {
 export class NoApiKeyError extends Error {
   constructor(providerName?: string) {
     super(providerName
-      ? `请先在扩展弹窗（点击工具栏图标）中配置 ${providerName} API Key`
-      : "请先在扩展弹窗（点击工具栏图标）中配置 API Key");
+      ? t("errorApiKeyRequiredForProvider", providerName)
+      : t("errorApiKeyRequired"));
     this.name = "NoApiKeyError";
   }
 }
@@ -85,7 +108,7 @@ async function loadConfig() {
 
   const provider = getProvider(providerId);
   if (!provider) {
-    throw new AIServiceError(`未知供应商: ${providerId}`, false);
+    throw new AIServiceError(t("errorUnknownProvider", providerId), false);
   }
 
   const apiKey = settings.apiKeys[providerId] ?? "";
@@ -112,14 +135,19 @@ export async function getActiveAIIdentity(): Promise<ActiveAIIdentity> {
 export async function* summarizeTextStream(
   transcript: string,
   source: string | null = null,
+  outputLanguage: OutputLanguage = "zh-CN",
+  signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
+  const transcriptPrompt = source?.toLowerCase() === "bilibili"
+    ? `以下是视频字幕内容：\n\n${text}`
+    : `The following is the complete video transcript:\n\n${text}`;
   yield* streamAIText(
-    getSystemPrompt(source),
-    `以下是视频字幕内容：\n\n${text}`,
+    getSystemPrompt(source, outputLanguage),
+    transcriptPrompt,
     // DeepSeek V4 defaults to thinking mode. Summaries favor immediate,
     // deterministic output; this flag is only forwarded to DeepSeek.
-    { disableThinking: true },
+    { disableThinking: true, signal },
   );
 }
 
@@ -138,11 +166,11 @@ export async function* streamAIText(
   const maxRetries = options.maxRetries ?? MAX_RETRIES;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     if (options.signal?.aborted) {
-      throw new DOMException("The operation was aborted", "AbortError");
+      throw abortError();
     }
     if (attempt > 0) {
       const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      await new Promise((r) => setTimeout(r, delay));
+      await waitForRetryDelay(delay, options.signal);
     }
 
     try {
@@ -181,14 +209,14 @@ export async function* streamAIText(
           const errBody = await response.text();
           if (response.status >= 400 && response.status < 500) {
             console.debug("[vas] AI 4xx:", response.status, errBody.slice(0, 200));
-            throw new AIServiceError(`API 请求被拒绝 (${response.status})，请检查 API Key 是否正确`, false);
+            throw new AIServiceError(t("errorApiRejected", String(response.status)), false);
           }
           console.debug("[vas] AI 5xx:", response.status, errBody.slice(0, 200));
-          throw new AIServiceError("AI 服务暂时不可用，请稍后重试", true);
+          throw new AIServiceError(t("errorAiUnavailable"), true);
         }
 
         const reader = response.body?.getReader();
-        if (!reader) throw new AIServiceError("无法读取响应流", true);
+        if (!reader) throw new AIServiceError(t("errorUnreadableStream"), true);
 
         const decoder = new TextDecoder();
         let buffer = "";
@@ -235,11 +263,11 @@ export async function* streamAIText(
       } catch (error) {
         if (controller.signal.aborted) {
           if (options.signal?.aborted) {
-            throw new DOMException("The operation was aborted", "AbortError");
+            throw abortError();
           }
           const message = timeoutKind === "first-response"
-            ? "AI 首次响应超时，请稍后重试"
-            : "AI 响应流停滞，请稍后重试";
+            ? t("errorFirstResponseTimeout")
+            : t("errorStreamStalled");
           throw new AIServiceError(message, true);
         }
         throw error;
@@ -265,5 +293,5 @@ export async function* streamAIText(
     }
   }
 
-  throw lastError ?? new AIServiceError("流式请求失败");
+  throw lastError ?? new AIServiceError(t("errorStreamFailed"));
 }
