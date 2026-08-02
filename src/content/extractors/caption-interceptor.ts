@@ -81,6 +81,7 @@ export interface YouTubePlayer {
   toggleSubtitlesOn?: () => void;
   toggleSubtitles?: () => void;
   seekTo?: (seconds: number, allowSeekAhead: boolean) => void;
+  getCurrentTime?: () => number;
   playVideo?: () => void;
 }
 

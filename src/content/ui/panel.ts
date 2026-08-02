@@ -20,12 +20,15 @@ import { linkifyTimestampsInDom } from "./renderer";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "translation" | "error";
+export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "error";
+export type TranscriptView = "source" | "translation";
 
 export interface PanelCallbacks {
   onSummarize: () => void;
   onTranscript: (withTimestamps: boolean) => void;
-  onTranslate?: (withTimestamps: boolean, forceRefresh: boolean) => void;
+  onTranscriptViewChange?: (view: TranscriptView) => void;
+  onTranslateCurrent?: (forceRefresh: boolean) => void;
+  onTranslateAll?: () => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -55,17 +58,23 @@ export class Panel {
   private titleEl: HTMLElement;
   private summarizeBtn: HTMLButtonElement;
   private transcriptBtn: HTMLButtonElement;
-  private translateBtn: HTMLButtonElement;
+  private transcriptTools: HTMLElement;
+  private sourceViewBtn: HTMLButtonElement;
+  private translationViewBtn: HTMLButtonElement;
+  private translateCurrentBtn: HTMLButtonElement;
+  private translateAllBtn: HTMLButtonElement;
+  private transcriptRangeEl: HTMLElement;
+  private translationProgressEl: HTMLElement;
   private copyBtn: HTMLButtonElement;
   private timestampToggle: HTMLElement;
   private timestampCheckbox: HTMLInputElement;
   private callbacks: PanelCallbacks;
   private mode: PanelMode = "idle";
+  private translationAvailable = true;
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private startTime = 0;
 
   private isCachedView = false;
-  private isTranslationCachedView = false;
   private cacheHintEl: HTMLElement | null = null;
 
   // Bind-to-player lifecycle
@@ -114,14 +123,20 @@ export class Panel {
     this.warningEl = this.panel.querySelector(".vas-warning")!;
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
     this.transcriptBtn = this.panel.querySelector(".vas-btn-transcript")!;
-    this.translateBtn = this.panel.querySelector(".vas-btn-translate")!;
+    this.transcriptTools = this.panel.querySelector(".vas-transcript-tools")!;
+    this.sourceViewBtn = this.panel.querySelector(".vas-view-source")!;
+    this.translationViewBtn = this.panel.querySelector(".vas-view-translation")!;
+    this.translateCurrentBtn = this.panel.querySelector(".vas-translate-current")!;
+    this.translateAllBtn = this.panel.querySelector(".vas-translate-all")!;
+    this.transcriptRangeEl = this.panel.querySelector(".vas-transcript-range")!;
+    this.translationProgressEl = this.panel.querySelector(".vas-translation-progress")!;
     this.copyBtn = this.panel.querySelector(".vas-btn-copy")!;
     this.timestampToggle = this.panel.querySelector(".vas-timestamp-toggle")!;
     this.timestampCheckbox = this.panel.querySelector(".vas-timestamp-checkbox")!;
     this.cacheHintEl = this.panel.querySelector(".vas-cache-hint")!;
     this.resizeHandle = this.panel.querySelector(".vas-resize-handle")!;
     this.resetWidthBtn = this.panel.querySelector(".vas-btn-reset-width")!;
-    if (!this.callbacks.onTranslate) this.translateBtn.style.display = "none";
+    if (!this.callbacks.onTranslateCurrent) this.transcriptTools.style.display = "none";
 
     this.attachEvents();
     this.setMode("idle");
@@ -238,12 +253,22 @@ export class Panel {
       <div class="vas-toolbar">
         <button class="vas-btn vas-btn-primary vas-btn-summarize">AI 总结</button>
         <button class="vas-btn vas-btn-transcript">字幕原文</button>
-        <button class="vas-btn vas-btn-translate">翻译字幕</button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
           <input type="checkbox" class="vas-timestamp-checkbox" checked /> 时间戳
         </label>
         <button class="vas-btn vas-btn-copy" title="复制" style="display:none">复制</button>
+      </div>
+      <div class="vas-transcript-tools" style="display:none">
+        <div class="vas-view-switch" role="group" aria-label="字幕语言">
+          <button class="vas-view-option vas-view-source vas-active">原文</button>
+          <button class="vas-view-option vas-view-translation">译文</button>
+        </div>
+        <span class="vas-transcript-range"></span>
+        <span class="vas-transcript-tools-spacer"></span>
+        <button class="vas-btn vas-translate-current">翻译本段</button>
+        <button class="vas-btn vas-translate-all">翻译全文</button>
+        <span class="vas-translation-progress"></span>
       </div>
       <div class="vas-error" style="display:none"></div>
       <div class="vas-warning" style="display:none"></div>
@@ -273,21 +298,26 @@ export class Panel {
       this.timestampToggle.style.display = "flex";
       this.callbacks.onTranscript(this.timestampCheckbox.checked);
     });
-    this.translateBtn.addEventListener("click", () => {
-      this.timestampToggle.style.display = "flex";
-      this.callbacks.onTranslate?.(
-        this.timestampCheckbox.checked,
-        this.mode === "translation" && this.isTranslationCachedView,
+    this.sourceViewBtn.addEventListener("click", () => {
+      this.setTranscriptView("source");
+      this.callbacks.onTranscriptViewChange?.("source");
+    });
+    this.translationViewBtn.addEventListener("click", () => {
+      this.setTranscriptView("translation");
+      this.callbacks.onTranscriptViewChange?.("translation");
+    });
+    this.translateCurrentBtn.addEventListener("click", () => {
+      this.callbacks.onTranslateCurrent?.(
+        this.translateCurrentBtn.dataset.translated === "true",
       );
     });
+    this.translateAllBtn.addEventListener("click", () => this.callbacks.onTranslateAll?.());
     // Copy button
     this.copyBtn.addEventListener("click", () => this.copyContent());
     // Timestamp toggle
     this.timestampCheckbox.addEventListener("change", () => {
       if (this.mode === "transcript") {
         this.callbacks.onTranscript(this.timestampCheckbox.checked);
-      } else if (this.mode === "translation") {
-        this.callbacks.onTranslate?.(this.timestampCheckbox.checked, false);
       }
     });
     // Resize handle
@@ -412,9 +442,9 @@ export class Panel {
     this.timestampToggle.style.display = "none";
     this.copyBtn.style.display = "none";
     this.isCachedView = false;
-    this.isTranslationCachedView = false;
     this.setSummarizeButtonText("AI 总结");
-    this.setTranslateButtonText("翻译字幕");
+    this.setTranscriptView("source");
+    this.setTranslationProgress("");
     this.hideCacheHint();
   }
 
@@ -444,8 +474,7 @@ export class Panel {
     // 从内容模式切换到 loading 时，保持当前面板高度防止跳动
     if (mode === "loading" && (
       this.mode === "summary" ||
-      this.mode === "transcript" ||
-      this.mode === "translation"
+      this.mode === "transcript"
     )) {
       const currentHeight = this.panel.getBoundingClientRect().height;
       if (currentHeight > 120) {
@@ -468,21 +497,14 @@ export class Panel {
         this.contentEl.style.display = "block";
         this.copyBtn.style.display = "inline-flex";
         this.timestampToggle.style.display = "none";
-        if (this.isTranslationCachedView) this.setTranslateButtonText("翻译字幕");
         this.setButtonsDisabled(false);
         this.stopElapsedTimer();
         break;
       case "transcript":
-        if (this.isTranslationCachedView) this.setTranslateButtonText("翻译字幕");
         this.contentEl.style.display = "block";
-        this.copyBtn.style.display = "inline-flex";
-        this.timestampToggle.style.display = "flex";
-        this.setButtonsDisabled(false);
-        this.stopElapsedTimer();
-        break;
-      case "translation":
-        if (this.isTranslationCachedView) this.setTranslateButtonText("重新翻译");
-        this.contentEl.style.display = "block";
+        if (this.callbacks.onTranslateCurrent && this.translationAvailable) {
+          this.transcriptTools.style.display = "flex";
+        }
         this.copyBtn.style.display = "inline-flex";
         this.timestampToggle.style.display = "flex";
         this.setButtonsDisabled(false);
@@ -533,24 +555,36 @@ export class Panel {
   setButtonsDisabled(disabled: boolean): void {
     this.summarizeBtn.disabled = disabled;
     this.transcriptBtn.disabled = disabled;
-    this.translateBtn.disabled = disabled;
-  }
-
-  setTranslateButtonText(text: string): void {
-    this.translateBtn.textContent = text;
-  }
-
-  setTranslationCachedView(cached: boolean): void {
-    this.isTranslationCachedView = cached;
-    this.setTranslateButtonText(cached ? "重新翻译" : "翻译字幕");
   }
 
   setTranslationAvailable(available: boolean): void {
-    if (!this.callbacks.onTranslate) {
-      this.translateBtn.style.display = "none";
-      return;
-    }
-    this.translateBtn.style.display = available ? "" : "none";
+    this.translationAvailable = available;
+    this.transcriptTools.style.display =
+      available && this.mode === "transcript" ? "flex" : "none";
+  }
+
+  setTranscriptView(view: TranscriptView): void {
+    this.sourceViewBtn.classList.toggle("vas-active", view === "source");
+    this.translationViewBtn.classList.toggle("vas-active", view === "translation");
+  }
+
+  setTranscriptRange(text: string): void {
+    this.transcriptRangeEl.textContent = text;
+  }
+
+  setCurrentSectionTranslated(translated: boolean): void {
+    this.translateCurrentBtn.dataset.translated = String(translated);
+    this.translateCurrentBtn.textContent = translated ? "重新翻译本段" : "翻译本段";
+  }
+
+  setTranslationActionsBusy(busy: boolean): void {
+    this.translateCurrentBtn.disabled = busy;
+    this.translateAllBtn.disabled = busy;
+  }
+
+  setTranslationProgress(text: string): void {
+    this.translationProgressEl.textContent = text;
+    this.translationProgressEl.style.display = text ? "" : "none";
   }
 
   // ---- Copy ----
@@ -700,6 +734,7 @@ export class Panel {
     this.warningEl.style.display = "none";
     this.copyBtn.style.display = "none";
     this.timestampToggle.style.display = "none";
+    this.transcriptTools.style.display = "none";
     this.hideCacheHint();
   }
 }

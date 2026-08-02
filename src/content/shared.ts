@@ -2,8 +2,12 @@
  * 共享的内容脚本逻辑 — YouTube 和 Bilibili 入口共用。
  */
 
-import { Panel } from "./ui/panel";
-import { renderMarkdown, renderStreaming, renderTranscript } from "./ui/renderer";
+import { Panel, type TranscriptView } from "./ui/panel";
+import {
+  renderMarkdown,
+  renderStreaming,
+  renderTranscriptSections,
+} from "./ui/renderer";
 import {
   summarizeTextStream,
   getActiveAIIdentity,
@@ -11,20 +15,22 @@ import {
   ContentFilteredError,
   NoApiKeyError,
 } from "../service/ai";
-import { formatTime, formatTranscript } from "../utils/text";
+import { formatTime } from "../utils/text";
 import type { YouTubePlayer } from "./extractors/caption-interceptor";
 import type { Transcript } from "./transcript";
 import { isChineseLanguage, transcriptToText } from "./transcript";
 import { UserError } from "../utils/errors";
 import {
-  translateTranscript,
+  translateTranscriptChunk,
+  buildTranslationChunks,
   TranslationFormatError,
   type TranslatedSegment,
+  type TranslationChunk,
 } from "../service/transcript-translation";
 import {
   getCachedTranslation,
-  setCachedTranslation,
-  invalidateTranslation,
+  setCachedTranslationSection,
+  invalidateTranslationSection,
   type TranslationCacheIdentity,
 } from "../service/translation-cache";
 import {
@@ -246,17 +252,36 @@ export async function initContentScript(
   // ── Shared state ───────────────────────────────────────────────────
   let transcriptData: Transcript | null = null;
   let transcriptVideoId = "";
-  let translatedSegments: TranslatedSegment[] | null = null;
+  let transcriptChunks: TranslationChunk[] = [];
+  let translatedSections: Record<number, TranslatedSegment[]> = {};
+  let partialTranslatedSections: Record<number, TranslatedSegment[]> = {};
   let translationIdentityKey = "";
-  let translationCacheTimestamp: number | null = null;
+  let transcriptView: TranscriptView = "source";
+  let activeChunkId = 0;
+  let loadedChunkStart = 0;
+  let loadedChunkEnd = 0;
+  let transcriptWithTimestamps = true;
+  let transcriptScrollTop = 0;
+  let translationTask: Promise<void> | null = null;
+  let translationAbort: AbortController | null = null;
+  let translationProgressText = "";
+  let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
 
   function clearTranscriptState(): void {
+    transcriptStateVersion += 1;
+    translationAbort?.abort();
     transcriptData = null;
     transcriptVideoId = "";
-    translatedSegments = null;
+    transcriptChunks = [];
+    translatedSections = {};
+    partialTranslatedSections = {};
     translationIdentityKey = "";
-    translationCacheTimestamp = null;
+    transcriptView = "source";
+    translationTask = null;
+    translationAbort = null;
+    translationProgressText = "";
+    transcriptScrollTop = 0;
   }
 
   async function ensureTranscript(panel: Panel): Promise<Transcript> {
@@ -277,15 +302,128 @@ export async function initContentScript(
     return transcript;
   }
 
-  function formatTranslated(
-    segments: TranslatedSegment[],
-    withTimestamps: boolean,
-  ): string {
-    return segments.map((segment) => (
-      withTimestamps
-        ? `[${formatTime(segment.start)}] ${segment.text}`
-        : segment.text
-    )).join("\n");
+  function getCurrentPlaybackTime(): number {
+    const player = document.querySelector("#movie_player") as unknown as YouTubePlayer | null;
+    const playerTime = player?.getCurrentTime?.();
+    if (Number.isFinite(playerTime)) return playerTime!;
+    return document.querySelector("video")?.currentTime ?? 0;
+  }
+
+  function findChunkAtTime(time: number): number {
+    const found = transcriptChunks.findIndex((chunk) => {
+      const first = transcriptData!.segments[chunk.targetStart];
+      const last = transcriptData!.segments[chunk.targetEnd];
+      return time >= first.start && time < last.start + last.duration;
+    });
+    if (found >= 0) return found;
+    const next = transcriptChunks.findIndex(
+      (chunk) => transcriptData!.segments[chunk.targetStart].start > time,
+    );
+    return next < 0 ? Math.max(0, transcriptChunks.length - 1) : next;
+  }
+
+  function updateTranscriptToolbar(panel: Panel): void {
+    if (!transcriptData || !transcriptChunks.length) return;
+    const chunk = transcriptChunks[activeChunkId];
+    const first = transcriptData.segments[chunk.targetStart];
+    const last = transcriptData.segments[chunk.targetEnd];
+    panel.setTranscriptRange(
+      `第 ${activeChunkId + 1}/${transcriptChunks.length} 段 · ` +
+      `${formatTime(first.start)}–${formatTime(last.start + last.duration)}`,
+    );
+    panel.setCurrentSectionTranslated(Boolean(translatedSections[activeChunkId]));
+    panel.setTranscriptView(transcriptView);
+    panel.setTranslationProgress(translationProgressText);
+  }
+
+  function renderTranscriptReader(panel: Panel, preserveScroll: boolean = true): void {
+    if (!transcriptData || !transcriptChunks.length) return;
+    const content = panel.getContentElement();
+    const previousTop = preserveScroll ? transcriptScrollTop : content.scrollTop;
+    renderTranscriptSections(content, transcriptData, {
+      chunks: transcriptChunks,
+      loadedStart: loadedChunkStart,
+      loadedEnd: loadedChunkEnd,
+      activeChunkId,
+      view: transcriptView,
+      translations: translatedSections,
+      partialTranslations: partialTranslatedSections,
+      withTimestamps: transcriptWithTimestamps,
+    });
+    if (preserveScroll) content.scrollTop = previousTop;
+    updateTranscriptToolbar(panel);
+  }
+
+  function updateActiveChunkFromScroll(panel: Panel): void {
+    if (panel.getMode() !== "transcript") return;
+    const content = panel.getContentElement();
+    const center = content.getBoundingClientRect().top + content.clientHeight / 2;
+    const sections = [...content.querySelectorAll<HTMLElement>(".vas-transcript-section")];
+    if (!sections.length) return;
+    const nearest = sections.reduce((best, section) => (
+      Math.abs(section.getBoundingClientRect().top - center) <
+      Math.abs(best.getBoundingClientRect().top - center) ? section : best
+    ));
+    const next = Number(nearest.dataset.chunkId);
+    if (!Number.isInteger(next) || next === activeChunkId) return;
+    activeChunkId = next;
+    for (const section of sections) {
+      section.classList.toggle("vas-current-section", Number(section.dataset.chunkId) === next);
+    }
+    updateTranscriptToolbar(panel);
+  }
+
+  function handleTranscriptScroll(panel: Panel): void {
+    if (panel.getMode() !== "transcript" || !transcriptChunks.length) return;
+    const content = panel.getContentElement();
+    if (content.scrollTop < 80 && loadedChunkStart > 0) {
+      const oldHeight = content.scrollHeight;
+      loadedChunkStart -= 1;
+      renderTranscriptReader(panel, false);
+      content.scrollTop = content.scrollHeight - oldHeight + 80;
+    } else if (
+      content.scrollTop + content.clientHeight > content.scrollHeight - 80 &&
+      loadedChunkEnd < transcriptChunks.length - 1
+    ) {
+      loadedChunkEnd += 1;
+      renderTranscriptReader(panel, true);
+    }
+    updateActiveChunkFromScroll(panel);
+    transcriptScrollTop = content.scrollTop;
+  }
+
+  async function ensureTranslationCache(
+    expectedVersion: number = transcriptStateVersion,
+  ): Promise<TranslationCacheIdentity> {
+    const transcript = transcriptData!;
+    const ai = await getActiveAIIdentity();
+    const identity: TranslationCacheIdentity = {
+      videoId: extractor.getVideoId(),
+      sourceLanguage: transcript.languageCode,
+      providerId: ai.providerId,
+      modelId: ai.modelId,
+    };
+    const key = JSON.stringify(identity);
+    if (translationIdentityKey !== key) {
+      translatedSections = {};
+      partialTranslatedSections = {};
+      const cached = await getCachedTranslation(identity);
+      if (expectedVersion !== transcriptStateVersion) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+      for (const section of Object.values(cached?.sections ?? {})) {
+        const chunk = transcriptChunks[section.chunkId];
+        if (
+          chunk &&
+          chunk.targetStart === section.targetStart &&
+          chunk.targetEnd === section.targetEnd
+        ) {
+          translatedSections[section.chunkId] = section.segments;
+        }
+      }
+      translationIdentityKey = key;
+    }
+    return identity;
   }
 
   function getPanel(): Panel {
@@ -298,6 +436,11 @@ export async function initContentScript(
       }
       const newTarget = config.findInjectTarget() || document.body;
       currentPanel = new Panel(callbacks);
+      currentPanel.getContentElement().addEventListener(
+        "scroll",
+        () => handleTranscriptScroll(currentPanel!),
+        { passive: true },
+      );
       currentPanel.setTranslationAvailable(Boolean(config.enableTranslation));
       const t = extractor.getVideoTitle();
       if (t) currentPanel.setTitle(t);
@@ -308,6 +451,91 @@ export async function initContentScript(
       currentPanel.initPanelWidth();
     }
     return currentPanel!;
+  }
+
+  function runTranslationQueue(
+    panel: Panel,
+    requestedChunkIds: number[],
+    forceRefresh: boolean,
+    isFullTranslation: boolean,
+  ): void {
+    if (translationTask || !transcriptData) return;
+    const transcript = transcriptData;
+    const stateVersion = transcriptStateVersion;
+    const controller = new AbortController();
+    translationAbort = controller;
+    panel.setTranslationActionsBusy(true);
+    if (!isFullTranslation) {
+      transcriptView = "translation";
+      panel.setTranscriptView("translation");
+    }
+
+    const task = (async () => {
+      const identity = await ensureTranslationCache(stateVersion);
+      if (forceRefresh && requestedChunkIds.length === 1) {
+        const chunkId = requestedChunkIds[0];
+        await invalidateTranslationSection(identity, chunkId);
+        delete translatedSections[chunkId];
+      }
+      const pending = requestedChunkIds.filter(
+        (chunkId) => forceRefresh || !translatedSections[chunkId],
+      );
+      if (!pending.length) {
+        translationProgressText = isFullTranslation ? "全文翻译已完成" : "本段已有译文";
+        return;
+      }
+
+      for (let index = 0; index < pending.length; index++) {
+        const chunkId = pending[index];
+        const chunk = transcriptChunks[chunkId];
+        translationProgressText = isFullTranslation
+          ? `正在翻译全文 ${Object.keys(translatedSections).length}/${transcriptChunks.length}`
+          : `正在翻译第 ${chunkId + 1}/${transcriptChunks.length} 段`;
+        panel.setTranslationProgress(translationProgressText);
+
+        const result = await translateTranscriptChunk(
+          transcript,
+          chunk,
+          (partial, formatRetry) => {
+            partialTranslatedSections[chunkId] = partial;
+            translationProgressText = formatRetry
+              ? `第 ${chunkId + 1} 段正在修复输出格式`
+              : translationProgressText;
+            if (panel.getMode() === "transcript") renderTranscriptReader(panel);
+          },
+          controller.signal,
+        );
+        delete partialTranslatedSections[chunkId];
+        translatedSections[chunkId] = result;
+        try {
+          await setCachedTranslationSection(identity, {
+            chunkId,
+            targetStart: chunk.targetStart,
+            targetEnd: chunk.targetEnd,
+            segments: result,
+          });
+        } catch (error) {
+          console.warn("[vas] Translation section cache write failed:", error);
+          panel.showWarning("本段翻译已完成，但本地缓存写入失败");
+        }
+        if (panel.getMode() === "transcript") renderTranscriptReader(panel);
+      }
+      translationProgressText = isFullTranslation ? "全文翻译完成" : "本段翻译完成";
+    })().catch((error: unknown) => {
+      if ((error as Error)?.name === "AbortError") return;
+      const message = error instanceof Error ? error.message : "字幕翻译失败，请稍后重试";
+      translationProgressText = `翻译已停止：${message}`;
+      console.warn("[vas] Translation stopped:", error);
+      if (panel.getMode() === "transcript") panel.showWarning(message);
+    }).finally(() => {
+      if (stateVersion !== transcriptStateVersion || translationTask !== task) return;
+      translationTask = null;
+      translationAbort = null;
+      panel.setTranslationActionsBusy(false);
+      panel.setTranslationProgress(translationProgressText);
+      if (panel.getMode() === "transcript") renderTranscriptReader(panel);
+    });
+    translationTask = task;
   }
 
   // ── Callbacks ──────────────────────────────────────────────────────
@@ -407,115 +635,60 @@ export async function initContentScript(
 
       try {
         const transcript = await ensureTranscript(panel);
-        const transcriptText = transcriptToText(transcript);
-
         panel.setTitle(extractor.getVideoTitle());
-        const formatted = formatTranscript(transcriptText, withTimestamps);
-        renderTranscript(panel.getContentElement(), formatted);
+        transcriptWithTimestamps = withTimestamps;
+        const isInitialOpen = !transcriptChunks.length;
+        if (isInitialOpen) {
+          transcriptChunks = buildTranslationChunks(transcript.segments);
+          activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
+          loadedChunkStart = Math.max(0, activeChunkId - 1);
+          loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
+          if (config.enableTranslation && !isChineseLanguage(transcript.languageCode)) {
+            await ensureTranslationCache();
+          }
+        }
         panel.setMode("transcript");
+        panel.setTranslationAvailable(
+          Boolean(config.enableTranslation) && !isChineseLanguage(transcript.languageCode),
+        );
+        panel.setTranslationActionsBusy(Boolean(translationTask));
+        renderTranscriptReader(panel, !isInitialOpen);
+        if (isInitialOpen) {
+          requestAnimationFrame(() => {
+            const active = panel.getContentElement().querySelector<HTMLElement>(
+              `[data-chunk-id="${activeChunkId}"]`,
+            );
+            if (active) {
+              panel.getContentElement().scrollTop = Math.max(0, active.offsetTop - 12);
+            }
+          });
+        }
       } catch (err) {
         handleError(err, panel);
       }
     },
 
-    onTranslate: config.enableTranslation
-      ? async (withTimestamps: boolean, forceRefresh: boolean) => {
-          const panel = getPanel();
+    onTranscriptViewChange: config.enableTranslation
+      ? (view: TranscriptView) => {
+          transcriptView = view;
+          renderTranscriptReader(getPanel());
+        }
+      : undefined,
 
-          panel.setMode("loading");
-          panel.setLoadingMessage("正在获取字幕...");
-          panel.open();
+    onTranslateCurrent: config.enableTranslation
+      ? (forceRefresh: boolean) => {
+          runTranslationQueue(getPanel(), [activeChunkId], forceRefresh, false);
+        }
+      : undefined,
 
-          try {
-            const transcript = await ensureTranscript(panel);
-            if (isChineseLanguage(transcript.languageCode)) {
-              const original = formatTranscript(transcriptToText(transcript), withTimestamps);
-              renderTranscript(panel.getContentElement(), original);
-              panel.setMode("transcript");
-              panel.setTranslationAvailable(false);
-              panel.showWarning("当前已是中文字幕，无需翻译");
-              return;
-            }
-
-            const ai = await getActiveAIIdentity();
-            const identity: TranslationCacheIdentity = {
-              videoId: extractor.getVideoId(),
-              sourceLanguage: transcript.languageCode,
-              providerId: ai.providerId,
-              modelId: ai.modelId,
-            };
-            const identityKey = JSON.stringify(identity);
-
-            if (!forceRefresh && translatedSegments && translationIdentityKey === identityKey) {
-              renderTranscript(
-                panel.getContentElement(),
-                formatTranslated(translatedSegments, withTimestamps),
-              );
-              panel.setMode("translation");
-              panel.setTranslationCachedView(true);
-              if (translationCacheTimestamp) {
-                panel.showCacheHint(`缓存于 ${formatCacheAge(Date.now() - translationCacheTimestamp)}`);
-              }
-              return;
-            } else if (forceRefresh) {
-              await invalidateTranslation(identity);
-              translatedSegments = null;
-              translationCacheTimestamp = null;
-            } else {
-              const cached = await getCachedTranslation(identity);
-              if (cached) {
-                translatedSegments = cached.segments;
-                translationIdentityKey = identityKey;
-                translationCacheTimestamp = cached.timestamp;
-                renderTranscript(
-                  panel.getContentElement(),
-                  formatTranslated(cached.segments, withTimestamps),
-                );
-                panel.setMode("translation");
-                panel.setTranslationCachedView(true);
-                panel.showCacheHint(`缓存于 ${formatCacheAge(Date.now() - cached.timestamp)}`);
-                return;
-              }
-            }
-
-            panel.setLoadingMessage("AI 正在校正并翻译字幕...");
-            const result = await translateTranscript(
-              transcript,
-              (completed, total, partial, formatRetry) => {
-                const retryHint = formatRetry ? "（正在修复输出格式）" : "";
-                panel.showTranslationProgress(
-                  `AI 正在校正并翻译字幕... ${completed}/${total}${retryHint}`,
-                );
-                if (partial.length) {
-                  renderTranscript(
-                    panel.getContentElement(),
-                    formatTranslated(partial, withTimestamps),
-                  );
-                }
-              },
-            );
-            let cacheWriteFailed = false;
-            try {
-              await setCachedTranslation(identity, result);
-            } catch (error) {
-              cacheWriteFailed = true;
-              console.warn("[vas] Translation cache write failed:", error);
-            }
-            translatedSegments = result;
-            translationIdentityKey = identityKey;
-            translationCacheTimestamp = cacheWriteFailed ? null : Date.now();
-            renderTranscript(
-              panel.getContentElement(),
-              formatTranslated(result, withTimestamps),
-            );
-            panel.setMode("translation");
-            panel.setTranslationCachedView(true);
-            if (cacheWriteFailed) {
-              panel.showWarning("翻译已完成，但本地缓存写入失败");
-            }
-          } catch (err) {
-            handleError(err, panel);
-          }
+    onTranslateAll: config.enableTranslation
+      ? () => {
+          runTranslationQueue(
+            getPanel(),
+            transcriptChunks.map((chunk) => chunk.id),
+            false,
+            true,
+          );
         }
       : undefined,
 
@@ -559,6 +732,11 @@ export async function initContentScript(
     }
 
     currentPanel = new Panel(callbacks);
+    currentPanel.getContentElement().addEventListener(
+      "scroll",
+      () => handleTranscriptScroll(currentPanel!),
+      { passive: true },
+    );
     currentPanel.setTranslationAvailable(Boolean(config.enableTranslation));
     const videoTitle = extractor.getVideoTitle();
     if (videoTitle) currentPanel.setTitle(videoTitle);

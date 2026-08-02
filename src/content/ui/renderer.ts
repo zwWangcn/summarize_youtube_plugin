@@ -5,7 +5,12 @@
 
 import { marked } from "marked";
 import DOMPurify from "dompurify";
-import { parseTimestampToSeconds } from "../../utils/text";
+import { formatTime, parseTimestampToSeconds } from "../../utils/text";
+import type { Transcript } from "../transcript";
+import type {
+  TranslatedSegment,
+  TranslationChunk,
+} from "../../service/transcript-translation";
 
 /** 配置 marked（options 可以在运行时设置） */
 marked.setOptions({
@@ -121,6 +126,99 @@ export function renderStreaming(target: HTMLElement, markdown: string): void {
 export function renderTranscript(target: HTMLElement, text: string): void {
   target.innerHTML = `<pre class="vas-transcript">${escapeHtml(text)}</pre>`;
   linkifyTimestampsInDom(target);
+}
+
+export interface TranscriptSectionRenderState {
+  chunks: TranslationChunk[];
+  loadedStart: number;
+  loadedEnd: number;
+  activeChunkId: number;
+  view: "source" | "translation";
+  translations: Record<number, TranslatedSegment[]>;
+  partialTranslations?: Record<number, TranslatedSegment[]>;
+  withTimestamps: boolean;
+}
+
+function appendCaptionLine(
+  parent: HTMLElement,
+  start: number,
+  text: string,
+  withTimestamps: boolean,
+): void {
+  const line = document.createElement("div");
+  line.className = "vas-caption-line";
+  if (withTimestamps) {
+    const timestamp = document.createElement("span");
+    timestamp.className = "vas-ts";
+    timestamp.dataset.seconds = String(start);
+    timestamp.textContent = `[${formatTime(start)}]`;
+    line.append(timestamp, document.createTextNode(` ${text}`));
+  } else {
+    line.textContent = text;
+  }
+  parent.appendChild(line);
+}
+
+export function renderTranscriptSections(
+  target: HTMLElement,
+  transcript: Transcript,
+  state: TranscriptSectionRenderState,
+): void {
+  target.replaceChildren();
+
+  if (state.loadedStart > 0) {
+    const top = document.createElement("div");
+    top.className = "vas-load-sentinel vas-load-before";
+    top.textContent = "向上滚动加载更早字幕";
+    target.appendChild(top);
+  }
+
+  for (let chunkId = state.loadedStart; chunkId <= state.loadedEnd; chunkId++) {
+    const chunk = state.chunks[chunkId];
+    const first = transcript.segments[chunk.targetStart];
+    const last = transcript.segments[chunk.targetEnd];
+    const section = document.createElement("section");
+    section.className = "vas-transcript-section";
+    section.classList.toggle("vas-current-section", chunkId === state.activeChunkId);
+    section.dataset.chunkId = String(chunkId);
+
+    const header = document.createElement("div");
+    header.className = "vas-section-header";
+    header.textContent =
+      `第 ${chunkId + 1}/${state.chunks.length} 段 · ` +
+      `${formatTime(first.start)}–${formatTime(last.start + last.duration)}`;
+    section.appendChild(header);
+
+    const body = document.createElement("div");
+    body.className = "vas-section-body";
+    const translated = state.partialTranslations?.[chunkId] ?? state.translations[chunkId];
+    if (state.view === "translation" && translated?.length) {
+      body.classList.add("vas-translated");
+      for (const segment of translated) {
+        appendCaptionLine(body, segment.start, segment.text, state.withTimestamps);
+      }
+    } else {
+      for (let index = chunk.targetStart; index <= chunk.targetEnd; index++) {
+        const segment = transcript.segments[index];
+        appendCaptionLine(body, segment.start, segment.text, state.withTimestamps);
+      }
+      if (state.view === "translation") {
+        const hint = document.createElement("div");
+        hint.className = "vas-untranslated-hint";
+        hint.textContent = "本段尚未翻译，可点击“翻译本段”";
+        body.appendChild(hint);
+      }
+    }
+    section.appendChild(body);
+    target.appendChild(section);
+  }
+
+  if (state.loadedEnd < state.chunks.length - 1) {
+    const bottom = document.createElement("div");
+    bottom.className = "vas-load-sentinel vas-load-after";
+    bottom.textContent = "向下滚动加载后续字幕";
+    target.appendChild(bottom);
+  }
 }
 
 function escapeHtml(str: string): string {

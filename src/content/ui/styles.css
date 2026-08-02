@@ -171,6 +171,47 @@
 }
 .vas-toolbar-spacer { flex: 1; }
 
+/* ---- Transcript controls ---- */
+.vas-transcript-tools {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 16px;
+  border-bottom: 1px solid var(--vas-border);
+  background: var(--vas-bg-toolbar);
+  flex-wrap: wrap;
+  flex-shrink: 0;
+}
+.vas-view-switch {
+  display: inline-flex;
+  padding: 2px;
+  border: 1px solid var(--vas-border-btn);
+  border-radius: 7px;
+}
+.vas-view-option {
+  border: 0;
+  border-radius: 5px;
+  padding: 3px 9px;
+  background: transparent;
+  color: var(--vas-text-muted);
+  cursor: pointer;
+}
+.vas-view-option.vas-active {
+  background: var(--vas-bg-btn-hover);
+  color: var(--vas-text-primary);
+}
+.vas-transcript-range {
+  color: var(--vas-text-muted);
+  font-size: 12px;
+  white-space: nowrap;
+}
+.vas-transcript-tools-spacer { flex: 1; }
+.vas-translation-progress {
+  width: 100%;
+  color: var(--vas-text-muted);
+  font-size: 12px;
+}
+
 /* ---- Timestamp toggle ---- */
 .vas-toggle-label {
   display: flex;
@@ -260,6 +301,53 @@
   line-height: 1.8;
   white-space: pre-wrap;
   color: var(--vas-text-secondary);
+}
+.vas-transcript-section {
+  margin: 0 0 14px;
+  border: 1px solid var(--vas-border);
+  border-radius: 8px;
+  overflow: hidden;
+  background: var(--vas-bg-header);
+}
+.vas-transcript-section.vas-current-section {
+  border-color: var(--vas-border-btn);
+}
+.vas-section-header {
+  position: sticky;
+  top: -16px;
+  z-index: 1;
+  padding: 6px 10px;
+  background: var(--vas-bg-panel);
+  border-bottom: 1px solid var(--vas-border);
+  color: var(--vas-text-muted);
+  font-size: 12px;
+}
+.vas-section-body {
+  padding: 10px 12px;
+  color: var(--vas-text-secondary);
+  font-size: 14px;
+}
+.vas-section-body.vas-translated {
+  color: var(--vas-text-primary);
+}
+.vas-caption-line {
+  margin: 0 0 5px;
+  white-space: pre-wrap;
+}
+.vas-untranslated-hint {
+  margin-top: 10px;
+  padding: 7px 9px;
+  border: 1px dashed var(--vas-border-btn);
+  border-radius: 6px;
+  color: var(--vas-text-muted);
+  font-size: 12px;
+}
+.vas-load-sentinel {
+  padding: 10px;
+  margin-bottom: 12px;
+  text-align: center;
+  color: var(--vas-text-muted);
+  font-size: 12px;
 }
 
 /* ---- Loading ---- */
@@ -370,4 +458,3 @@
   0%, 100% { opacity: 0.3; transform: scale(0.8); }
   50%      { opacity: 1.0; transform: scale(1.2); }
 }
-
