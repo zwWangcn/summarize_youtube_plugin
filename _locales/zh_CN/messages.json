@@ -1,7 +1,7 @@
 {
   "extensionName": { "message": "视频 AI 总结" },
-  "extensionDescription": { "message": "AI 驱动的 YouTube / Bilibili 视频内容总结工具，支持多家 AI 模型" },
-  "popupSubtitle": { "message": "YouTube / Bilibili 视频内容一键总结" },
+  "extensionDescription": { "message": "AI 驱动的 YouTube 视频内容总结工具，支持多家 AI 模型" },
+  "popupSubtitle": { "message": "YouTube 视频内容一键总结" },
   "providerLabel": { "message": "AI 供应商" },
   "modelLabel": { "message": "模型" },
   "outputLanguageLabel": { "message": "YouTube 输出语言" },
@@ -22,7 +22,7 @@
   "clearAllApiKeysConfirm": { "message": "确定删除本设备保存的全部 API Key 吗？" },
   "allApiKeysCleared": { "message": "全部 API Key 已删除" },
   "clearApiKeysFailed": { "message": "删除 API Key 失败" },
-  "popupFooter": { "message": "打开 YouTube 或 Bilibili 视频页面，点击“AI 总结”按钮即可使用" },
+  "popupFooter": { "message": "打开 YouTube 视频页面，点击“AI 总结”按钮即可使用" },
   "perMillionTokens": { "message": "$PRICE$ / 1M tokens", "placeholders": { "price": { "content": "$1" } } },
 
   "aiSummary": { "message": "AI 总结" },

@@ -1,6 +1,4 @@
-/**
- * 共享的内容脚本逻辑 — YouTube 和 Bilibili 入口共用。
- */
+/** YouTube 内容脚本的 UI、字幕、翻译和 SPA 生命周期编排。 */
 
 import { Panel, type TranscriptView } from "./ui/panel";
 import {
@@ -54,12 +52,11 @@ export interface Extractor {
 }
 
 export interface ContentScriptConfig {
-  source: string;
-  enableTranslation?: boolean;
-  enableLocalizedOutput?: boolean;
   /** Find injection target — used on initial load + SPA rebuilds */
   findInjectTarget: () => HTMLElement | null;
 }
+
+const SUMMARY_SOURCE = "youtube";
 
 // ---------------------------------------------------------------------------
 // Injection targets
@@ -82,26 +79,8 @@ export function findYouTubeTarget(): HTMLElement | null {
   return null;
 }
 
-/** Bilibili: try multiple selectors */
-export function findBilibiliTarget(): HTMLElement | null {
-  const selectors = [
-    ".video-title",
-    ".video-info-title",
-    "h1[data-title]",
-    ".video-info-container",
-    "#bilibiliPlayer",
-    ".bpx-player-container",
-    "#playerWrap",
-  ];
-  for (const sel of selectors) {
-    const el = document.querySelector(sel);
-    if (el) return el as HTMLElement;
-  }
-  return null;
-}
-
 // ---------------------------------------------------------------------------
-// Wait for an element to appear (YouTube/Bilibili render async after load)
+// Wait for YouTube's asynchronously rendered player target
 // ---------------------------------------------------------------------------
 function waitForTarget(
   findFn: () => HTMLElement | null,
@@ -229,10 +208,7 @@ export async function initContentScript(
 ): Promise<void> {
   if (document.getElementById("vas-root")) return;
 
-  let outputLanguage: OutputLanguage = "zh-CN";
-  if (config.enableLocalizedOutput) {
-    outputLanguage = (await getSettings()).outputLanguage;
-  }
+  let outputLanguage: OutputLanguage = (await getSettings()).outputLanguage;
 
   // ── Shared state ───────────────────────────────────────────────────
   let transcriptData: Transcript | null = null;
@@ -272,16 +248,14 @@ export async function initContentScript(
     transcriptScrollTop = 0;
   }
 
-  if (config.enableLocalizedOutput) {
-    chrome.storage.onChanged.addListener((changes, areaName) => {
-      const next = changes.outputLanguage?.newValue;
-      if (areaName !== "sync" || !isOutputLanguage(next) || next === outputLanguage) return;
-      outputLanguage = next;
-      clearTranscriptState();
-      currentPanel?.reset();
-      currentPanel?.setTranslationAvailable(Boolean(config.enableTranslation));
-    });
-  }
+  chrome.storage.onChanged.addListener((changes, areaName) => {
+    const next = changes.outputLanguage?.newValue;
+    if (areaName !== "sync" || !isOutputLanguage(next) || next === outputLanguage) return;
+    outputLanguage = next;
+    clearTranscriptState();
+    currentPanel?.reset();
+    currentPanel?.setTranslationAvailable(true);
+  });
 
   async function ensureTranscript(
     panel: Panel,
@@ -301,10 +275,7 @@ export async function initContentScript(
     }
     transcriptData = transcript;
     transcriptVideoId = videoId;
-    if (
-      config.enableTranslation &&
-      isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)
-    ) {
+    if (isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)) {
       panel.setTranslationAvailable(false);
     }
     return transcript;
@@ -454,7 +425,7 @@ export async function initContentScript(
         () => handleTranscriptScroll(currentPanel!),
         { passive: true },
       );
-      currentPanel.setTranslationAvailable(Boolean(config.enableTranslation));
+      currentPanel.setTranslationAvailable(true);
       const t = extractor.getVideoTitle();
       if (t) currentPanel.setTitle(t);
       currentPanel.setTheme(isYouTubeDarkMode());
@@ -609,7 +580,7 @@ export async function initContentScript(
         if (isForceRefresh) {
           await runSummaryCacheOperation(
             "invalidation",
-            () => invalidateCache(config.source, videoId, requestedLanguage),
+            () => invalidateCache(SUMMARY_SOURCE, videoId, requestedLanguage),
             reportCacheFailure,
           );
           assertCurrent();
@@ -622,7 +593,7 @@ export async function initContentScript(
         if (!isForceRefresh) {
           const cached = await runSummaryCacheOperation(
             "read",
-            () => getCachedSummary(config.source, videoId, requestedLanguage),
+            () => getCachedSummary(SUMMARY_SOURCE, videoId, requestedLanguage),
             reportCacheFailure,
           );
           assertCurrent();
@@ -666,7 +637,6 @@ export async function initContentScript(
 
         for await (const chunk of summarizeTextStream(
           transcriptText,
-          config.source,
           requestedLanguage,
           summaryController.signal,
         )) {
@@ -693,7 +663,7 @@ export async function initContentScript(
           await runSummaryCacheOperation(
             "write",
             () => setCachedSummary(
-              config.source,
+              SUMMARY_SOURCE,
               videoId,
               videoTitle,
               buffer,
@@ -737,16 +707,12 @@ export async function initContentScript(
           activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
           loadedChunkStart = Math.max(0, activeChunkId - 1);
           loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
-          if (
-            config.enableTranslation &&
-            !isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)
-          ) {
+          if (!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)) {
             await ensureTranslationCache();
           }
         }
         panel.setMode("transcript");
         panel.setTranslationAvailable(
-          Boolean(config.enableTranslation) &&
           !isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage),
         );
         panel.setTranslationActionsBusy(Boolean(translationTask));
@@ -768,35 +734,29 @@ export async function initContentScript(
       }
     },
 
-    onTranscriptViewChange: config.enableTranslation
-      ? (view: TranscriptView) => {
-          transcriptView = view;
-          renderTranscriptReader(getPanel());
-        }
-      : undefined,
+    onTranscriptViewChange: (view: TranscriptView) => {
+      transcriptView = view;
+      renderTranscriptReader(getPanel());
+    },
 
-    onTranslateCurrent: config.enableTranslation
-      ? (forceRefresh: boolean) => {
-          runTranslationQueue(getPanel(), [activeChunkId], forceRefresh, false);
-        }
-      : undefined,
+    onTranslateCurrent: (forceRefresh: boolean) => {
+      runTranslationQueue(getPanel(), [activeChunkId], forceRefresh, false);
+    },
 
-    onTranslateAll: config.enableTranslation
-      ? () => {
-          runTranslationQueue(
-            getPanel(),
-            transcriptChunks.map((chunk) => chunk.id),
-            false,
-            true,
-          );
-        }
-      : undefined,
+    onTranslateAll: () => {
+      runTranslationQueue(
+        getPanel(),
+        transcriptChunks.map((chunk) => chunk.id),
+        false,
+        true,
+      );
+    },
 
     onClose: () => {},
 
     onSeek: (seconds: number) => {
       // 优先用 YouTube 播放器 API（同视频 SPA 内 seek，无网络请求）；
-      // 回退到直接操作 <video>（Bilibili 及 player API 不可用时）。
+      // 回退到直接操作 <video>，兼容播放器 API 暂不可用的情况。
       const player = document.querySelector("#movie_player") as unknown as YouTubePlayer | null;
       if (player?.seekTo) {
         player.seekTo(seconds, true);
@@ -837,7 +797,7 @@ export async function initContentScript(
       () => handleTranscriptScroll(currentPanel!),
       { passive: true },
     );
-    currentPanel.setTranslationAvailable(Boolean(config.enableTranslation));
+    currentPanel.setTranslationAvailable(true);
     const videoTitle = extractor.getVideoTitle();
     if (videoTitle) currentPanel.setTitle(videoTitle);
     currentPanel.setTheme(isYouTubeDarkMode());
@@ -891,7 +851,7 @@ export async function initContentScript(
         setTimeout(() => {
           const p = getPanel();
           p.reset();
-          p.setTranslationAvailable(Boolean(config.enableTranslation));
+          p.setTranslationAvailable(true);
           const t = extractor.getVideoTitle();
           if (t) p.setTitle(t);
           p.setTheme(isYouTubeDarkMode());

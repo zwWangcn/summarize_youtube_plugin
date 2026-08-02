@@ -1,7 +1,7 @@
 {
   "extensionName": { "message": "Video AI Summarizer" },
-  "extensionDescription": { "message": "AI-powered YouTube and Bilibili video summarizer with support for multiple AI providers" },
-  "popupSubtitle": { "message": "Summarize YouTube and Bilibili videos in one click" },
+  "extensionDescription": { "message": "AI-powered YouTube video summarizer with support for multiple AI providers" },
+  "popupSubtitle": { "message": "Summarize YouTube videos in one click" },
   "providerLabel": { "message": "AI provider" },
   "modelLabel": { "message": "Model" },
   "outputLanguageLabel": { "message": "YouTube output language" },
@@ -22,7 +22,7 @@
   "clearAllApiKeysConfirm": { "message": "Delete all API Keys saved on this device?" },
   "allApiKeysCleared": { "message": "All API Keys deleted" },
   "clearApiKeysFailed": { "message": "Could not delete API Keys" },
-  "popupFooter": { "message": "Open a YouTube or Bilibili video and click “AI Summary” to begin" },
+  "popupFooter": { "message": "Open a YouTube video and click “AI Summary” to begin" },
   "perMillionTokens": { "message": "$PRICE$ / 1M tokens", "placeholders": { "price": { "content": "$1" } } },
 
   "aiSummary": { "message": "AI Summary" },

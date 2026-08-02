@@ -1,7 +1,7 @@
 {
   "extensionName": { "message": "動画 AI 要約" },
-  "extensionDescription": { "message": "複数の AI モデルに対応した YouTube／Bilibili 動画要約ツール" },
-  "popupSubtitle": { "message": "YouTube／Bilibili 動画をワンクリックで要約" },
+  "extensionDescription": { "message": "複数の AI モデルに対応した YouTube 動画要約ツール" },
+  "popupSubtitle": { "message": "YouTube 動画をワンクリックで要約" },
   "providerLabel": { "message": "AI プロバイダー" },
   "modelLabel": { "message": "モデル" },
   "outputLanguageLabel": { "message": "YouTube 出力言語" },
@@ -22,7 +22,7 @@
   "clearAllApiKeysConfirm": { "message": "このデバイスに保存されたすべての API Key を削除しますか？" },
   "allApiKeysCleared": { "message": "すべての API Key を削除しました" },
   "clearApiKeysFailed": { "message": "API Key の削除に失敗しました" },
-  "popupFooter": { "message": "YouTube または Bilibili の動画ページを開き、「AI 要約」をクリックしてください" },
+  "popupFooter": { "message": "YouTube の動画ページを開き、「AI 要約」をクリックしてください" },
   "perMillionTokens": { "message": "$PRICE$／100万 tokens", "placeholders": { "price": { "content": "$1" } } },
 
   "aiSummary": { "message": "AI 要約" },

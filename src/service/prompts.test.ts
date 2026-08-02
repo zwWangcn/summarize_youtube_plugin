@@ -5,7 +5,7 @@ import { buildTranslationSystemPrompt } from "./transcript-translation";
 
 describe("localized AI prompts", () => {
   it.each(OUTPUT_LANGUAGES)("builds an unambiguous $englishName summary prompt", (language) => {
-    const prompt = getSystemPrompt("youtube", language.code);
+    const prompt = getSystemPrompt(language.code);
     expect(prompt).toContain(`Target language: **${language.englishName}** (${language.code})`);
     expect(prompt).toContain(`Return the complete answer in ${language.englishName} only.`);
     expect(prompt).toContain("[MM:SS]");
@@ -23,11 +23,5 @@ describe("localized AI prompts", () => {
   it("adds explicit Simplified and Traditional Chinese script constraints", () => {
     expect(buildTargetLanguageRules("zh-CN")).toContain("Simplified Chinese characters");
     expect(buildTargetLanguageRules("zh-TW")).toContain("Traditional Chinese characters");
-  });
-
-  it("keeps the Bilibili prompt on its existing Chinese-only behavior", () => {
-    const prompt = getSystemPrompt("bilibili", "de");
-    expect(prompt).toContain("总结使用**简体中文**");
-    expect(prompt).not.toContain("Target language: **German**");
   });
 });

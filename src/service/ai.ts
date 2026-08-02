@@ -134,16 +134,13 @@ export async function getActiveAIIdentity(): Promise<ActiveAIIdentity> {
 // ---------------------------------------------------------------------------
 export async function* summarizeTextStream(
   transcript: string,
-  source: string | null = null,
   outputLanguage: OutputLanguage = "zh-CN",
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
-  const transcriptPrompt = source?.toLowerCase() === "bilibili"
-    ? `以下是视频字幕内容：\n\n${text}`
-    : `The following is the complete video transcript:\n\n${text}`;
+  const transcriptPrompt = `The following is the complete video transcript:\n\n${text}`;
   yield* streamAIText(
-    getSystemPrompt(source, outputLanguage),
+    getSystemPrompt(outputLanguage),
     transcriptPrompt,
     // DeepSeek V4 defaults to thinking mode. Summaries favor immediate,
     // deterministic output; this flag is only forwarded to DeepSeek.

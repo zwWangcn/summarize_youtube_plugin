@@ -1,7 +1,7 @@
 {
   "name": "summarize-youtube-extension",
   "version": "1.1.0",
-  "description": "Chrome extension for AI-powered YouTube & Bilibili video summarization",
+  "description": "Chrome extension for AI-powered YouTube video summarization",
   "type": "module",
   "license": "MIT",
   "author": "zwang",
@@ -16,7 +16,6 @@
   "keywords": [
     "chrome-extension",
     "youtube",
-    "bilibili",
     "ai",
     "summarizer",
     "video-summary",

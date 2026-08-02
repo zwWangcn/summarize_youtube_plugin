@@ -143,9 +143,7 @@ function isAllowedAIClient(sender: chrome.runtime.MessageSender): boolean {
     return url.protocol === "chrome-extension:" ||
       url.hostname === "www.youtube.com" ||
       url.hostname === "youtube.com" ||
-      url.hostname === "m.youtube.com" ||
-      url.hostname === "www.bilibili.com" ||
-      url.hostname === "bilibili.com";
+      url.hostname === "m.youtube.com";
   } catch {
     return false;
   }

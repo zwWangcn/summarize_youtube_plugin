@@ -31,7 +31,6 @@
     "https://dashscope.aliyuncs.com/*",
     "https://open.bigmodel.cn/*",
     "https://api.x.ai/*",
-    "https://api.bilibili.com/*",
     "https://www.youtube.com/*",
     "https://youtube.com/*",
     "https://m.youtube.com/*"
@@ -44,11 +43,6 @@
     {
       "matches": ["https://www.youtube.com/*", "https://youtube.com/*", "https://m.youtube.com/*"],
       "js": ["src/content/youtube.ts"],
-      "run_at": "document_end"
-    },
-    {
-      "matches": ["https://www.bilibili.com/video/*", "https://bilibili.com/video/*"],
-      "js": ["src/content/bilibili.ts"],
       "run_at": "document_end"
     }
   ]

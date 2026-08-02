@@ -17,7 +17,7 @@ export interface CachedSummary {
   text: string; // Markdown 格式的总结内容
   videoTitle: string; // 视频标题（用于 UI 展示）
   videoId: string; // 视频 ID
-  source: string; // "youtube" | "bilibili"
+  source: string; // Cache namespace, currently "youtube"
   outputLanguage: OutputLanguage; // AI 输出语言
   timestamp: number; // 缓存时间 (Date.now())
 }

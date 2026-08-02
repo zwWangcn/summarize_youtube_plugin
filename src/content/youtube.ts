@@ -22,8 +22,5 @@ const extractor: Extractor = {
 };
 
 initContentScript(extractor, {
-  source: "youtube",
-  enableTranslation: true,
-  enableLocalizedOutput: true,
   findInjectTarget: findYouTubeTarget,
 });

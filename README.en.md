@@ -2,19 +2,19 @@
 
 > 🌐 [简体中文](README.md) | English
 
-An AI-powered summarizer for YouTube / Bilibili videos. Extract captions with one click and stream structured summaries, with 8 AI providers and 20+ models to switch between.
+An AI-powered summarizer for YouTube videos. Extract captions with one click and stream structured summaries, with 8 AI providers and 20+ models to switch between.
 
 ## Features
 
 - **Free model switching** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok, 20+ models, one-click switch in the popup
 - **One-click AI summary** — streams a structured Markdown summary
-- **Multilingual output** — YouTube summaries and caption translations support Chinese (Simplified and Traditional), English, Japanese, Korean, Spanish, French, and German
+- **Multilingual output** — summaries and caption translations support Chinese (Simplified and Traditional), English, Japanese, Korean, Spanish, French, and German
 - **Localized UI** — follows Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English, with English as the fallback
 - **Raw captions** — click timestamps to seek
-- **Section-based subtitle translation** — translates the current YouTube caption section or resumes the full transcript
+- **Section-based subtitle translation** — translates the current caption section or resumes the full transcript
 - **Real-time streaming** — token-level, character-by-character output
 - **SPA navigation awareness** — auto-detects video switches
-- **Multi-language captions** — picks the best track (YouTube: ja > en > zh; Bilibili: zh > en)
+- **Multi-language captions** — picks the best track (ja > en > zh)
 - **Language-isolated cache** — each output language has its own 7-day cache with LRU eviction
 
 ## How It Works
@@ -33,13 +33,11 @@ Each adapter normalizes its streaming response into a unified `StreamChunk { tok
 
 ### Caption Extraction
 
-**YouTube — three paths, tried in priority order:**
+Three paths are tried in priority order:
 
 1. **Interceptor cache** (3s timeout) — the Service Worker patches `fetch`/`XHR` in the MAIN world, intercepts the player's timedtext requests (carrying a POT signature), caches them, and passes them back across the isolated-world boundary via a DOM `CustomEvent`.
 2. **InnerTube ANDROID** — POSTs `youtubei/v1/player` with an ANDROID client context, bypassing the WEB POT restriction — fully silent.
 3. **Direct fetch** — extracts the caption URL from `ytInitialPlayerResponse` and fetches it directly — fallback.
-
-**Bilibili** — the browser carries cookies automatically; calls `api.bilibili.com` directly.
 
 ### Subtitle Translation and Repair
 
@@ -49,11 +47,11 @@ The extension still repairs broken segmentation conservatively and keeps transla
 
 ### UI and Output Language
 
-The manifest, popup, and YouTube panel use Chrome's native i18n system and follow Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. Other Chrome UI languages fall back to English. **YouTube output language** is a separate popup setting: it is initialized from Chrome once, then remains fixed until the user changes it. Supported output languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German. Bilibili summaries remain Simplified Chinese for now.
+The manifest, popup, and YouTube panel use Chrome's native i18n system and follow Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. Other Chrome UI languages fall back to English. **YouTube output language** is a separate popup setting: it is initialized from Chrome once, then remains fixed until the user changes it. Supported output languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German.
 
 ### SPA Navigation Awareness
 
-YouTube / Bilibili are SPAs. Navigation is sensed three ways: a `MutationObserver` on `<title>`, wrapped `history.pushState`/`replaceState`, and the `popstate` event. On video switch the old panel is destroyed and re-injected after 800ms, with 1s/3s/6s recovery checks for the skeleton → real DOM swap.
+YouTube SPA navigation is sensed three ways: a `MutationObserver` on `<title>`, wrapped `history.pushState`/`replaceState`, and the `popstate` event. On video switch the old panel is destroyed and re-injected after 800ms, with 1s/3s/6s recovery checks for the skeleton → real DOM swap.
 
 ### Shadow DOM Isolation
 
@@ -64,13 +62,13 @@ The panel is injected into `<body>` (`position: fixed`) via Shadow DOM, fully is
 `fetch` + `ReadableStream` parses SSE line by line → `adapter.parseStreamChunk()` extracts tokens → `AsyncGenerator` yields them one by one.
 
 - Content-filter signals are normalized into `ContentFilteredError`
-- YouTube uses an English modular system prompt with a controlled target-language constraint
+- An English modular system prompt adds a controlled target-language constraint
 - Retries only on 5xx and network errors (max 2, exponential backoff); no retry on 4xx
 - API keys stay in `chrome.storage.local` on the current device; requests go directly to the selected AI provider and never through a developer-controlled server
 
 ### Summary Cache
 
-`chrome.storage.local`, 7-day TTL with lazy cleanup, max 50 entries, LRU eviction when exceeded. YouTube summary and caption-translation cache identities include the target language, so results are never reused across languages.
+`chrome.storage.local`, 7-day TTL with lazy cleanup, max 50 entries, LRU eviction when exceeded. Summary and caption-translation cache identities include the target language, so results are never reused across languages.
 
 ## Usage
 
@@ -100,11 +98,11 @@ Dev hot-reload: `npm run dev`
 
 ### Summarize a Video
 
-1. Open a YouTube or Bilibili video page
+1. Open a YouTube video page
 2. Click the **🤖 AI Summary** button next to the title
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
-5. When the YouTube caption language differs from the output language, use **Translate Section** or **Translate All** inside the captions view
+5. When the caption language differs from the output language, use **Translate Section** or **Translate All** inside the captions view
 
 ## License
 

@@ -1,7 +1,7 @@
 {
   "extensionName": { "message": "影片 AI 總結" },
-  "extensionDescription": { "message": "AI 驅動的 YouTube／Bilibili 影片內容總結工具，支援多家 AI 模型" },
-  "popupSubtitle": { "message": "一鍵總結 YouTube／Bilibili 影片內容" },
+  "extensionDescription": { "message": "AI 驅動的 YouTube 影片內容總結工具，支援多家 AI 模型" },
+  "popupSubtitle": { "message": "一鍵總結 YouTube 影片內容" },
   "providerLabel": { "message": "AI 供應商" },
   "modelLabel": { "message": "模型" },
   "outputLanguageLabel": { "message": "YouTube 輸出語言" },
@@ -22,7 +22,7 @@
   "clearAllApiKeysConfirm": { "message": "確定要刪除此裝置儲存的全部 API Key 嗎？" },
   "allApiKeysCleared": { "message": "全部 API Key 已刪除" },
   "clearApiKeysFailed": { "message": "刪除 API Key 失敗" },
-  "popupFooter": { "message": "開啟 YouTube 或 Bilibili 影片頁面，點擊「AI 總結」即可使用" },
+  "popupFooter": { "message": "開啟 YouTube 影片頁面，點擊「AI 總結」即可使用" },
   "perMillionTokens": { "message": "$PRICE$／1M tokens", "placeholders": { "price": { "content": "$1" } } },
 
   "aiSummary": { "message": "AI 總結" },

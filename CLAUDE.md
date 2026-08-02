@@ -14,16 +14,16 @@ npm run preview   # vite preview（一般用不到，扩展直接加载 dist/）
 
 ## Architecture
 
-这是一个 **Chrome Extension Manifest V3** 项目，为 YouTube 和 Bilibili 视频提供 AI 驱动的流式总结。核心技术栈：TypeScript + Vite + CRXJS。
+这是一个 **Chrome Extension Manifest V3** 项目，为 YouTube 视频提供 AI 驱动的流式总结。核心技术栈：TypeScript + Vite + CRXJS。
 
 支持 8 家 AI 供应商（DeepSeek、OpenAI GPT、Anthropic Claude、Google Gemini、Moonshot Kimi、通义千问 Qwen、智谱 GLM、xAI Grok），通过 Provider Adapter 模式统一三种 API 格式（OpenAI-compat、Anthropic Messages、Gemini）。
 
 ### 组件模型与通信
 
 ```
-content scripts (youtube.ts / bilibili.ts)
-  ├── 各自实现 Extractor 接口（字幕提取、视频ID/标题、页面检测）
-  ├── 调用 initContentScript(extractor, config) — shared.ts 中的共享主逻辑
+content script (youtube.ts)
+  ├── 实现 Extractor 接口（字幕提取、视频ID/标题、页面检测）
+  ├── 调用 initContentScript(extractor, config) — shared.ts 中的主逻辑
   │     ├── 管理 Panel 生命周期（注入/销毁/SPA 重建）
   │     ├── 协调字幕获取 → AI 总结 → 流式渲染的完整流程
   │     └── 集成总结缓存（summary-cache.ts）的读写
@@ -67,7 +67,7 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 - `"anthropic-messages"` → `anthropicAdapter`
 - `"gemini"` → `geminiAdapter`
 
-### 字幕提取的三路径架构（仅 YouTube）
+### 字幕提取的三路径架构
 
 YouTube 字幕提取有三条路径，按优先级依次尝试：
 
@@ -77,11 +77,9 @@ YouTube 字幕提取有三条路径，按优先级依次尝试：
 
 3. **直接 fetch**（回退）：从 `ytInitialPlayerResponse` 中提取字幕 URL 后 fetch。可能因 YouTube POT 机制返回空，作为最后兜底。
 
-Bilibili 无此多路径 — 浏览器自动携带 cookies，直接调用 `api.bilibili.com` API 即可。
-
 ### SPA 导航感知（shared.ts）
 
-YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
+通过三路拦截感知 YouTube SPA 页面切换：
 - `MutationObserver` 监听 `<title>` 变化
 - 重写 `history.pushState` / `history.replaceState`
 - `popstate` 事件
@@ -102,7 +100,7 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 - 内置重试（最多 2 次，指数退避，仅 5xx 与网络错误）：4xx（Key 错误、请求格式错等）标记为不可重试直接抛出；已向调用方交付过 token 的流不再重试（重试会从头重新生成，导致前端内容重复拼接）
 - `ContentFilteredError`：各适配器将供应商的内容过滤信号统一映射为 `finishReason: "content_filter"`（OpenAI `content_filter`、Gemini `SAFETY`/`RECITATION` 等及 `promptFeedback.blockReason`、Anthropic `refusal`），由 `summarizeTextStream` 识别并抛出该错误
 
-### YouTube 字幕翻译
+### 字幕翻译
 
 - 字幕内部使用 `Transcript` / `TranscriptSegment` 保存语言、开始时间、持续时间和原文；总结与原文视图再转换为旧文本格式
 - `transcript-translation.ts` 按连续时间片分块，要求模型逐行返回覆盖源字幕 ID 的 NDJSON；每行本地校验后立即渲染，并使用源片段时间生成可点击时间戳
@@ -112,7 +110,7 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 
 ### 提示词模板（service/prompts.ts）
 
-每个平台有差异化的 System Prompt，共享 BASE_RULES。YouTube 侧重多语种术语和赞助识别，Bilibili 侧重社区文化和弹幕梗识别。
+System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论点和赞助内容识别，并拼接目标输出语言约束。
 
 ### 总结缓存（service/summary-cache.ts）
 
@@ -130,7 +128,6 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 | `src/content/ui/renderer.ts` | Markdown/流式渲染（marked + DOMPurify） |
 | `src/content/ui/styles.css` | Shadow DOM 暗色主题样式 |
 | `src/content/extractors/youtube.ts` | YouTube 字幕提取（ytInitialPlayerResponse → XML → 文本） |
-| `src/content/extractors/bilibili.ts` | Bilibili 字幕提取（__INITIAL_STATE__ → API → JSON → 文本） |
 | `src/content/extractors/caption-interceptor.ts` | YouTube MAIN world 注入的 fetch/XHR 拦截器 |
 | `src/service/ai.ts` | AI 流式调用主入口：适配器分发、SSE 解析、重试、翻译回退 |
 | `src/service/ai/types.ts` | ProviderAdapter 接口定义 |
@@ -138,16 +135,15 @@ YouTube 和 Bilibili 都是 SPA。通过三路拦截感知页面切换：
 | `src/service/ai/anthropic.ts` | Anthropic Messages API 适配器 |
 | `src/service/ai/gemini.ts` | Google Gemini API 适配器 |
 | `src/service/model-registry.ts` | 供应商+模型元数据注册表（PROVIDERS 数组），添加新模型只需改此文件 |
-| `src/service/prompts.ts` | 平台差异化提示词模板 |
+| `src/service/prompts.ts` | YouTube 总结提示词与目标语言约束 |
 | `src/service/summary-cache.ts` | chrome.storage.local 持久化缓存 + LRU 淘汰 |
-| `src/service/transcript-translation.ts` | YouTube 字幕分块、AI 翻译、结构化输出校验 |
+| `src/service/transcript-translation.ts` | 字幕分块、AI 翻译、结构化输出校验 |
 | `src/service/translation-cache.ts` | 翻译结果 7 天缓存 |
 | `src/service/storage.ts` | Chrome Storage 封装（API Key/模型选择持久化） |
 | `src/background/service-worker.ts` | 后台 Service Worker：消息路由、拦截器注入 |
 | `src/utils/text.ts` | 时间格式化、字幕拼接、时间戳切换 |
 | `src/popup/popup.ts` | 设置弹窗（供应商选择 → 模型选择 → API Key） |
 
-### 平台入口差异
+### 平台入口
 
-YouTube（`youtube.ts`）：安装 caption interceptor，`getVideoId` 从 URL 参数 `v` 提取
-Bilibili（`bilibili.ts`）：无 interceptor，`getVideoId` 从 pathname `/video/BV...` 提取，`getVideoInfo()` 走 Bilibili API（自动携带 cookies）
+`youtube.ts` 安装 caption interceptor，`getVideoId` 从 URL 参数 `v` 提取。

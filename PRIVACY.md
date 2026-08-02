@@ -6,7 +6,7 @@ Last updated / 最后更新：2026-08-02
 
 ### 概述
 
-“视频 AI 总结”是一款在 YouTube 和 Bilibili 页面提取字幕，并使用用户主动选择的第三方 AI 服务生成总结或字幕翻译的 Chrome 扩展。扩展不运营用于接收 API Key、视频字幕或 AI 输出的开发者服务器，也不出售用户数据。
+“视频 AI 总结”是一款在 YouTube 页面提取字幕，并使用用户主动选择的第三方 AI 服务生成总结或字幕翻译的 Chrome 扩展。扩展不运营用于接收 API Key、视频字幕或 AI 输出的开发者服务器，也不出售用户数据。
 
 ### 扩展处理的数据
 
@@ -26,7 +26,7 @@ Last updated / 最后更新：2026-08-02
 
 只有在用户主动点击总结或翻译功能后，扩展才会把所选视频的字幕、生成请求和对应 API Key 通过 HTTPS 直接发送给用户选择的 AI 服务商。数据由该服务商依据其条款和隐私政策处理。
 
-扩展会直接访问 YouTube 或 Bilibili 的页面和接口，以获取当前视频信息及可用字幕。为提高字幕获取成功率，扩展会在页面内本地监听页面自身的字幕响应；这项监听本身不会把数据发送给开发者或 AI 服务商。扩展不会把 API Key、字幕或 AI 输出发送给开发者控制的服务器。
+扩展会直接访问 YouTube 的页面和接口，以获取当前视频信息及可用字幕。为提高字幕获取成功率，扩展会在页面内本地监听页面自身的字幕响应；这项监听本身不会把数据发送给开发者或 AI 服务商。扩展不会把 API Key、字幕或 AI 输出发送给开发者控制的服务器。
 
 ### 数据共享
 
@@ -50,7 +50,7 @@ Last updated / 最后更新：2026-08-02
 
 ### Overview
 
-Video AI Summarizer extracts captions from YouTube and Bilibili pages and uses a third-party AI provider selected by the user to create summaries or caption translations. The extension does not operate a developer-controlled server that receives API keys, video transcripts, or AI output, and it does not sell user data.
+Video AI Summarizer extracts captions from YouTube pages and uses a third-party AI provider selected by the user to create summaries or caption translations. The extension does not operate a developer-controlled server that receives API keys, video transcripts, or AI output, and it does not sell user data.
 
 ### Data handled by the extension
 
@@ -70,7 +70,7 @@ Video AI Summarizer extracts captions from YouTube and Bilibili pages and uses a
 
 Only after the user explicitly requests a summary or translation, the selected video's transcript, generation request, and corresponding API key are sent over HTTPS directly to the AI provider selected by the user. That provider processes the data under its own terms and privacy policy.
 
-The extension communicates directly with YouTube or Bilibili pages and endpoints to obtain information and available captions for the current video. To improve caption reliability, it locally observes caption responses made by the page; this observation does not itself send data to the developer or an AI provider. API keys, transcripts, and AI output are not sent to a server controlled by the extension developer.
+The extension communicates directly with YouTube pages and endpoints to obtain information and available captions for the current video. To improve caption reliability, it locally observes caption responses made by the page; this observation does not itself send data to the developer or an AI provider. API keys, transcripts, and AI output are not sent to a server controlled by the extension developer.
 
 ### Data sharing
 

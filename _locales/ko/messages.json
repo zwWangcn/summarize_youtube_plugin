@@ -1,7 +1,7 @@
 {
   "extensionName": { "message": "동영상 AI 요약" },
-  "extensionDescription": { "message": "여러 AI 모델을 지원하는 YouTube 및 Bilibili 동영상 요약 도구" },
-  "popupSubtitle": { "message": "YouTube 및 Bilibili 동영상을 한 번에 요약" },
+  "extensionDescription": { "message": "여러 AI 모델을 지원하는 YouTube 동영상 요약 도구" },
+  "popupSubtitle": { "message": "YouTube 동영상을 한 번에 요약" },
   "providerLabel": { "message": "AI 공급자" },
   "modelLabel": { "message": "모델" },
   "outputLanguageLabel": { "message": "YouTube 출력 언어" },
@@ -22,7 +22,7 @@
   "clearAllApiKeysConfirm": { "message": "이 기기에 저장된 모든 API Key를 삭제할까요?" },
   "allApiKeysCleared": { "message": "모든 API Key가 삭제되었습니다" },
   "clearApiKeysFailed": { "message": "API Key를 삭제하지 못했습니다" },
-  "popupFooter": { "message": "YouTube 또는 Bilibili 동영상 페이지에서 ‘AI 요약’을 클릭하세요" },
+  "popupFooter": { "message": "YouTube 동영상 페이지에서 ‘AI 요약’을 클릭하세요" },
   "perMillionTokens": { "message": "$PRICE$ / 1M tokens", "placeholders": { "price": { "content": "$1" } } },
 
   "aiSummary": { "message": "AI 요약" },
