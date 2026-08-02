@@ -9,7 +9,7 @@ An AI-powered summarizer for YouTube / Bilibili videos. Extract captions with on
 - **Free model switching** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok, 20+ models, one-click switch in the popup
 - **One-click AI summary** — streams a structured Markdown summary
 - **Raw captions** — click timestamps to seek
-- **Smart subtitle translation** — translates YouTube captions into Simplified Chinese while repairing broken segmentation and clear ASR errors
+- **Section-based subtitle translation** — translates the current YouTube caption section or resumes the full transcript
 - **Real-time streaming** — token-level, character-by-character output
 - **SPA navigation awareness** — auto-detects video switches
 - **Multi-language captions** — picks the best track (YouTube: ja > en > zh; Bilibili: zh > en)
@@ -42,9 +42,9 @@ Each adapter normalizes its streaming response into a unified `StreamChunk { tok
 
 ### Subtitle Translation and Repair
 
-The **Translate Captions** action on YouTube uses the currently selected AI model to generate Simplified Chinese captions. It merges fragments split at incorrect semantic boundaries, conservatively fixes recognition errors that are clear from context, and displays each validated segment immediately. It does not download audio or perform audio-level timestamp alignment; translated timestamps are derived from the corresponding source captions and remain clickable.
+Translation now lives inside **Raw Captions**. Captions are split by source character count, open near the current playback position, and load in either direction as you scroll. Scrolling never triggers an AI request. Translate the current section, retry one section, or use **Translate All** to fill only missing sections, then switch between Source and Translation views.
 
-Long transcripts are processed in consecutive chunks without truncating the end. Results are cached for seven days by video, source language, provider, and model, with a manual regenerate action. Chinese source captions do not trigger an AI request.
+The extension still repairs broken segmentation conservatively and keeps translated timestamps clickable. Each completed section is cached for seven days by video, source language, provider, and model, so full translation resumes after closing the panel. Chinese source captions do not trigger an AI request.
 
 ### SPA Navigation Awareness
 
@@ -99,7 +99,7 @@ Dev hot-reload: `npm run dev`
 2. Click the **🤖 AI Summary** button next to the title
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
-5. On non-Chinese YouTube videos, click **Translate Captions** for repaired Simplified Chinese subtitles
+5. On non-Chinese YouTube videos, use **Translate Section** or **Translate All** inside the captions view
 
 ## License
 
