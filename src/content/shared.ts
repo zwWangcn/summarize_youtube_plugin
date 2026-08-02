@@ -11,9 +11,6 @@ import {
 import {
   summarizeTextStream,
   getActiveAIIdentity,
-  AIServiceError,
-  ContentFilteredError,
-  NoApiKeyError,
 } from "../service/ai";
 import { formatTime } from "../utils/text";
 import type { YouTubePlayer } from "./extractors/caption-interceptor";
@@ -23,7 +20,6 @@ import { UserError } from "../utils/errors";
 import {
   translateTranscriptChunk,
   buildTranslationChunks,
-  TranslationFormatError,
   type TranslatedSegment,
   type TranslationChunk,
 } from "../service/transcript-translation";
@@ -38,6 +34,8 @@ import {
   setCachedSummary,
   invalidateCache,
 } from "../service/summary-cache";
+import { handleError } from "./error-handler";
+import { runSummaryCacheOperation } from "./summary-cache-operation";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -213,31 +211,6 @@ function watchNavigation(onChange: () => void): () => void {
     history.replaceState = origReplaceState;
     window.removeEventListener("popstate", onPopState);
   };
-}
-
-// ---------------------------------------------------------------------------
-// Error handling
-// ---------------------------------------------------------------------------
-
-/**
- * 统一的错误处理：用户看到友好的中文提示，技术细节仅输出到 Console。
- */
-function handleError(err: unknown, panel: Panel): void {
-  if (err instanceof UserError) {
-    panel.showError(err.message);
-    console.warn(`[vas] ${err.code}:`, err.detail ?? err.message);
-  } else if (
-    err instanceof AIServiceError ||
-    err instanceof ContentFilteredError ||
-    err instanceof NoApiKeyError ||
-    err instanceof TranslationFormatError
-  ) {
-    panel.showError(err.message);
-    console.warn("[vas] AI error:", err.message);
-  } else {
-    panel.showError("出了点问题，请稍后重试");
-    console.error("[vas] Unexpected error:", err);
-  }
 }
 
 // ---------------------------------------------------------------------------
@@ -515,7 +488,8 @@ export async function initContentScript(
             segments: result,
           });
         } catch (error) {
-          console.warn("[vas] Translation section cache write failed:", error);
+          const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+          console.debug("[vas] Translation section cache write failed:", detail);
           panel.showWarning("本段翻译已完成，但本地缓存写入失败");
         }
         if (panel.getMode() === "transcript") renderTranscriptReader(panel);
@@ -525,7 +499,8 @@ export async function initContentScript(
       if ((error as Error)?.name === "AbortError") return;
       const message = error instanceof Error ? error.message : "字幕翻译失败，请稍后重试";
       translationProgressText = `翻译已停止：${message}`;
-      console.warn("[vas] Translation stopped:", error);
+      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      console.debug("[vas] Translation stopped:", detail);
       if (panel.getMode() === "transcript") panel.showWarning(message);
     }).finally(() => {
       if (stateVersion !== transcriptStateVersion || translationTask !== task) return;
@@ -542,47 +517,59 @@ export async function initContentScript(
   const callbacks = {
     onSummarize: async () => {
       const panel = getPanel();
-      const videoId = extractor.getVideoId();
-      const videoTitle = extractor.getVideoTitle();
-
-      // 如果已经显示缓存内容，用户点击「再次总结」——强制刷新
-      const isForceRefresh = panel.getIsCachedView();
-
-      if (isForceRefresh) {
-        // 删除旧缓存
-        await invalidateCache(config.source, videoId);
-        panel.setCachedView(false);
-        panel.setSummarizeButtonText("AI 总结");
-        panel.hideCacheHint();
-      }
-
-      // ── 非强制刷新时先检查缓存 ──
-      if (!isForceRefresh) {
-        const cached = await getCachedSummary(config.source, videoId);
-        if (cached) {
-          // 缓存命中——直接显示
-          panel.setTitle(videoTitle || cached.videoTitle);
-          panel.setContent(renderMarkdown(cached.text));
-          panel.setMode("summary");
-          panel.setCachedView(true);
-          panel.setSummarizeButtonText("再次总结");
-
-          // 显示缓存时间
-          const elapsed = Date.now() - cached.timestamp;
-          const hint = formatCacheAge(elapsed);
-          panel.showCacheHint(`缓存于 ${hint}`);
-          panel.open();
-          return;
-        }
-      }
-
-      // ── 缓存未命中或强制刷新——走 API ──
-      panel.setMode("loading");
-      panel.setLoadingMessage("正在获取字幕...");
-      panel.setCachedView(false);
-      panel.open();
+      let cacheFailed = false;
+      const reportCacheFailure = () => {
+        cacheFailed = true;
+      };
 
       try {
+        const videoId = extractor.getVideoId();
+        const videoTitle = extractor.getVideoTitle();
+
+        // 如果已经显示缓存内容，用户点击「再次总结」——强制刷新
+        const isForceRefresh = panel.getIsCachedView();
+
+        if (isForceRefresh) {
+          await runSummaryCacheOperation(
+            "invalidation",
+            () => invalidateCache(config.source, videoId),
+            reportCacheFailure,
+          );
+          panel.setCachedView(false);
+          panel.setSummarizeButtonText("AI 总结");
+          panel.hideCacheHint();
+        }
+
+        // ── 非强制刷新时先检查缓存 ──
+        if (!isForceRefresh) {
+          const cached = await runSummaryCacheOperation(
+            "read",
+            () => getCachedSummary(config.source, videoId),
+            reportCacheFailure,
+          );
+          if (cached) {
+            // 缓存命中——直接显示
+            panel.setTitle(videoTitle || cached.videoTitle);
+            panel.setContent(renderMarkdown(cached.text));
+            panel.setMode("summary");
+            panel.setCachedView(true);
+            panel.setSummarizeButtonText("再次总结");
+
+            // 显示缓存时间
+            const elapsed = Date.now() - cached.timestamp;
+            const hint = formatCacheAge(elapsed);
+            panel.showCacheHint(`缓存于 ${hint}`);
+            panel.open();
+            return;
+          }
+        }
+
+        // ── 缓存未命中或强制刷新——走 API ──
+        panel.setMode("loading");
+        panel.setLoadingMessage("正在获取字幕...");
+        panel.setCachedView(false);
+        panel.open();
+
         const transcript = await ensureTranscript(panel);
         const transcriptText = transcriptToText(transcript);
 
@@ -615,13 +602,20 @@ export async function initContentScript(
 
         // 保存到缓存
         if (buffer.trim()) {
-          await setCachedSummary(config.source, videoId, videoTitle, buffer);
+          await runSummaryCacheOperation(
+            "write",
+            () => setCachedSummary(config.source, videoId, videoTitle, buffer),
+            reportCacheFailure,
+          );
         }
 
         panel.setMode("summary");
         // API 获取的新内容，标记为可「再次总结」
         panel.setCachedView(true);
         panel.setSummarizeButtonText("再次总结");
+        if (cacheFailed) {
+          panel.showWarning("本地缓存暂时不可用，本次结果可能不会保存");
+        }
       } catch (err) {
         handleError(err, panel);
       }
@@ -727,7 +721,7 @@ export async function initContentScript(
     try {
       target = await waitForTarget(config.findInjectTarget, 30000);
     } catch {
-      console.warn("[vas] Player target not found, using body fallback");
+      console.debug("[vas] Player target not found, using body fallback");
       target = document.body;
     }
 

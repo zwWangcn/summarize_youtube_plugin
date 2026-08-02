@@ -148,7 +148,7 @@ export function initCaptionInterceptor(): void {
   // (bypasses YouTube CSP).
   chrome.runtime.sendMessage({ type: 'INJECT_CAPTION_INTERCEPTOR' }, () => {
     if (chrome.runtime.lastError) {
-      console.warn("[vas] Interceptor message failed:", chrome.runtime.lastError.message);
+      console.debug("[vas] Interceptor message failed:", chrome.runtime.lastError.message);
     }
   });
 

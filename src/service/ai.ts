@@ -180,10 +180,10 @@ export async function* streamAIText(
         if (!response.ok) {
           const errBody = await response.text();
           if (response.status >= 400 && response.status < 500) {
-            console.warn("[vas] AI 4xx:", response.status, errBody.slice(0, 200));
+            console.debug("[vas] AI 4xx:", response.status, errBody.slice(0, 200));
             throw new AIServiceError(`API 请求被拒绝 (${response.status})，请检查 API Key 是否正确`, false);
           }
-          console.warn("[vas] AI 5xx:", response.status, errBody.slice(0, 200));
+          console.debug("[vas] AI 5xx:", response.status, errBody.slice(0, 200));
           throw new AIServiceError("AI 服务暂时不可用，请稍后重试", true);
         }
 

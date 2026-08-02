@@ -97,7 +97,7 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
       }).then(() => {
         sendResponse({ ok: true });
       }).catch((err: Error) => {
-        console.warn("[vas] SW: injection failed:", err.message);
+        console.debug("[vas] SW: injection failed:", err.message);
         sendResponse({ ok: false, error: err.message });
       });
       return true;

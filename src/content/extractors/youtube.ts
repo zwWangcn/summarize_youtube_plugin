@@ -276,7 +276,7 @@ export async function getTranscript(): Promise<Transcript> {
   try {
     return await fetchCaptionsViaInnerTube(LANG_PRIORITY);
   } catch (e) {
-    console.warn("[vas] InnerTube 失败，回退到直接 fetch:", e instanceof Error ? e.message : e);
+    console.debug("[vas] InnerTube 失败，回退到直接 fetch:", e instanceof Error ? e.message : String(e));
   }
 
   // 3. 最终回退：直接 fetch ytInitialPlayerResponse 中的 baseUrl
