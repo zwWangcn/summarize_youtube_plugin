@@ -2,11 +2,11 @@ import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./storage", () => ({
   getSettings: vi.fn(async () => ({
-    apiKeys: { deepseek: "test-key" },
     provider: "deepseek",
     model: "deepseek-v4-flash",
     outputLanguage: "en",
   })),
+  getApiKey: vi.fn(async () => "test-key"),
 }));
 
 import { streamAIText } from "./ai";

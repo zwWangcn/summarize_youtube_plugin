@@ -66,7 +66,7 @@ YouTube / Bilibili 均为 SPA，通过三路拦截感知导航：`MutationObserv
 - 内容过滤信号统一映射为 `ContentFilteredError`
 - YouTube 使用英文模块化 system prompt 拼接受控的目标语言约束
 - 仅对 5xx 与网络错误重试（最多 2 次，指数退避），4xx 不重试
-- API Key 存于 `chrome.storage.sync`，不经过任何服务器
+- API Key 仅存于当前设备的 `chrome.storage.local`；调用时只直接发送给用户选择的 AI 服务商，不经过开发者服务器
 
 ### 总结缓存
 
@@ -109,3 +109,7 @@ npm run build
 ## License
 
 [MIT](LICENSE)
+
+## 隐私
+
+请参阅[隐私政策](PRIVACY.md)。

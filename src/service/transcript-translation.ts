@@ -1,4 +1,4 @@
-import { streamAIText } from "./ai";
+import { streamAIText } from "./ai-client";
 import type { Transcript, TranscriptSegment } from "../content/transcript";
 import {
   getOutputLanguageInfo,

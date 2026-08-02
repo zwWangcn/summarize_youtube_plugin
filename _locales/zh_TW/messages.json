@@ -16,6 +16,12 @@
   "saveSettings": { "message": "儲存設定" },
   "settingsSaved": { "message": "設定已儲存" },
   "saveFailed": { "message": "儲存失敗" },
+  "dataDisclosure": { "message": "執行總結或翻譯時，影片字幕和 API Key 會直接傳送給你選擇的 AI 服務商；開發者不會收到這些資料。" },
+  "privacyPolicy": { "message": "隱私權政策" },
+  "clearAllApiKeys": { "message": "刪除此裝置的全部 API Key" },
+  "clearAllApiKeysConfirm": { "message": "確定要刪除此裝置儲存的全部 API Key 嗎？" },
+  "allApiKeysCleared": { "message": "全部 API Key 已刪除" },
+  "clearApiKeysFailed": { "message": "刪除 API Key 失敗" },
   "popupFooter": { "message": "開啟 YouTube 或 Bilibili 影片頁面，點擊「AI 總結」即可使用" },
   "perMillionTokens": { "message": "$PRICE$／1M tokens", "placeholders": { "price": { "content": "$1" } } },
 

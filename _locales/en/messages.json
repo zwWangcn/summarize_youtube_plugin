@@ -16,6 +16,12 @@
   "saveSettings": { "message": "Save settings" },
   "settingsSaved": { "message": "Settings saved" },
   "saveFailed": { "message": "Could not save settings" },
+  "dataDisclosure": { "message": "When you summarize or translate, the video transcript and API Key are sent directly to your selected AI provider. The developer does not receive this data." },
+  "privacyPolicy": { "message": "Privacy policy" },
+  "clearAllApiKeys": { "message": "Delete all API Keys on this device" },
+  "clearAllApiKeysConfirm": { "message": "Delete all API Keys saved on this device?" },
+  "allApiKeysCleared": { "message": "All API Keys deleted" },
+  "clearApiKeysFailed": { "message": "Could not delete API Keys" },
   "popupFooter": { "message": "Open a YouTube or Bilibili video and click “AI Summary” to begin" },
   "perMillionTokens": { "message": "$PRICE$ / 1M tokens", "placeholders": { "price": { "content": "$1" } } },
 

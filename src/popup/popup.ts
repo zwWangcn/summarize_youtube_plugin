@@ -2,7 +2,13 @@
  * Popup 逻辑 — 管理多供应商 AI 模型和 API Key 设置。
  */
 
-import { getSettings, setSettings } from "../service/storage";
+import {
+  clearAllApiKeys,
+  getApiKey,
+  getSettings,
+  setApiKey,
+  setSettings,
+} from "../service/storage";
 import {
   PROVIDERS,
   getModelsByProvider,
@@ -23,6 +29,7 @@ const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
 const statusDiv = document.getElementById("status") as HTMLDivElement;
 const apiKeyLabel = document.getElementById("apiKeyLabel") as HTMLSpanElement;
 const apiKeyLink = document.getElementById("apiKeyLink") as HTMLAnchorElement;
+const clearKeysBtn = document.getElementById("clearKeysBtn") as HTMLButtonElement;
 
 // Model info card elements
 const infoParamSize = document.getElementById("infoParamSize") as HTMLSpanElement;
@@ -72,9 +79,8 @@ async function init(): Promise<void> {
   currentModel = getModel(savedModel) ?? null;
   updateModelInfo();
   updateApiKeyUI(currentProvider);
-
   // Load saved API key for this provider
-  apiKeyInput.value = settings.apiKeys[savedProvider] ?? "";
+  apiKeyInput.value = await getApiKey(savedProvider);
 }
 
 // ── Populate model dropdown for a given provider ─────────────────────
@@ -137,8 +143,8 @@ providerSelect.addEventListener("change", () => {
   updateApiKeyUI(currentProvider);
 
   // Reload saved API key for new provider
-  getSettings().then((s) => {
-    apiKeyInput.value = s.apiKeys[pid] ?? "";
+  getApiKey(pid).then((key) => {
+    apiKeyInput.value = key;
   });
 });
 
@@ -163,22 +169,31 @@ saveBtn.addEventListener("click", async () => {
     const mid = modelSelect.value;
     const key = apiKeyInput.value.trim();
 
-    // Get current apiKeys and update the selected provider's key
-    const currentSettings = await getSettings();
-    const apiKeys = { ...currentSettings.apiKeys };
-    apiKeys[pid] = key;
+    await setApiKey(pid, key);
 
     await setSettings({
-      apiKeys,
       provider: pid,
       model: mid,
-      outputLanguage: outputLanguageSelect.value as typeof currentSettings.outputLanguage,
+      outputLanguage: outputLanguageSelect.value as Awaited<ReturnType<typeof getSettings>>["outputLanguage"],
     });
     showStatus(t("settingsSaved"), "success");
   } catch (err) {
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
     console.debug("[vas] Settings save failed:", detail);
     showStatus(t("saveFailed"), "error");
+  }
+});
+
+clearKeysBtn.addEventListener("click", async () => {
+  if (!window.confirm(t("clearAllApiKeysConfirm"))) return;
+  try {
+    await clearAllApiKeys();
+    apiKeyInput.value = "";
+    showStatus(t("allApiKeysCleared"), "success");
+  } catch (err) {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] Clear API keys failed:", detail);
+    showStatus(t("clearApiKeysFailed"), "error");
   }
 });
 

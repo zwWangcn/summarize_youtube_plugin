@@ -66,7 +66,7 @@ The panel is injected into `<body>` (`position: fixed`) via Shadow DOM, fully is
 - Content-filter signals are normalized into `ContentFilteredError`
 - YouTube uses an English modular system prompt with a controlled target-language constraint
 - Retries only on 5xx and network errors (max 2, exponential backoff); no retry on 4xx
-- API keys live in `chrome.storage.sync`, never sent through any server
+- API keys stay in `chrome.storage.local` on the current device; requests go directly to the selected AI provider and never through a developer-controlled server
 
 ### Summary Cache
 
@@ -109,3 +109,7 @@ Dev hot-reload: `npm run dev`
 ## License
 
 [MIT](LICENSE)
+
+## Privacy
+
+See the [Privacy Policy](PRIVACY.md).

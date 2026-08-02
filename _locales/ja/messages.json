@@ -16,6 +16,12 @@
   "saveSettings": { "message": "設定を保存" },
   "settingsSaved": { "message": "設定を保存しました" },
   "saveFailed": { "message": "設定を保存できませんでした" },
+  "dataDisclosure": { "message": "要約または翻訳を実行すると、動画の字幕と API Key が選択した AI プロバイダーへ直接送信されます。開発者がこれらのデータを受け取ることはありません。" },
+  "privacyPolicy": { "message": "プライバシーポリシー" },
+  "clearAllApiKeys": { "message": "このデバイスのすべての API Key を削除" },
+  "clearAllApiKeysConfirm": { "message": "このデバイスに保存されたすべての API Key を削除しますか？" },
+  "allApiKeysCleared": { "message": "すべての API Key を削除しました" },
+  "clearApiKeysFailed": { "message": "API Key の削除に失敗しました" },
   "popupFooter": { "message": "YouTube または Bilibili の動画ページを開き、「AI 要約」をクリックしてください" },
   "perMillionTokens": { "message": "$PRICE$／100万 tokens", "placeholders": { "price": { "content": "$1" } } },
 

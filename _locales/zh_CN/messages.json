@@ -16,6 +16,12 @@
   "saveSettings": { "message": "保存设置" },
   "settingsSaved": { "message": "设置已保存" },
   "saveFailed": { "message": "保存失败" },
+  "dataDisclosure": { "message": "执行总结或翻译时，视频字幕和 API Key 会直接发送给你选择的 AI 服务商；开发者不会接收这些数据。" },
+  "privacyPolicy": { "message": "隐私政策" },
+  "clearAllApiKeys": { "message": "删除本设备全部 API Key" },
+  "clearAllApiKeysConfirm": { "message": "确定删除本设备保存的全部 API Key 吗？" },
+  "allApiKeysCleared": { "message": "全部 API Key 已删除" },
+  "clearApiKeysFailed": { "message": "删除 API Key 失败" },
   "popupFooter": { "message": "打开 YouTube 或 Bilibili 视频页面，点击“AI 总结”按钮即可使用" },
   "perMillionTokens": { "message": "$PRICE$ / 1M tokens", "placeholders": { "price": { "content": "$1" } } },
 

@@ -3,7 +3,7 @@
  * 根据用户选择的供应商和模型，委托给对应的适配器处理。
  */
 
-import { getSettings } from "./storage";
+import { getApiKey, getSettings } from "./storage";
 import { getSystemPrompt } from "./prompts";
 import { getProvider } from "./model-registry";
 import { openaiCompatAdapter } from "./ai/openai-compat";
@@ -111,7 +111,7 @@ async function loadConfig() {
     throw new AIServiceError(t("errorUnknownProvider", providerId), false);
   }
 
-  const apiKey = settings.apiKeys[providerId] ?? "";
+  const apiKey = await getApiKey(providerId);
   if (!apiKey) {
     throw new NoApiKeyError(provider.name);
   }

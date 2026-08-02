@@ -11,7 +11,7 @@ import {
 import {
   summarizeTextStream,
   getActiveAIIdentity,
-} from "../service/ai";
+} from "../service/ai-client";
 import { formatTime } from "../utils/text";
 import type { YouTubePlayer } from "./extractors/caption-interceptor";
 import type { Transcript } from "./transcript";
