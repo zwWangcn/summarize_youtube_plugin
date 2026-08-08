@@ -64,6 +64,9 @@
   "translationStopped": { "message": "翻訳を停止しました：$ERROR$", "placeholders": { "error": { "content": "$1" } } },
   "fetchingTranscript": { "message": "字幕を取得中…" },
   "generatingSummary": { "message": "AI が要約を生成中…" },
+  "translateSummaryTo": { "message": "$LANGUAGE$に翻訳", "placeholders": { "language": { "content": "$1" } } },
+  "translatingSummaryTo": { "message": "$LANGUAGE$に翻訳中…", "placeholders": { "language": { "content": "$1" } } },
+  "summaryTranslationFailed": { "message": "要約の翻訳に失敗したため、元の要約を保持しました" },
   "summaryCacheUnavailable": { "message": "ローカルキャッシュを利用できないため、今回の結果は保存されない可能性があります" },
   "unknownTitle": { "message": "タイトル不明" },
 

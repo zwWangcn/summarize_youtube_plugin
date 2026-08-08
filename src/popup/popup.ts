@@ -18,6 +18,7 @@ import {
 } from "../service/model-registry";
 import type { ProviderInfo, ModelInfo } from "../service/model-registry";
 import { OUTPUT_LANGUAGES, getUiLocale, t } from "../utils/i18n";
+import { logI18nDebug } from "../utils/i18n-debug";
 
 // ── DOM refs ────────────────────────────────────────────────────────
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
@@ -70,6 +71,12 @@ async function init(): Promise<void> {
   const savedProvider = settings.provider || "deepseek";
   const savedModel = settings.model || "deepseek-v4-flash";
   outputLanguageSelect.value = settings.outputLanguage;
+  logI18nDebug("popup settings loaded", {
+    chromeUiLocale: getUiLocale(),
+    outputLanguage: settings.outputLanguage,
+    providerId: savedProvider,
+    modelId: savedModel,
+  });
 
   // Set provider
   providerSelect.value = savedProvider;
@@ -175,6 +182,12 @@ saveBtn.addEventListener("click", async () => {
       provider: pid,
       model: mid,
       outputLanguage: outputLanguageSelect.value as Awaited<ReturnType<typeof getSettings>>["outputLanguage"],
+    });
+    logI18nDebug("popup settings saved", {
+      chromeUiLocale: getUiLocale(),
+      outputLanguage: outputLanguageSelect.value,
+      providerId: pid,
+      modelId: mid,
     });
     showStatus(t("settingsSaved"), "success");
   } catch (err) {

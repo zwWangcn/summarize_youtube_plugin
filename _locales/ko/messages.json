@@ -64,6 +64,9 @@
   "translationStopped": { "message": "번역이 중단되었습니다: $ERROR$", "placeholders": { "error": { "content": "$1" } } },
   "fetchingTranscript": { "message": "자막을 가져오는 중…" },
   "generatingSummary": { "message": "AI가 요약을 생성 중입니다…" },
+  "translateSummaryTo": { "message": "$LANGUAGE$(으)로 번역", "placeholders": { "language": { "content": "$1" } } },
+  "translatingSummaryTo": { "message": "$LANGUAGE$(으)로 번역 중…", "placeholders": { "language": { "content": "$1" } } },
+  "summaryTranslationFailed": { "message": "요약 번역에 실패하여 원래 요약을 유지했습니다" },
   "summaryCacheUnavailable": { "message": "로컬 캐시를 사용할 수 없어 이번 결과가 저장되지 않을 수 있습니다" },
   "unknownTitle": { "message": "제목 없음" },
 

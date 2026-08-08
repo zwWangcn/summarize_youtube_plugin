@@ -8,9 +8,16 @@ import {
   type StreamAIOptions,
 } from "./ai";
 import { AI_STREAM_PORT, type AIStreamEvent, type AIStreamRequest } from "./ai-stream-protocol";
-import { buildSummaryUserPrompt, getSystemPrompt } from "./prompts";
+import {
+  buildSummaryUserPrompt,
+  buildSummaryTranslationSystemPrompt,
+  buildSummaryTranslationUserPrompt,
+  getSummaryLanguageReminder,
+  getSystemPrompt,
+} from "./prompts";
 import { getSettings } from "./storage";
 import type { OutputLanguage } from "../utils/i18n";
+import { logI18nDebug } from "../utils/i18n-debug";
 
 const MAX_CHARS = 200_000;
 
@@ -52,11 +59,36 @@ export async function* summarizeTextStream(
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
   const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
+  const systemPrompt = getSystemPrompt(outputLanguage);
   const transcriptPrompt = buildSummaryUserPrompt(text, outputLanguage);
+  const languageReminder = getSummaryLanguageReminder(outputLanguage);
+  logI18nDebug("summary prompt built", {
+    outputLanguage,
+    originalTranscriptCharacters: transcript.length,
+    submittedTranscriptCharacters: text.length,
+    transcriptTruncated: transcript.length > MAX_CHARS,
+    systemPromptCharacters: systemPrompt.length,
+    userPromptCharacters: transcriptPrompt.length,
+    systemHasTargetLanguage: systemPrompt.includes(`(${outputLanguage})`),
+    userPromptStartsWithLanguage: transcriptPrompt.startsWith(languageReminder),
+    userPromptEndsWithLanguage: transcriptPrompt.endsWith(languageReminder),
+  });
   yield* streamAIText(
-    getSystemPrompt(outputLanguage),
+    systemPrompt,
     transcriptPrompt,
-    { disableThinking: true, signal },
+    { disableThinking: true, temperature: 0, signal },
+  );
+}
+
+export async function* translateSummaryStream(
+  summary: string,
+  outputLanguage: OutputLanguage,
+  signal?: AbortSignal,
+): AsyncGenerator<string> {
+  yield* streamAIText(
+    buildSummaryTranslationSystemPrompt(outputLanguage),
+    buildSummaryTranslationUserPrompt(summary),
+    { disableThinking: true, temperature: 0, signal },
   );
 }
 

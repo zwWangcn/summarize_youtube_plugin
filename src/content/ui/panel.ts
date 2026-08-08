@@ -26,6 +26,7 @@ export type TranscriptView = "source" | "translation";
 
 export interface PanelCallbacks {
   onSummarize: () => void;
+  onTranslateSummary?: () => void;
   onTranscript: (withTimestamps: boolean) => void;
   onTranscriptViewChange?: (view: TranscriptView) => void;
   onTranslateCurrent?: (forceRefresh: boolean) => void;
@@ -58,6 +59,7 @@ export class Panel {
   private warningEl: HTMLElement;
   private titleEl: HTMLElement;
   private summarizeBtn: HTMLButtonElement;
+  private summaryTranslateBtn: HTMLButtonElement;
   private transcriptBtn: HTMLButtonElement;
   private transcriptTools: HTMLElement;
   private sourceViewBtn: HTMLButtonElement;
@@ -72,6 +74,10 @@ export class Panel {
   private callbacks: PanelCallbacks;
   private mode: PanelMode = "idle";
   private translationAvailable = true;
+  private summaryTranslationVisible = false;
+  private summaryTranslationBusy = false;
+  private summaryTranslationAttention = false;
+  private summaryTranslationTarget = "";
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private startTime = 0;
 
@@ -123,6 +129,7 @@ export class Panel {
     this.errorEl = this.panel.querySelector(".vas-error")!;
     this.warningEl = this.panel.querySelector(".vas-warning")!;
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
+    this.summaryTranslateBtn = this.panel.querySelector(".vas-btn-summary-translate")!;
     this.transcriptBtn = this.panel.querySelector(".vas-btn-transcript")!;
     this.transcriptTools = this.panel.querySelector(".vas-transcript-tools")!;
     this.sourceViewBtn = this.panel.querySelector(".vas-view-source")!;
@@ -254,6 +261,7 @@ export class Panel {
       <div class="vas-toolbar">
         <button class="vas-btn vas-btn-primary vas-btn-summarize">${t("aiSummary")}</button>
         <button class="vas-btn vas-btn-transcript">${t("rawTranscript")}</button>
+        <button class="vas-btn vas-btn-summary-translate" style="display:none"></button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
           <input type="checkbox" class="vas-timestamp-checkbox" checked /> ${t("timestamp")}
@@ -294,6 +302,10 @@ export class Panel {
     this.panel.querySelector(".vas-btn-close")?.addEventListener("click", () => this.close());
     // Summarize button
     this.summarizeBtn.addEventListener("click", () => this.callbacks.onSummarize());
+    this.summaryTranslateBtn.addEventListener(
+      "click",
+      () => this.callbacks.onTranslateSummary?.(),
+    );
     // Transcript button
     this.transcriptBtn.addEventListener("click", () => {
       this.timestampToggle.style.display = "flex";
@@ -445,6 +457,7 @@ export class Panel {
     this.timestampToggle.style.display = "none";
     this.copyBtn.style.display = "none";
     this.setTranslationActionsBusy(false);
+    this.hideSummaryTranslationAction();
     this.isCachedView = false;
     this.setSummarizeButtonText(t("aiSummary"));
     this.setTranscriptView("source");
@@ -501,6 +514,8 @@ export class Panel {
         break;
       case "summary":
         this.contentEl.style.display = "block";
+        this.summaryTranslateBtn.style.display =
+          this.summaryTranslationVisible ? "inline-flex" : "none";
         this.copyBtn.style.display = "inline-flex";
         this.timestampToggle.style.display = "none";
         this.setButtonsDisabled(false);
@@ -561,6 +576,47 @@ export class Panel {
   setButtonsDisabled(disabled: boolean): void {
     this.summarizeBtn.disabled = disabled;
     this.transcriptBtn.disabled = disabled;
+    this.summaryTranslateBtn.disabled = disabled || this.summaryTranslationBusy;
+  }
+
+  showSummaryTranslationAction(targetLanguage: string): void {
+    this.summaryTranslationTarget = targetLanguage;
+    this.summaryTranslationVisible = true;
+    this.summaryTranslateBtn.textContent = t("translateSummaryTo", targetLanguage);
+    this.summaryTranslateBtn.style.display = this.mode === "summary" ? "inline-flex" : "none";
+    this.summaryTranslateBtn.disabled = this.summaryTranslationBusy;
+  }
+
+  hideSummaryTranslationAction(): void {
+    this.summaryTranslationVisible = false;
+    this.summaryTranslationBusy = false;
+    this.summaryTranslationAttention = false;
+    this.summaryTranslationTarget = "";
+    this.summaryTranslateBtn.style.display = "none";
+    this.summaryTranslateBtn.classList.remove("vas-language-mismatch");
+    this.summaryTranslateBtn.disabled = false;
+  }
+
+  setSummaryTranslationAttention(attention: boolean): void {
+    this.summaryTranslationAttention = attention;
+    this.summaryTranslateBtn.classList.remove("vas-language-mismatch");
+    if (attention && !this.summaryTranslationBusy) {
+      // Restart the finite pulse when a new detection result reports a mismatch.
+      void this.summaryTranslateBtn.offsetWidth;
+      this.summaryTranslateBtn.classList.add("vas-language-mismatch");
+    }
+  }
+
+  setSummaryTranslationBusy(busy: boolean): void {
+    this.summaryTranslationBusy = busy;
+    this.summaryTranslateBtn.disabled = busy;
+    this.summaryTranslateBtn.textContent = busy
+      ? t("translatingSummaryTo", this.summaryTranslationTarget)
+      : t("translateSummaryTo", this.summaryTranslationTarget);
+    this.summaryTranslateBtn.classList.toggle(
+      "vas-language-mismatch",
+      this.summaryTranslationAttention && !busy,
+    );
   }
 
   setTranslationAvailable(available: boolean): void {
@@ -741,6 +797,7 @@ export class Panel {
     this.errorEl.style.display = "none";
     this.warningEl.style.display = "none";
     this.copyBtn.style.display = "none";
+    this.summaryTranslateBtn.style.display = "none";
     this.timestampToggle.style.display = "none";
     this.transcriptTools.style.display = "none";
     this.hideCacheHint();

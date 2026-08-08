@@ -2,6 +2,8 @@ import { describe, expect, it } from "vitest";
 import { OUTPUT_LANGUAGES } from "../utils/i18n";
 import {
   buildSummaryUserPrompt,
+  buildSummaryTranslationSystemPrompt,
+  buildSummaryTranslationUserPrompt,
   buildTargetLanguageRules,
   getSystemPrompt,
 } from "./prompts";
@@ -42,6 +44,17 @@ describe("localized AI prompts", () => {
     expect(prompt).toContain(`into ${language.englishName} (${language.code})`);
     expect(prompt).toContain("NDJSON");
     expect(prompt).toContain(`written in ${language.englishName}`);
+  });
+
+  it.each(OUTPUT_LANGUAGES)("builds a lossless $englishName summary repair prompt", (language) => {
+    const systemPrompt = buildSummaryTranslationSystemPrompt(language.code);
+    const summary = "## 見出し\n- [00:10] 内容";
+    const userPrompt = buildSummaryTranslationUserPrompt(summary);
+
+    expect(systemPrompt).toContain(`into ${language.englishName} (${language.code})`);
+    expect(systemPrompt).toContain("Preserve all Markdown structure");
+    expect(systemPrompt).toContain("Do not summarize, omit, expand");
+    expect(userPrompt).toContain(`<<<START OF SUMMARY>>>\n${summary}\n<<<END OF SUMMARY>>>`);
   });
 
   it("adds explicit Simplified and Traditional Chinese script constraints", () => {

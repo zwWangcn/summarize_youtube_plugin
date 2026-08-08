@@ -9,6 +9,7 @@ import {
 import {
   summarizeTextStream,
   getActiveAIIdentity,
+  translateSummaryStream,
 } from "../service/ai-client";
 import { formatTime } from "../utils/text";
 import type { YouTubePlayer } from "./extractors/caption-interceptor";
@@ -36,10 +37,17 @@ import { handleError } from "./error-handler";
 import { runSummaryCacheOperation } from "./summary-cache-operation";
 import { getSettings } from "../service/storage";
 import {
+  getOutputLanguageInfo,
+  getUiLocale,
   isOutputLanguage,
   t,
   type OutputLanguage,
 } from "../utils/i18n";
+import { analyzeTextScripts, logI18nDebug } from "../utils/i18n-debug";
+import {
+  detectOutputLanguage,
+  type OutputLanguageStatus,
+} from "../utils/output-language-detection";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -54,6 +62,14 @@ export interface Extractor {
 export interface ContentScriptConfig {
   /** Find injection target — used on initial load + SPA rebuilds */
   findInjectTarget: () => HTMLElement | null;
+}
+
+interface DisplayedSummary {
+  text: string;
+  videoId: string;
+  videoTitle: string;
+  outputLanguage: OutputLanguage;
+  languageStatus: OutputLanguageStatus;
 }
 
 const SUMMARY_SOURCE = "youtube";
@@ -208,7 +224,14 @@ export async function initContentScript(
 ): Promise<void> {
   if (document.getElementById("vas-root")) return;
 
-  let outputLanguage: OutputLanguage = (await getSettings()).outputLanguage;
+  const initialSettings = await getSettings();
+  let outputLanguage: OutputLanguage = initialSettings.outputLanguage;
+  logI18nDebug("content initialized", {
+    chromeUiLocale: getUiLocale(),
+    outputLanguage,
+    providerId: initialSettings.provider,
+    modelId: initialSettings.model,
+  });
 
   // ── Shared state ───────────────────────────────────────────────────
   let transcriptData: Transcript | null = null;
@@ -226,6 +249,8 @@ export async function initContentScript(
   let translationTask: Promise<void> | null = null;
   let translationAbort: AbortController | null = null;
   let summaryAbort: AbortController | null = null;
+  let summaryTranslationAbort: AbortController | null = null;
+  let displayedSummary: DisplayedSummary | null = null;
   let translationProgressText = "";
   let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
@@ -234,7 +259,10 @@ export async function initContentScript(
     transcriptStateVersion += 1;
     translationAbort?.abort();
     summaryAbort?.abort();
+    summaryTranslationAbort?.abort();
     summaryAbort = null;
+    summaryTranslationAbort = null;
+    displayedSummary = null;
     transcriptData = null;
     transcriptVideoId = "";
     transcriptChunks = [];
@@ -251,6 +279,10 @@ export async function initContentScript(
   chrome.storage.onChanged.addListener((changes, areaName) => {
     const next = changes.outputLanguage?.newValue;
     if (areaName !== "sync" || !isOutputLanguage(next) || next === outputLanguage) return;
+    logI18nDebug("content output language changed", {
+      previousOutputLanguage: outputLanguage,
+      outputLanguage: next,
+    });
     outputLanguage = next;
     clearTranscriptState();
     currentPanel?.reset();
@@ -279,6 +311,36 @@ export async function initContentScript(
       panel.setTranslationAvailable(false);
     }
     return transcript;
+  }
+
+  function showSummaryTranslationAction(panel: Panel, summary: DisplayedSummary): void {
+    panel.showSummaryTranslationAction(
+      getOutputLanguageInfo(summary.outputLanguage).nativeName,
+    );
+    panel.setSummaryTranslationAttention(summary.languageStatus === "mismatch");
+  }
+
+  async function detectDisplayedSummaryLanguage(
+    panel: Panel,
+    summary: DisplayedSummary,
+    requestId: string,
+    source: "generated" | "cache" | "translation",
+  ): Promise<void> {
+    const detection = await detectOutputLanguage(summary.text, summary.outputLanguage);
+    if (displayedSummary !== summary || outputLanguage !== summary.outputLanguage) return;
+
+    summary.languageStatus = detection.status;
+    panel.setSummaryTranslationAttention(detection.status === "mismatch");
+    logI18nDebug("summary language detected", {
+      requestId,
+      source,
+      requestedLanguage: summary.outputLanguage,
+      status: detection.status,
+      isReliable: detection.isReliable,
+      detectedLanguage: detection.detectedLanguage,
+      percentage: detection.percentage,
+      languages: detection.languages,
+    });
   }
 
   function getCurrentPlaybackTime(): number {
@@ -552,6 +614,11 @@ export async function initContentScript(
     onSummarize: async () => {
       const panel = getPanel();
       const requestedLanguage = outputLanguage;
+      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      summaryTranslationAbort?.abort();
+      summaryTranslationAbort = null;
+      displayedSummary = null;
+      panel.hideSummaryTranslationAction();
       summaryAbort?.abort();
       const summaryController = new AbortController();
       summaryAbort = summaryController;
@@ -576,6 +643,11 @@ export async function initContentScript(
 
         // 如果已经显示缓存内容，用户点击「再次总结」——强制刷新
         const isForceRefresh = panel.getIsCachedView();
+        logI18nDebug("summary started", {
+          requestId,
+          requestedLanguage,
+          forceRefresh: isForceRefresh,
+        });
 
         if (isForceRefresh) {
           await runSummaryCacheOperation(
@@ -598,9 +670,26 @@ export async function initContentScript(
           );
           assertCurrent();
           if (cached) {
+            logI18nDebug("summary cache hit", {
+              requestId,
+              requestedLanguage,
+              cachedOutputLanguage: cached.outputLanguage,
+              cacheAgeMs: Date.now() - cached.timestamp,
+              outputCharacters: cached.text.length,
+              outputScripts: analyzeTextScripts(cached.text),
+            });
+            const summaryState: DisplayedSummary = {
+              text: cached.text,
+              videoId,
+              videoTitle: videoTitle || cached.videoTitle,
+              outputLanguage: requestedLanguage,
+              languageStatus: "uncertain",
+            };
+            displayedSummary = summaryState;
             // 缓存命中——直接显示
             panel.setTitle(videoTitle || cached.videoTitle);
             panel.setContent(renderMarkdown(cached.text));
+            showSummaryTranslationAction(panel, summaryState);
             panel.setMode("summary");
             panel.setCachedView(true);
             panel.setSummarizeButtonText(t("summarizeAgain"));
@@ -610,6 +699,8 @@ export async function initContentScript(
             const hint = formatCacheAge(elapsed);
             panel.showCacheHint(t("cachedAt", hint));
             panel.open();
+            await detectDisplayedSummaryLanguage(panel, summaryState, requestId, "cache");
+            assertCurrent();
             return;
           }
         }
@@ -623,6 +714,17 @@ export async function initContentScript(
         const transcript = await ensureTranscript(panel);
         assertCurrent();
         const transcriptText = transcriptToText(transcript);
+        const aiIdentity = await getActiveAIIdentity();
+        assertCurrent();
+        logI18nDebug("summary request prepared", {
+          requestId,
+          requestedLanguage,
+          sourceLanguage: transcript.languageCode,
+          transcriptSegments: transcript.segments.length,
+          transcriptCharacters: transcriptText.length,
+          providerId: aiIdentity.providerId,
+          modelId: aiIdentity.modelId,
+        });
 
         panel.setTitle(videoTitle);
         panel.setLoadingMessage(t("generatingSummary"));
@@ -656,7 +758,14 @@ export async function initContentScript(
         // flush 最后一次渲染
         if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
         renderFrameId = null;
+        pendingRender = false;
         renderStreaming(contentEl, buffer);
+        logI18nDebug("summary response completed", {
+          requestId,
+          requestedLanguage,
+          outputCharacters: buffer.length,
+          outputScripts: analyzeTextScripts(buffer),
+        });
 
         // 保存到缓存
         if (buffer.trim()) {
@@ -674,6 +783,17 @@ export async function initContentScript(
           assertCurrent();
         }
 
+        const summaryState: DisplayedSummary | null = buffer.trim()
+          ? {
+              text: buffer,
+              videoId,
+              videoTitle,
+              outputLanguage: requestedLanguage,
+              languageStatus: "uncertain",
+            }
+          : null;
+        displayedSummary = summaryState;
+        if (summaryState) showSummaryTranslationAction(panel, summaryState);
         panel.setMode("summary");
         // API 获取的新内容，标记为可「再次总结」
         panel.setCachedView(true);
@@ -681,8 +801,20 @@ export async function initContentScript(
         if (cacheFailed) {
           panel.showWarning(t("summaryCacheUnavailable"));
         }
+        if (summaryState) {
+          await detectDisplayedSummaryLanguage(panel, summaryState, requestId, "generated");
+          assertCurrent();
+        }
       } catch (err) {
-        if ((err as Error)?.name === "AbortError") return;
+        if ((err as Error)?.name === "AbortError") {
+          logI18nDebug("summary aborted", { requestId, requestedLanguage });
+          return;
+        }
+        logI18nDebug("summary failed", {
+          requestId,
+          requestedLanguage,
+          errorName: (err as Error)?.name ?? "unknown",
+        });
         handleError(err, panel);
       } finally {
         if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
@@ -690,8 +822,139 @@ export async function initContentScript(
       }
     },
 
+    onTranslateSummary: async () => {
+      const sourceSummary = displayedSummary;
+      if (!sourceSummary?.text.trim() || summaryTranslationAbort) return;
+
+      const panel = getPanel();
+      const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
+      const controller = new AbortController();
+      summaryTranslationAbort = controller;
+      let renderFrameId: number | null = null;
+      let pendingRender = false;
+      let streamStarted = false;
+      let translatedText = "";
+      let cacheFailed = false;
+
+      const assertSourceCurrent = () => {
+        if (
+          controller.signal.aborted ||
+          summaryTranslationAbort !== controller ||
+          displayedSummary !== sourceSummary ||
+          outputLanguage !== sourceSummary.outputLanguage ||
+          extractor.getVideoId() !== sourceSummary.videoId
+        ) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
+      };
+
+      panel.setSummaryTranslationBusy(true);
+      logI18nDebug("summary manual translation started", {
+        requestId,
+        requestedLanguage: sourceSummary.outputLanguage,
+        sourceCharacters: sourceSummary.text.length,
+        sourceScripts: analyzeTextScripts(sourceSummary.text),
+      });
+
+      try {
+        const contentEl = panel.getContentElement();
+        for await (const chunk of translateSummaryStream(
+          sourceSummary.text,
+          sourceSummary.outputLanguage,
+          controller.signal,
+        )) {
+          assertSourceCurrent();
+          if (!streamStarted) {
+            streamStarted = true;
+            panel.beginStreaming();
+          }
+          translatedText += chunk;
+          if (!pendingRender) {
+            pendingRender = true;
+            renderFrameId = requestAnimationFrame(() => {
+              if (!controller.signal.aborted && displayedSummary === sourceSummary) {
+                renderStreaming(contentEl, translatedText);
+              }
+              pendingRender = false;
+            });
+          }
+        }
+        assertSourceCurrent();
+        if (!translatedText.trim()) throw new Error(t("errorTranslationEmpty"));
+
+        if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
+        renderFrameId = null;
+        pendingRender = false;
+        renderStreaming(contentEl, translatedText);
+
+        const translatedSummary: DisplayedSummary = {
+          ...sourceSummary,
+          text: translatedText,
+          languageStatus: "uncertain",
+        };
+        displayedSummary = translatedSummary;
+        showSummaryTranslationAction(panel, translatedSummary);
+        panel.setMode("summary");
+        panel.setCachedView(true);
+
+        await runSummaryCacheOperation(
+          "write",
+          () => setCachedSummary(
+            SUMMARY_SOURCE,
+            translatedSummary.videoId,
+            translatedSummary.videoTitle,
+            translatedSummary.text,
+            translatedSummary.outputLanguage,
+          ),
+          () => { cacheFailed = true; },
+        );
+        if (
+          controller.signal.aborted ||
+          summaryTranslationAbort !== controller ||
+          displayedSummary !== translatedSummary
+        ) {
+          throw new DOMException("The operation was aborted", "AbortError");
+        }
+
+        await detectDisplayedSummaryLanguage(
+          panel,
+          translatedSummary,
+          requestId,
+          "translation",
+        );
+        logI18nDebug("summary manual translation completed", {
+          requestId,
+          requestedLanguage: translatedSummary.outputLanguage,
+          outputCharacters: translatedText.length,
+          outputScripts: analyzeTextScripts(translatedText),
+          languageStatus: translatedSummary.languageStatus,
+        });
+        if (cacheFailed) panel.showWarning(t("summaryCacheUnavailable"));
+      } catch (error) {
+        if ((error as Error)?.name === "AbortError") return;
+
+        if (displayedSummary === sourceSummary) {
+          panel.setContent(renderMarkdown(sourceSummary.text));
+          panel.setMode("summary");
+          showSummaryTranslationAction(panel, sourceSummary);
+          panel.showWarning(t("summaryTranslationFailed"));
+        }
+        logI18nDebug("summary manual translation failed", {
+          requestId,
+          requestedLanguage: sourceSummary.outputLanguage,
+          errorName: (error as Error)?.name ?? "unknown",
+        });
+      } finally {
+        if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
+        if (summaryTranslationAbort === controller) summaryTranslationAbort = null;
+        panel.setSummaryTranslationBusy(false);
+      }
+    },
+
     onTranscript: async (withTimestamps: boolean) => {
       const panel = getPanel();
+      summaryTranslationAbort?.abort();
+      summaryTranslationAbort = null;
       const stateVersion = transcriptStateVersion;
       panel.setMode("loading");
       panel.setLoadingMessage(t("fetchingTranscript"));

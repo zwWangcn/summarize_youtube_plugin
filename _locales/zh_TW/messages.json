@@ -64,6 +64,9 @@
   "translationStopped": { "message": "翻譯已停止：$ERROR$", "placeholders": { "error": { "content": "$1" } } },
   "fetchingTranscript": { "message": "正在取得字幕…" },
   "generatingSummary": { "message": "AI 正在產生總結…" },
+  "translateSummaryTo": { "message": "翻譯為$LANGUAGE$", "placeholders": { "language": { "content": "$1" } } },
+  "translatingSummaryTo": { "message": "正在翻譯為$LANGUAGE$…", "placeholders": { "language": { "content": "$1" } } },
+  "summaryTranslationFailed": { "message": "總結翻譯失敗，已保留原總結" },
   "summaryCacheUnavailable": { "message": "本機快取暫時無法使用，本次結果可能不會儲存" },
   "unknownTitle": { "message": "未知標題" },
 

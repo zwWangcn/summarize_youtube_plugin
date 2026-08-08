@@ -144,7 +144,7 @@ export async function* summarizeTextStream(
     transcriptPrompt,
     // DeepSeek V4 defaults to thinking mode. Summaries favor immediate,
     // deterministic output; this flag is only forwarded to DeepSeek.
-    { disableThinking: true, signal },
+    { disableThinking: true, temperature: 0, signal },
   );
 }
 

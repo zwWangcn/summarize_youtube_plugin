@@ -64,6 +64,9 @@
   "translationStopped": { "message": "Translation stopped: $ERROR$", "placeholders": { "error": { "content": "$1" } } },
   "fetchingTranscript": { "message": "Fetching captions..." },
   "generatingSummary": { "message": "AI is generating a summary..." },
+  "translateSummaryTo": { "message": "Translate to $LANGUAGE$", "placeholders": { "language": { "content": "$1" } } },
+  "translatingSummaryTo": { "message": "Translating to $LANGUAGE$...", "placeholders": { "language": { "content": "$1" } } },
+  "summaryTranslationFailed": { "message": "Summary translation failed; the original summary was kept" },
   "summaryCacheUnavailable": { "message": "Local cache is unavailable; this result might not be saved" },
   "unknownTitle": { "message": "Unknown title" },
 
