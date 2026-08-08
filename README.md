@@ -68,7 +68,7 @@ manifest、Popup 和 YouTube 面板使用 Chrome 原生 i18n，界面随 Chrome 
 
 ### 总结缓存
 
-`chrome.storage.local`，7 天 TTL 惰性清理，最多 50 条，超出按 LRU 淘汰。总结和字幕译文均把目标语言纳入缓存身份，不会跨语言复用。
+`chrome.storage.local`，7 天 TTL，最多 50 条。总结按最近访问淘汰，字幕译文按最近更新淘汰；每条总结和每个翻译分段使用独立 storage key，避免多标签页并发覆盖。两类缓存都把目标语言纳入身份，不会跨语言复用。
 
 ## 使用方法
 

@@ -24,9 +24,18 @@ describe("section translation cache", () => {
       value: {
         storage: {
           local: {
-            get: vi.fn(async (key: string) => ({ [key]: store[key] })),
+            get: vi.fn(async (query?: string | string[] | null) => {
+              if (query == null) return { ...store };
+              if (Array.isArray(query)) {
+                return Object.fromEntries(query.map((key) => [key, store[key]]));
+              }
+              return { [query]: store[query] };
+            }),
             set: vi.fn(async (value: Record<string, unknown>) => {
               Object.assign(store, value);
+            }),
+            remove: vi.fn(async (keys: string | string[]) => {
+              for (const key of Array.isArray(keys) ? keys : [keys]) delete store[key];
             }),
           },
         },
@@ -35,13 +44,13 @@ describe("section translation cache", () => {
   });
 
   it("merges independently completed sections and supports a section retry", async () => {
-    const cached = await setCachedTranslationSection(identity, {
+    await setCachedTranslationSection(identity, {
       chunkId: 0,
       targetStart: 0,
       targetEnd: 2,
       segments: [{ start: 0, duration: 3, text: "第一段" }],
     });
-    expect(cached.pipelineVersion).toBe(3);
+    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(4);
     await setCachedTranslationSection(identity, {
       chunkId: 2,
       targetStart: 5,
@@ -75,5 +84,24 @@ describe("section translation cache", () => {
     });
 
     expect(await getCachedTranslation({ ...identity, targetLanguage: "en" })).toBeNull();
+  });
+
+  it("keeps concurrently completed sections", async () => {
+    await Promise.all([
+      setCachedTranslationSection(identity, {
+        chunkId: 0,
+        targetStart: 0,
+        targetEnd: 1,
+        segments: [{ start: 0, duration: 2, text: "第一段" }],
+      }),
+      setCachedTranslationSection(identity, {
+        chunkId: 1,
+        targetStart: 2,
+        targetEnd: 3,
+        segments: [{ start: 2, duration: 2, text: "第二段" }],
+      }),
+    ]);
+    expect(Object.keys((await getCachedTranslation(identity))!.sections).sort())
+      .toEqual(["0", "1"]);
   });
 });

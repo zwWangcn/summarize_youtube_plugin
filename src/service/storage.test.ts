@@ -33,7 +33,7 @@ describe("settings and API key storage", () => {
   beforeEach(() => {
     vi.resetModules();
     syncStore = { "vas-settings-migrated-v2": true };
-    localStore = { "vas-api-keys-migrated-v3": true };
+    localStore = { "vas-api-keys-migrated-v4": true };
     uiLanguage = "ja-JP";
     Object.defineProperty(globalThis, "chrome", {
       configurable: true,
@@ -84,7 +84,10 @@ describe("settings and API key storage", () => {
       openai: "local-key",
     });
     expect(syncStore.apiKeys).toBeUndefined();
-    expect(localStore["vas-api-keys-migrated-v3"]).toBe(true);
+    expect(localStore["vas-api-key:deepseek"]).toBe("synced-key");
+    expect(localStore["vas-api-key:openai"]).toBe("local-key");
+    expect(localStore.apiKeys).toBeUndefined();
+    expect(localStore["vas-api-keys-migrated-v4"]).toBe(true);
   });
 
   it("moves the v1 DeepSeek key directly to local storage", async () => {
@@ -101,21 +104,35 @@ describe("settings and API key storage", () => {
     await expect(getApiKey("deepseek")).resolves.toBe("legacy-key");
     expect(syncStore.deepseekApiKey).toBeUndefined();
     expect(syncStore.apiKeys).toBeUndefined();
-    expect(localStore.apiKeys).toEqual({ deepseek: "legacy-key" });
+    expect(localStore["vas-api-key:deepseek"]).toBe("legacy-key");
   });
 
   it("stores keys locally by default", async () => {
     const { getApiKey, setApiKey } = await import("./storage");
     await setApiKey("openai", " sk-test ");
     await expect(getApiKey("openai")).resolves.toBe("sk-test");
-    expect(localStore.apiKeys).toEqual({ openai: "sk-test" });
+    expect(localStore["vas-api-key:openai"]).toBe("sk-test");
   });
 
   it("clears locally stored keys", async () => {
-    localStore.apiKeys = { openai: "local-key" };
+    localStore["vas-api-key:openai"] = "local-key";
+    localStore.apiKeys = { deepseek: "legacy-key" };
     const { clearAllApiKeys } = await import("./storage");
     await clearAllApiKeys();
     expect(localStore.apiKeys).toBeUndefined();
+    expect(localStore["vas-api-key:openai"]).toBeUndefined();
+  });
+
+  it("stores concurrent provider updates without losing either key", async () => {
+    const { getApiKeys, setApiKey } = await import("./storage");
+    await Promise.all([
+      setApiKey("openai", "openai-key"),
+      setApiKey("anthropic", "anthropic-key"),
+    ]);
+    await expect(getApiKeys()).resolves.toEqual({
+      openai: "openai-key",
+      anthropic: "anthropic-key",
+    });
   });
 
 });

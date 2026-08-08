@@ -12,7 +12,8 @@ import {
 import {
   PROVIDERS,
   getModelsByProvider,
-  getModel,
+  getModelForProvider,
+  resolveAISelection,
   formatPricing,
   formatContextWindow,
 } from "../service/model-registry";
@@ -41,6 +42,31 @@ const infoDesc = document.getElementById("infoDesc") as HTMLSpanElement;
 // ── State ────────────────────────────────────────────────────────────
 let currentProvider: ProviderInfo = PROVIDERS[0];
 let currentModel: ModelInfo | null = null;
+let apiKeyLoadVersion = 0;
+
+async function loadApiKeyForProvider(providerId: string): Promise<void> {
+  const version = ++apiKeyLoadVersion;
+  apiKeyInput.value = "";
+  apiKeyInput.disabled = true;
+  saveBtn.disabled = true;
+  try {
+    const key = await getApiKey(providerId);
+    if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
+      apiKeyInput.value = key;
+    }
+  } catch (err) {
+    if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
+      apiKeyInput.value = "";
+      const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.debug("[vas] API key load failed:", detail);
+    }
+  } finally {
+    if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
+      apiKeyInput.disabled = false;
+      saveBtn.disabled = false;
+    }
+  }
+}
 
 // ── Init ─────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
@@ -68,8 +94,9 @@ async function init(): Promise<void> {
 
   // Load saved settings
   const settings = await getSettings();
-  const savedProvider = settings.provider || "deepseek";
-  const savedModel = settings.model || "deepseek-v4-flash";
+  const selection = resolveAISelection(settings.provider, settings.model);
+  const savedProvider = selection.provider.id;
+  const savedModel = selection.model.id;
   outputLanguageSelect.value = settings.outputLanguage;
   logI18nDebug("popup settings loaded", {
     chromeUiLocale: getUiLocale(),
@@ -79,15 +106,15 @@ async function init(): Promise<void> {
   });
 
   // Set provider
-  providerSelect.value = savedProvider;
-  currentProvider = PROVIDERS.find((p) => p.id === savedProvider) ?? PROVIDERS[0];
+  currentProvider = selection.provider;
+  providerSelect.value = currentProvider.id;
   populateModels(currentProvider.id);
   modelSelect.value = savedModel;
-  currentModel = getModel(savedModel) ?? null;
+  currentModel = selection.model;
   updateModelInfo();
   updateApiKeyUI(currentProvider);
   // Load saved API key for this provider
-  apiKeyInput.value = await getApiKey(savedProvider);
+  await loadApiKeyForProvider(currentProvider.id);
 }
 
 // ── Populate model dropdown for a given provider ─────────────────────
@@ -150,14 +177,12 @@ providerSelect.addEventListener("change", () => {
   updateApiKeyUI(currentProvider);
 
   // Reload saved API key for new provider
-  getApiKey(pid).then((key) => {
-    apiKeyInput.value = key;
-  });
+  void loadApiKeyForProvider(pid);
 });
 
 // Model changed → update info card
 modelSelect.addEventListener("change", () => {
-  currentModel = getModel(modelSelect.value) ?? null;
+  currentModel = getModelForProvider(providerSelect.value, modelSelect.value) ?? null;
   updateModelInfo();
 });
 
@@ -175,6 +200,10 @@ saveBtn.addEventListener("click", async () => {
     const pid = providerSelect.value;
     const mid = modelSelect.value;
     const key = apiKeyInput.value.trim();
+
+    if (!getModelForProvider(pid, mid)) {
+      throw new Error(`Invalid provider/model selection: ${pid}/${mid}`);
+    }
 
     await setApiKey(pid, key);
 
@@ -200,13 +229,19 @@ saveBtn.addEventListener("click", async () => {
 clearKeysBtn.addEventListener("click", async () => {
   if (!window.confirm(t("clearAllApiKeysConfirm"))) return;
   try {
+    apiKeyLoadVersion += 1;
     await clearAllApiKeys();
     apiKeyInput.value = "";
+    apiKeyInput.disabled = false;
+    saveBtn.disabled = false;
     showStatus(t("allApiKeysCleared"), "success");
   } catch (err) {
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
     console.debug("[vas] Clear API keys failed:", detail);
     showStatus(t("clearApiKeysFailed"), "error");
+  } finally {
+    apiKeyInput.disabled = false;
+    saveBtn.disabled = false;
   }
 });
 

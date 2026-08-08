@@ -9,16 +9,19 @@ function buildBody(params: AIRequest): string {
   const body: Record<string, unknown> = {
     model: params.model,
     messages: [
-      { role: "system", content: params.systemPrompt },
+      { role: params.instructionRole ?? "system", content: params.systemPrompt },
       { role: "user", content: params.userPrompt },
     ],
     stream: true,
-    stream_options: { include_usage: true },
-    temperature: params.temperature ?? 0.3,
-    max_tokens: params.maxOutputTokens ?? 16384,
   };
-  if (params.disableThinking) {
+  if (typeof params.temperature === "number") body.temperature = params.temperature;
+  body[params.maxOutputTokensField ?? "max_tokens"] = params.maxOutputTokens ?? 16384;
+  if (params.disableThinking && params.thinkingControl === "deepseek") {
     body.thinking = { type: "disabled" };
+  } else if (params.disableThinking && params.thinkingControl === "qwen") {
+    body.enable_thinking = false;
+  } else if (params.disableThinking && params.thinkingControl === "openai") {
+    body.reasoning_effort = "minimal";
   }
   return JSON.stringify(body);
 }
@@ -37,6 +40,10 @@ export const openaiCompatAdapter: ProviderAdapter = {
 
   parseStreamChunk(data: unknown): StreamChunk | null {
     const obj = data as Record<string, unknown>;
+    const error = obj?.error as Record<string, unknown> | undefined;
+    if (error) {
+      throw new Error(typeof error.message === "string" ? error.message : "AI stream error");
+    }
     if (!obj?.choices || !Array.isArray(obj.choices)) return null;
 
     const choice = obj.choices[0] as Record<string, unknown> | undefined;

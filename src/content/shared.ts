@@ -12,7 +12,6 @@ import {
   translateSummaryStream,
 } from "../service/ai-client";
 import { formatTime } from "../utils/text";
-import type { YouTubePlayer } from "./extractors/caption-interceptor";
 import type { Transcript } from "./transcript";
 import { isTranscriptInOutputLanguage, transcriptToText } from "./transcript";
 import { UserError } from "../utils/errors";
@@ -70,6 +69,12 @@ interface DisplayedSummary {
   videoTitle: string;
   outputLanguage: OutputLanguage;
   languageStatus: OutputLanguageStatus;
+}
+
+interface YouTubePlayer {
+  seekTo?: (seconds: number, allowSeekAhead: boolean) => void;
+  getCurrentTime?: () => number;
+  playVideo?: () => void;
 }
 
 const SUMMARY_SOURCE = "youtube";
@@ -472,31 +477,31 @@ export async function initContentScript(
     return identity;
   }
 
+  function mountPanel(target: HTMLElement): Panel {
+    currentPanel?.destroy();
+    const panel = new Panel(callbacks);
+    currentPanel = panel;
+    panel.getContentElement().addEventListener(
+      "scroll",
+      () => handleTranscriptScroll(panel),
+      { passive: true },
+    );
+    panel.setTranslationAvailable(true);
+    const title = extractor.getVideoTitle();
+    if (title) panel.setTitle(title);
+    panel.setTheme(isYouTubeDarkMode());
+    panel.injectTrigger(target);
+    panel.bindToPlayer(target);
+    panel.injectPanel(document.body);
+    void panel.initPanelWidth();
+    return panel;
+  }
+
   function getPanel(): Panel {
     if (!currentPanel || !document.getElementById("vas-root")) {
-      // 旧 Panel 可能因宿主页重建 DOM 而脱离文档（vas-root 丢失）。
-      // 直接覆盖会泄漏其 bindToPlayer 事件监听器与残留 trigger DOM，故先销毁。
-      if (currentPanel) {
-        currentPanel.destroy();
-        currentPanel = null;
-      }
-      const newTarget = config.findInjectTarget() || document.body;
-      currentPanel = new Panel(callbacks);
-      currentPanel.getContentElement().addEventListener(
-        "scroll",
-        () => handleTranscriptScroll(currentPanel!),
-        { passive: true },
-      );
-      currentPanel.setTranslationAvailable(true);
-      const t = extractor.getVideoTitle();
-      if (t) currentPanel.setTitle(t);
-      currentPanel.setTheme(isYouTubeDarkMode());
-      currentPanel.injectTrigger(newTarget);
-      currentPanel.bindToPlayer(newTarget);
-      currentPanel.injectPanel(document.body);
-      currentPanel.initPanelWidth();
+      return mountPanel(config.findInjectTarget() || document.body);
     }
-    return currentPanel!;
+    return currentPanel;
   }
 
   function runTranslationQueue(
@@ -1018,7 +1023,11 @@ export async function initContentScript(
       );
     },
 
-    onClose: () => {},
+    onClose: () => {
+      summaryAbort?.abort();
+      summaryTranslationAbort?.abort();
+      translationAbort?.abort();
+    },
 
     onSeek: (seconds: number) => {
       // 优先用 YouTube 播放器 API（同视频 SPA 内 seek，无网络请求）；
@@ -1042,13 +1051,6 @@ export async function initContentScript(
     if (!extractor.isOnVideoPage()) return;
     if (document.getElementById("vas-root")) return;
 
-    // 走到这里说明 vas-root 已不在文档中（被宿主页移除）。
-    // 若 currentPanel 仍持有旧实例，先销毁以释放事件监听器与残留 DOM，避免泄漏。
-    if (currentPanel) {
-      currentPanel.destroy();
-      currentPanel = null;
-    }
-
     let target: HTMLElement;
     try {
       target = await waitForTarget(config.findInjectTarget, 30000);
@@ -1057,24 +1059,7 @@ export async function initContentScript(
       target = document.body;
     }
 
-    currentPanel = new Panel(callbacks);
-    currentPanel.getContentElement().addEventListener(
-      "scroll",
-      () => handleTranscriptScroll(currentPanel!),
-      { passive: true },
-    );
-    currentPanel.setTranslationAvailable(true);
-    const videoTitle = extractor.getVideoTitle();
-    if (videoTitle) currentPanel.setTitle(videoTitle);
-    currentPanel.setTheme(isYouTubeDarkMode());
-
-    // 注入触发按钮到播放器
-    currentPanel.injectTrigger(target);
-    // 绑定到播放器 hover 状态 — 跟随原生控制栏自动显隐
-    currentPanel.bindToPlayer(target);
-    // 注入面板到 body（position: fixed，不受父元素影响）
-    currentPanel.injectPanel(document.body);
-    currentPanel.initPanelWidth();
+    mountPanel(target);
   }
 
   function destroyPanel(): void {

@@ -88,6 +88,7 @@ export class Panel {
   private boundPlayer: HTMLElement | null = null;
   private boundPlayerShow: (() => void) | null = null;
   private boundPlayerHide: (() => void) | null = null;
+  private playerHideTimer: ReturnType<typeof setTimeout> | null = null;
 
   // Resize
   private resizeHandle!: HTMLDivElement;
@@ -96,6 +97,9 @@ export class Panel {
   private resizeStartWidth = 0;
   private boundMouseMove: ((e: MouseEvent) => void) | null = null;
   private boundMouseUp: ((e: MouseEvent) => void) | null = null;
+  private isResizing = false;
+  private previousBodyUserSelect = "";
+  private previousBodyCursor = "";
 
   constructor(callbacks: PanelCallbacks) {
     this.callbacks = callbacks;
@@ -203,18 +207,20 @@ export class Panel {
     // Clean up previous bindings first (e.g., after SPA rebuild)
     this.unbindPlayer();
 
-    let hideTimer: ReturnType<typeof setTimeout> | null = null;
-
     const show = () => {
-      if (hideTimer) { clearTimeout(hideTimer); hideTimer = null; }
+      if (this.playerHideTimer) {
+        clearTimeout(this.playerHideTimer);
+        this.playerHideTimer = null;
+      }
       this.trigger.style.opacity = "1";
       this.trigger.style.pointerEvents = "auto";
     };
 
     const hide = () => {
-      hideTimer = setTimeout(() => {
+      this.playerHideTimer = setTimeout(() => {
         this.trigger.style.opacity = "0";
         this.trigger.style.pointerEvents = "none";
+        this.playerHideTimer = null;
       }, 300);  // 小延迟，防止鼠标短暂离开时闪烁
     };
 
@@ -234,6 +240,10 @@ export class Panel {
 
   /** 清理 bindToPlayer 绑定的事件监听器。 */
   private unbindPlayer(): void {
+    if (this.playerHideTimer) {
+      clearTimeout(this.playerHideTimer);
+      this.playerHideTimer = null;
+    }
     if (!this.boundPlayer) return;
     if (this.boundPlayerShow) {
       this.boundPlayer.removeEventListener("mouseenter", this.boundPlayerShow);
@@ -375,6 +385,7 @@ export class Panel {
   destroy(): void {
     this.stopElapsedTimer();
     this.unbindPlayer();
+    this.cleanupResize();
     if (this.trigger.parentNode) {
       this.trigger.remove();
     }
@@ -549,11 +560,6 @@ export class Panel {
     if (el) el.textContent = msg;
   }
 
-  showTranslationProgress(msg: string): void {
-    this.setLoadingMessage(msg);
-    this.contentEl.style.display = "block";
-  }
-
   setContent(html: string): void {
     this.contentEl.innerHTML = html;
     linkifyTimestampsInDom(this.contentEl);
@@ -685,12 +691,16 @@ export class Panel {
   /** 开始拖拽调整宽度。 */
   private startResize(e: MouseEvent): void {
     e.preventDefault();
+    this.cleanupResize();
     this.resizeStartX = e.clientX;
     this.resizeStartWidth = this.panel.getBoundingClientRect().width;
 
     this.boundMouseMove = (ev: MouseEvent) => this.onResizeMouseMove(ev);
     this.boundMouseUp = () => this.onResizeMouseUp();
 
+    this.previousBodyUserSelect = document.body.style.userSelect;
+    this.previousBodyCursor = document.body.style.cursor;
+    this.isResizing = true;
     document.body.style.userSelect = "none";
     document.body.style.cursor = "ew-resize";
 
@@ -701,13 +711,26 @@ export class Panel {
   private onResizeMouseMove(e: MouseEvent): void {
     const delta = this.resizeStartX - e.clientX;
     let newWidth = this.resizeStartWidth + delta;
-    newWidth = Math.max(MIN_PANEL_WIDTH, Math.min(MAX_PANEL_WIDTH, newWidth));
+    const viewportMaximum = Math.max(240, Math.min(MAX_PANEL_WIDTH, window.innerWidth - 24));
+    const viewportMinimum = Math.min(MIN_PANEL_WIDTH, viewportMaximum);
+    newWidth = Math.max(viewportMinimum, Math.min(viewportMaximum, newWidth));
     this.panel.style.width = `${newWidth}px`;
   }
 
   private onResizeMouseUp(): void {
-    document.body.style.userSelect = "";
-    document.body.style.cursor = "";
+    this.cleanupResize();
+
+    // 持久化宽度
+    const finalWidth = this.panel.getBoundingClientRect().width;
+    Panel.savePanelWidth(Math.round(finalWidth));
+    this.updateResetButtonVisibility();
+  }
+
+  private cleanupResize(): void {
+    if (!this.isResizing) return;
+    this.isResizing = false;
+    document.body.style.userSelect = this.previousBodyUserSelect;
+    document.body.style.cursor = this.previousBodyCursor;
 
     if (this.boundMouseMove) {
       document.removeEventListener("mousemove", this.boundMouseMove);
@@ -718,10 +741,6 @@ export class Panel {
       this.boundMouseUp = null;
     }
 
-    // 持久化宽度
-    const finalWidth = this.panel.getBoundingClientRect().width;
-    Panel.savePanelWidth(Math.round(finalWidth));
-    this.updateResetButtonVisibility();
   }
 
   /** 显示/隐藏恢复默认宽度按钮。 */
@@ -735,8 +754,11 @@ export class Panel {
 
   /** 恢复默认面板宽度。 */
   private resetPanelWidth(): void {
-    this.panel.style.width = "";
-    this.resetWidthBtn.style.display = "none";
+    const viewportMaximum = Math.max(240, Math.min(MAX_PANEL_WIDTH, window.innerWidth - 24));
+    const viewportMinimum = Math.min(MIN_PANEL_WIDTH, viewportMaximum);
+    const width = Math.max(viewportMinimum, Math.min(viewportMaximum, DEFAULT_PANEL_WIDTH));
+    this.panel.style.width = `${width}px`;
+    this.updateResetButtonVisibility();
     chrome.storage.local.remove(PANEL_WIDTH_STORAGE_KEY);
   }
 
@@ -746,7 +768,10 @@ export class Panel {
   static async loadPanelWidth(): Promise<number> {
     try {
       const result = await chrome.storage.local.get(PANEL_WIDTH_STORAGE_KEY);
-      return result[PANEL_WIDTH_STORAGE_KEY] ?? DEFAULT_PANEL_WIDTH;
+      const width = Number(result[PANEL_WIDTH_STORAGE_KEY]);
+      return Number.isFinite(width) && width >= 240 && width <= MAX_PANEL_WIDTH
+        ? width
+        : DEFAULT_PANEL_WIDTH;
     } catch {
       return DEFAULT_PANEL_WIDTH;
     }
@@ -764,10 +789,11 @@ export class Panel {
   /** 初始化面板宽度：加载已保存的值并应用。 */
   async initPanelWidth(): Promise<void> {
     const savedWidth = await Panel.loadPanelWidth();
-    if (savedWidth !== DEFAULT_PANEL_WIDTH) {
-      this.panel.style.width = `${savedWidth}px`;
-      this.updateResetButtonVisibility();
-    }
+    const viewportMaximum = Math.max(240, Math.min(MAX_PANEL_WIDTH, window.innerWidth - 24));
+    const viewportMinimum = Math.min(MIN_PANEL_WIDTH, viewportMaximum);
+    const width = Math.max(viewportMinimum, Math.min(viewportMaximum, savedWidth));
+    this.panel.style.width = `${width}px`;
+    this.updateResetButtonVisibility();
   }
 
   // ---- Timer ----

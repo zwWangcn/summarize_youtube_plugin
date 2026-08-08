@@ -25,8 +25,9 @@ const DEFAULTS: Omit<Settings, "outputLanguage"> = {
 };
 
 const API_KEYS_KEY = "apiKeys";
+const API_KEY_PREFIX = "vas-api-key:";
 const V1_MIGRATION_KEY = "vas-settings-migrated-v2";
-const LOCAL_KEYS_MIGRATION_KEY = "vas-api-keys-migrated-v3";
+const LOCAL_KEYS_MIGRATION_KEY = "vas-api-keys-migrated-v4";
 
 let migrationPromise: Promise<void> | null = null;
 
@@ -39,13 +40,29 @@ function normalizeApiKeys(value: unknown): Record<string, string> {
   return normalized;
 }
 
+function apiKeyStorageKey(provider: string): string {
+  return `${API_KEY_PREFIX}${encodeURIComponent(provider)}`;
+}
+
+function readPerProviderKeys(store: Record<string, unknown>): Record<string, string> {
+  const result: Record<string, string> = {};
+  for (const [storageKey, value] of Object.entries(store)) {
+    if (!storageKey.startsWith(API_KEY_PREFIX) || typeof value !== "string" || !value.trim()) {
+      continue;
+    }
+    try {
+      result[decodeURIComponent(storageKey.slice(API_KEY_PREFIX.length))] = value.trim();
+    } catch {
+      // Ignore malformed keys from unrelated/old extension versions.
+    }
+  }
+  return result;
+}
+
 /** 将旧版 storage.sync 中的 API Key 一次性迁移到当前设备。 */
 async function migrateApiKeysToLocal(): Promise<void> {
-  const local = await chrome.storage.local.get({
-    [API_KEYS_KEY]: {},
-    [LOCAL_KEYS_MIGRATION_KEY]: false,
-  });
-  if (local[LOCAL_KEYS_MIGRATION_KEY]) return;
+  const initialLocal = await chrome.storage.local.get(LOCAL_KEYS_MIGRATION_KEY);
+  if (initialLocal[LOCAL_KEYS_MIGRATION_KEY]) return;
 
   const synced = await chrome.storage.sync.get({
     [API_KEYS_KEY]: {},
@@ -54,15 +71,23 @@ async function migrateApiKeysToLocal(): Promise<void> {
   const legacyDeepSeekKey = typeof synced.deepseekApiKey === "string"
     ? synced.deepseekApiKey.trim()
     : "";
+  // sync 读取期间其他扩展上下文可能已经完成迁移，因此写入前必须重新读取 local。
+  const latestLocal = await chrome.storage.local.get(null);
+  if (latestLocal[LOCAL_KEYS_MIGRATION_KEY]) return;
   const merged = {
     ...(legacyDeepSeekKey ? { deepseek: legacyDeepSeekKey } : {}),
     ...normalizeApiKeys(synced[API_KEYS_KEY]),
-    ...normalizeApiKeys(local[API_KEYS_KEY]),
+    ...normalizeApiKeys(latestLocal[API_KEYS_KEY]),
+    ...readPerProviderKeys(latestLocal),
   };
 
-  await chrome.storage.local.set({
-    [API_KEYS_KEY]: merged,
-  });
+  const perProviderUpdates = Object.fromEntries(
+    Object.entries(merged).map(([provider, key]) => [apiKeyStorageKey(provider), key]),
+  );
+  if (Object.keys(perProviderUpdates).length) {
+    await chrome.storage.local.set(perProviderUpdates);
+  }
+  await chrome.storage.local.remove(API_KEYS_KEY);
   await chrome.storage.sync.remove([API_KEYS_KEY, "deepseekApiKey"]);
   await chrome.storage.sync.set({ [V1_MIGRATION_KEY]: true });
   await chrome.storage.local.set({ [LOCAL_KEYS_MIGRATION_KEY]: true });
@@ -100,27 +125,33 @@ export async function setSettings(partial: Partial<Settings>): Promise<void> {
 
 export async function getApiKeys(): Promise<Record<string, string>> {
   await ensureMigrations();
-  const result = await chrome.storage.local.get(API_KEYS_KEY);
-  return normalizeApiKeys(result[API_KEYS_KEY]);
+  const result = await chrome.storage.local.get(null);
+  return readPerProviderKeys(result);
 }
 
 export async function getApiKey(provider: string): Promise<string> {
-  return (await getApiKeys())[provider] ?? "";
+  await ensureMigrations();
+  const storageKey = apiKeyStorageKey(provider);
+  const result = await chrome.storage.local.get(storageKey);
+  const value = result[storageKey];
+  return typeof value === "string" ? value.trim() : "";
 }
 
 export async function setApiKey(provider: string, key: string): Promise<void> {
   await ensureMigrations();
-  const result = await chrome.storage.local.get(API_KEYS_KEY);
-  const apiKeys = normalizeApiKeys(result[API_KEYS_KEY]);
+  const storageKey = apiKeyStorageKey(provider);
   const normalizedKey = key.trim();
-  if (normalizedKey) apiKeys[provider] = normalizedKey;
-  else delete apiKeys[provider];
-  await chrome.storage.local.set({ [API_KEYS_KEY]: apiKeys });
+  if (normalizedKey) await chrome.storage.local.set({ [storageKey]: normalizedKey });
+  else await chrome.storage.local.remove(storageKey);
 }
 
 export async function clearAllApiKeys(): Promise<void> {
   await ensureMigrations();
-  await chrome.storage.local.remove(API_KEYS_KEY);
+  const stored = await chrome.storage.local.get(null);
+  const keys = Object.keys(stored).filter(
+    (key) => key.startsWith(API_KEY_PREFIX) || key === API_KEYS_KEY,
+  );
+  if (keys.length) await chrome.storage.local.remove(keys);
 }
 
 export async function hasAnyApiKey(): Promise<boolean> {

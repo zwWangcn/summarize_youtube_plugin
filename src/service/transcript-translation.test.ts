@@ -85,7 +85,7 @@ describe("buildTranslationChunks", () => {
 });
 
 describe("timestamped translation prompts", () => {
-  it("asks for natural timed sentences without source IDs", () => {
+  it("asks for natural timed sentences with complete source-ID coverage", () => {
     const source = transcript([
       segment("context", 1905, 3),
       segment("And now with", 1908, 3),
@@ -104,62 +104,105 @@ describe("timestamped translation prompts", () => {
 
     expect(systemPrompt).toContain("natural complete sentences");
     expect(systemPrompt).toContain('{"type":"complete"}');
-    expect(userPrompt).toContain('[31:48] "And now with"');
+    expect(userPrompt).toContain('"sourceId":1,"startTime":"31:48","text":"And now with"');
     expect(userPrompt).toContain("CONTEXT BEFORE — DO NOT TRANSLATE");
     expect(userPrompt).toContain("Allowed TARGET startTime range: 31:48-31:53 inclusive");
-    expect(`${systemPrompt}\n${userPrompt}`).not.toContain("sourceStartId");
-    expect(`${systemPrompt}\n${userPrompt}`).not.toContain("sourceEndId");
+    expect(systemPrompt).toContain("sourceStartId");
+    expect(systemPrompt).toContain("sourceEndId");
   });
 });
 
 describe("validateTranslationLine", () => {
   it("accepts estimated and repeated in-range timestamps", () => {
     expect(validateTranslationLine(
-      '{"type":"caption","startTime":"31:49","translatedText":"译文"}',
+      '{"type":"caption","sourceStartId":4,"sourceEndId":5,"startTime":"31:49","translatedText":"译文"}',
       1908,
       1917,
       1909,
-    )).toEqual({ type: "caption", start: 1909, translatedText: "译文" });
+      4,
+      8,
+    )).toEqual({
+      type: "caption",
+      sourceStartId: 4,
+      sourceEndId: 5,
+      start: 1909,
+      translatedText: "译文",
+    });
     expect(validateTranslationLine(
       '{"type":"complete"}',
       1908,
       1917,
       1909,
+      6,
+      8,
     )).toEqual({ type: "complete" });
   });
 
   it("accepts hour-format timestamps", () => {
     expect(validateTranslationLine(
-      '{"type":"caption","startTime":"1:02:03","translatedText":"长视频译文"}',
+      '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"1:02:03","translatedText":"长视频译文"}',
       3720,
       3740,
       null,
-    )).toEqual({ type: "caption", start: 3723, translatedText: "长视频译文" });
+      0,
+      0,
+    )).toEqual({
+      type: "caption",
+      sourceStartId: 0,
+      sourceEndId: 0,
+      start: 3723,
+      translatedText: "长视频译文",
+    });
   });
 
   it("rejects out-of-range and decreasing timestamps", () => {
     expect(() => validateTranslationLine(
-      '{"type":"caption","startTime":"31:47","translatedText":"越界"}',
+      '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"31:47","translatedText":"越界"}',
       1908,
       1917,
       null,
+      0,
+      0,
     )).toThrow(TranslationFormatError);
     expect(() => validateTranslationLine(
-      '{"type":"caption","startTime":"31:50","translatedText":"倒序"}',
+      '{"type":"caption","sourceStartId":1,"sourceEndId":1,"startTime":"31:50","translatedText":"倒序"}',
       1908,
       1917,
       1911,
+      1,
+      1,
     )).toThrow(TranslationFormatError);
   });
 
   it("rejects malformed records and empty translations", () => {
-    expect(() => validateTranslationLine("not json", 0, 10, null))
+    expect(() => validateTranslationLine("not json", 0, 10, null, 0, 0))
       .toThrow(TranslationFormatError);
     expect(() => validateTranslationLine(
-      '{"type":"caption","startTime":"0:01","translatedText":""}',
+      '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"0:01","translatedText":""}',
       0,
       10,
       null,
+      0,
+      0,
+    )).toThrow(TranslationFormatError);
+  });
+
+  it("rejects source-ID gaps and overlaps", () => {
+    expect(() => validateTranslationLine(
+      '{"type":"caption","sourceStartId":2,"sourceEndId":3,"startTime":"0:01","translatedText":"漏了一段"}',
+      0,
+      10,
+      null,
+      1,
+      3,
+    )).toThrow(TranslationFormatError);
+    expect(() => validateTranslationLine(
+      '{"type":"caption","sourceStartId":1,"sourceEndId":4,"startTime":"0:01","translatedText":"越界"}',
+      0,
+      10,
+      null,
+      1,
+      3,
     )).toThrow(TranslationFormatError);
   });
 });
@@ -177,8 +220,8 @@ describe("translateTranscriptChunk", () => {
     ]);
     const chunk = buildTranslationChunks(source.segments)[0];
     streamAITextMock.mockImplementation(() => tokenStream(
-      '{"type":"caption","startTime":"31:49","translatedText":"现在，第二步已经完成，"}\n',
-      '{"type":"caption","startTime":"31:54","translatedText":"我就快完成了。"}\n',
+      '{"type":"caption","sourceStartId":0,"sourceEndId":1,"startTime":"31:49","translatedText":"现在，第二步已经完成，"}\n',
+      '{"type":"caption","sourceStartId":2,"sourceEndId":2,"startTime":"31:54","translatedText":"我就快完成了。"}\n',
       '{"type":"complete"}\n',
     ));
 
@@ -195,10 +238,10 @@ describe("translateTranscriptChunk", () => {
     const chunk = buildTranslationChunks(source.segments)[0];
     streamAITextMock
       .mockImplementationOnce(() => tokenStream(
-        '{"type":"caption","startTime":"0:00","translatedText":"你好，世界。"}\n',
+        '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"0:00","translatedText":"你好，世界。"}\n',
       ))
       .mockImplementationOnce(() => tokenStream(
-        '{"type":"caption","startTime":"0:00","translatedText":"你好，世界。"}\n',
+        '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"0:00","translatedText":"你好，世界。"}\n',
         '{"type":"complete"}\n',
       ));
 
@@ -226,8 +269,8 @@ describe("translateTranscriptChunk", () => {
     const outputs = [
       "not json\n",
       "still not json\n",
-      '{"type":"caption","startTime":"0:00","translatedText":"前半。"}\n{"type":"complete"}\n',
-      '{"type":"caption","startTime":"0:04","translatedText":"后半。"}\n{"type":"complete"}\n',
+      '{"type":"caption","sourceStartId":0,"sourceEndId":1,"startTime":"0:00","translatedText":"前半。"}\n{"type":"complete"}\n',
+      '{"type":"caption","sourceStartId":2,"sourceEndId":3,"startTime":"0:04","translatedText":"后半。"}\n{"type":"complete"}\n',
     ];
     streamAITextMock.mockImplementation(() => tokenStream(outputs.shift()!));
 

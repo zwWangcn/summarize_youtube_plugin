@@ -20,6 +20,12 @@ const GEMINI_FILTER_REASONS = new Set([
 ]);
 
 function buildBody(params: AIRequest): string {
+  const generationConfig: Record<string, unknown> = {
+    maxOutputTokens: params.maxOutputTokens ?? 16384,
+  };
+  if (typeof params.temperature === "number") {
+    generationConfig.temperature = params.temperature;
+  }
   return JSON.stringify({
     systemInstruction: {
       parts: [{ text: params.systemPrompt }],
@@ -30,18 +36,18 @@ function buildBody(params: AIRequest): string {
         parts: [{ text: params.userPrompt }],
       },
     ],
-    generationConfig: {
-      temperature: params.temperature ?? 0.3,
-      maxOutputTokens: params.maxOutputTokens ?? 16384,
-    },
+    generationConfig,
   });
 }
 
 export const geminiAdapter: ProviderAdapter = {
   buildStreamRequest(params: AIRequest): BuiltRequest {
     return {
-      url: `${params.baseURL}/models/${params.model}:streamGenerateContent?alt=sse&key=${encodeURIComponent(params.apiKey)}`,
-      headers: { "Content-Type": "application/json" },
+      url: `${params.baseURL}/models/${params.model}:streamGenerateContent?alt=sse`,
+      headers: {
+        "Content-Type": "application/json",
+        "x-goog-api-key": params.apiKey,
+      },
       body: buildBody(params),
     };
   },
@@ -49,6 +55,11 @@ export const geminiAdapter: ProviderAdapter = {
   parseStreamChunk(data: unknown): StreamChunk | null {
     const obj = data as Record<string, unknown>;
     if (!obj || typeof obj !== "object") return null;
+
+    const error = obj.error as Record<string, unknown> | undefined;
+    if (error) {
+      throw new Error(typeof error.message === "string" ? error.message : "Gemini stream error");
+    }
 
     // 整体拦截：prompt 被安全策略拒绝时，响应无 candidates，仅含 promptFeedback.blockReason
     const promptFeedback = obj.promptFeedback as Record<string, unknown> | undefined;

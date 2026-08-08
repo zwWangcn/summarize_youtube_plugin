@@ -27,16 +27,16 @@ content script (youtube.ts)
   │     ├── 管理 Panel 生命周期（注入/销毁/SPA 重建）
   │     ├── 协调字幕获取 → AI 总结 → 流式渲染的完整流程
   │     └── 集成总结缓存（summary-cache.ts）的读写
-  ├── Extractor 调用 service/ai.ts 的 summarizeTextStream()
+  ├── 通过 service/ai-client.ts 请求后台执行流式 AI 调用
   └── UI 通过 Panel 类（Shadow DOM）渲染
 
 background service worker (service-worker.ts)
-  ├── 响应 INJECT_CAPTION_INTERCEPTOR 消息 → chrome.scripting.executeScript world:MAIN
+  ├── 接收 AI_STREAM_PORT 请求并执行带超时/重试的供应商调用
   ├── 响应 GET_API_KEY_STATUS → 返回 API Key 是否已配置
   └── 安装/更新生命周期日志
 
 popup (popup/popup.ts)
-  └── 供应商 + 模型选择 + API Key → chrome.storage.sync
+  └── 供应商/模型 → storage.sync；每个供应商的 API Key → 独立 storage.local key
 ```
 
 ### 多模型 AI 架构（service/ai/）
@@ -105,7 +105,7 @@ YouTube 字幕提取有三条路径，按优先级依次尝试：
 - 字幕内部使用 `Transcript` / `TranscriptSegment` 保存语言、开始时间、持续时间和原文；总结与原文视图再转换为旧文本格式
 - `transcript-translation.ts` 按连续时间片分块，要求模型逐行返回覆盖源字幕 ID 的 NDJSON；每行本地校验后立即渲染，并使用源片段时间生成可点击时间戳
 - DeepSeek 翻译请求显式关闭默认 thinking 模式；翻译流有首次响应与停滞超时，避免长时间无反馈
-- 翻译固定输出简体中文，保守修正 ASR 错词与断句，不做音频级时间校准；中文字幕不发起翻译请求
+- 翻译使用用户选择的目标语言，保守修正 ASR 错词与断句，不做音频级时间校准；源字幕已匹配目标语言时不发起翻译请求
 - `translation-cache.ts` 按视频、源语言、供应商、模型和流程版本缓存 7 天
 
 ### 提示词模板（service/prompts.ts）
@@ -114,7 +114,7 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 
 ### 总结缓存（service/summary-cache.ts）
 
-- 存储后端：`chrome.storage.local`（单一 key `vas-summaries`）
+- 存储后端：`chrome.storage.local`（每条总结独立 key，避免多标签页覆盖）
 - TTL：7 天，惰性清理
 - 容量控制：最多 50 条，超出按 LRU 淘汰最旧条目
 - UI 显示缓存时间，用户可点击「再次总结」强制刷新
@@ -128,7 +128,8 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 | `src/content/ui/renderer.ts` | Markdown/流式渲染（marked + DOMPurify） |
 | `src/content/ui/styles.css` | Shadow DOM 暗色主题样式 |
 | `src/content/extractors/youtube.ts` | YouTube 字幕提取（ytInitialPlayerResponse → XML → 文本） |
-| `src/content/extractors/caption-interceptor.ts` | YouTube MAIN world 注入的 fetch/XHR 拦截器 |
+| `src/content/caption-main.ts` | document_start 注入 YouTube MAIN world 的 fetch/XHR 观察器 |
+| `src/content/extractors/caption-interceptor.ts` | 隔离世界中的字幕事件接收和有界内存缓存 |
 | `src/service/ai.ts` | AI 流式调用主入口：适配器分发、SSE 解析、重试、翻译回退 |
 | `src/service/ai/types.ts` | ProviderAdapter 接口定义 |
 | `src/service/ai/openai-compat.ts` | OpenAI 兼容格式适配器（DeepSeek/OpenAI/Kimi/Qwen/GLM/Grok） |
@@ -140,10 +141,10 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 | `src/service/transcript-translation.ts` | 字幕分块、AI 翻译、结构化输出校验 |
 | `src/service/translation-cache.ts` | 翻译结果 7 天缓存 |
 | `src/service/storage.ts` | Chrome Storage 封装（API Key/模型选择持久化） |
-| `src/background/service-worker.ts` | 后台 Service Worker：消息路由、拦截器注入 |
+| `src/background/service-worker.ts` | 后台 Service Worker：消息路由、AI 流式网络请求 |
 | `src/utils/text.ts` | 时间格式化、字幕拼接、时间戳切换 |
 | `src/popup/popup.ts` | 设置弹窗（供应商选择 → 模型选择 → API Key） |
 
 ### 平台入口
 
-`youtube.ts` 安装 caption interceptor，`getVideoId` 从 URL 参数 `v` 提取。
+manifest 在 `document_start` 安装 MAIN-world caption observer；`youtube.ts` 注册结果监听器，`getVideoId` 始终从当前 URL 参数 `v` 提取。

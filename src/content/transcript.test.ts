@@ -1,6 +1,5 @@
 import { describe, expect, it } from "vitest";
 import {
-  isChineseLanguage,
   isTranscriptInOutputLanguage,
   transcriptToText,
   type Transcript,
@@ -8,14 +7,6 @@ import {
 import { parseJson3Captions } from "./extractors/caption-interceptor";
 
 describe("transcript helpers", () => {
-  it("recognizes YouTube Chinese language variants", () => {
-    expect(isChineseLanguage("zh")).toBe(true);
-    expect(isChineseLanguage("zh-Hans")).toBe(true);
-    expect(isChineseLanguage("zh-TW")).toBe(true);
-    expect(isChineseLanguage("en")).toBe(false);
-    expect(isChineseLanguage("ja")).toBe(false);
-  });
-
   it("matches source captions to output languages and distinguishes Chinese scripts", () => {
     expect(isTranscriptInOutputLanguage("en-US", "en")).toBe(true);
     expect(isTranscriptInOutputLanguage("ja", "ja")).toBe(true);

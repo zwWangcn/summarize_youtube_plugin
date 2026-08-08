@@ -4,17 +4,20 @@
  */
 
 import { getApiKey, getSettings } from "./storage";
-import { buildSummaryUserPrompt, getSystemPrompt } from "./prompts";
-import { getProvider } from "./model-registry";
+import {
+  getAIRequestProfile,
+  resolveAISelection,
+} from "./model-registry";
 import { openaiCompatAdapter } from "./ai/openai-compat";
 import { anthropicAdapter } from "./ai/anthropic";
 import { geminiAdapter } from "./ai/gemini";
 import type { ProviderAdapter } from "./ai/types";
-import { t, type OutputLanguage } from "../utils/i18n";
+import { t } from "../utils/i18n";
 
-const MAX_CHARS = 200_000;
 const MAX_RETRIES = 2;
 const RETRY_DELAY_MS = 1000;
+const DEFAULT_FIRST_RESPONSE_TIMEOUT_MS = 45_000;
+const DEFAULT_INACTIVITY_TIMEOUT_MS = 45_000;
 
 function abortError(): DOMException {
   return new DOMException("The operation was aborted", "AbortError");
@@ -36,11 +39,6 @@ function waitForRetryDelay(ms: number, signal?: AbortSignal): Promise<void> {
     };
     signal.addEventListener("abort", onAbort, { once: true });
   });
-}
-
-export interface ActiveAIIdentity {
-  providerId: string;
-  modelId: string;
 }
 
 export interface StreamAIOptions {
@@ -103,49 +101,46 @@ function getAdapter(apiFormat: string): ProviderAdapter {
 /** 加载当前生效的 provider、model、apiKey */
 async function loadConfig() {
   const settings = await getSettings();
-  const providerId = settings.provider || "deepseek";
-  const modelId = settings.model || "deepseek-v4-flash";
+  const { provider, model } = resolveAISelection(settings.provider, settings.model);
 
-  const provider = getProvider(providerId);
-  if (!provider) {
-    throw new AIServiceError(t("errorUnknownProvider", providerId), false);
-  }
-
-  const apiKey = await getApiKey(providerId);
+  const apiKey = await getApiKey(provider.id);
   if (!apiKey) {
     throw new NoApiKeyError(provider.name);
   }
 
   const adapter = getAdapter(provider.apiFormat);
 
-  return { provider, modelId, apiKey, adapter };
+  return { provider, modelId: model.id, apiKey, adapter };
 }
 
-export async function getActiveAIIdentity(): Promise<ActiveAIIdentity> {
-  const settings = await getSettings();
-  return {
-    providerId: settings.provider || "deepseek",
-    modelId: settings.model || "deepseek-v4-flash",
-  };
+function splitSSEEvents(
+  input: string,
+  flush: boolean = false,
+): { blocks: string[]; remainder: string } {
+  const blocks: string[] = [];
+  let remainder = input;
+  let boundary = remainder.search(/\r?\n\r?\n/);
+  while (boundary >= 0) {
+    blocks.push(remainder.slice(0, boundary));
+    const separator = remainder.slice(boundary).match(/^\r?\n\r?\n/)?.[0] ?? "\n\n";
+    remainder = remainder.slice(boundary + separator.length);
+    boundary = remainder.search(/\r?\n\r?\n/);
+  }
+  if (flush && remainder.trim()) {
+    blocks.push(remainder);
+    remainder = "";
+  }
+  return { blocks, remainder };
 }
 
-// ---------------------------------------------------------------------------
-// Streaming summarization
-// ---------------------------------------------------------------------------
-export async function* summarizeTextStream(
-  transcript: string,
-  outputLanguage: OutputLanguage = "zh-CN",
-  signal?: AbortSignal,
-): AsyncGenerator<string> {
-  const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
-  const transcriptPrompt = buildSummaryUserPrompt(text, outputLanguage);
-  yield* streamAIText(
-    getSystemPrompt(outputLanguage),
-    transcriptPrompt,
-    // DeepSeek V4 defaults to thinking mode. Summaries favor immediate,
-    // deterministic output; this flag is only forwarded to DeepSeek.
-    { disableThinking: true, temperature: 0, signal },
-  );
+function getSSEData(block: string): string | null {
+  const dataLines: string[] = [];
+  for (const rawLine of block.split(/\r?\n/)) {
+    if (!rawLine.startsWith("data:")) continue;
+    const value = rawLine.slice(5);
+    dataLines.push(value.startsWith(" ") ? value.slice(1) : value);
+  }
+  return dataLines.length ? dataLines.join("\n") : null;
 }
 
 export async function* streamAIText(
@@ -154,11 +149,13 @@ export async function* streamAIText(
   options: StreamAIOptions = {},
 ): AsyncGenerator<string> {
   const { provider, modelId, apiKey, adapter } = await loadConfig();
+  const profile = getAIRequestProfile(provider.id, modelId);
 
   let lastError: Error | null = null;
   // 流是否已向调用方交付过 token。一旦交付，重试会从头重新生成，
   // 导致前端 buffer 拼接出重复内容——故已交付的流不再重试。
   let yieldedAny = false;
+  let yieldedContent = false;
 
   const maxRetries = options.maxRetries ?? MAX_RETRIES;
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
@@ -178,8 +175,11 @@ export async function* streamAIText(
         apiKey,
         baseURL: provider.baseURL,
         maxOutputTokens: options.maxOutputTokens,
-        temperature: options.temperature,
-        disableThinking: options.disableThinking && provider.id === "deepseek",
+        temperature: profile.supportsTemperature ? options.temperature : undefined,
+        disableThinking: options.disableThinking,
+        maxOutputTokensField: profile.maxOutputTokensField,
+        thinkingControl: profile.thinkingControl,
+        instructionRole: profile.instructionRole,
       });
 
       const controller = new AbortController();
@@ -192,7 +192,10 @@ export async function* streamAIText(
         timeoutKind = kind;
         if (ms && ms > 0) timeoutId = setTimeout(() => controller.abort(), ms);
       };
-      armTimeout("first-response", options.firstResponseTimeoutMs);
+      armTimeout(
+        "first-response",
+        options.firstResponseTimeoutMs ?? DEFAULT_FIRST_RESPONSE_TIMEOUT_MS,
+      );
 
       try {
         const response = await fetch(req.url, {
@@ -217,38 +220,67 @@ export async function* streamAIText(
 
         const decoder = new TextDecoder();
         let buffer = "";
+        let streamFinished = false;
 
         try {
-          while (true) {
+          readStream: while (true) {
             const { done, value } = await reader.read();
             if (done) break;
-            armTimeout("inactivity", options.inactivityTimeoutMs);
+            armTimeout(
+              "inactivity",
+              options.inactivityTimeoutMs ?? DEFAULT_INACTIVITY_TIMEOUT_MS,
+            );
 
             buffer += decoder.decode(value, { stream: true });
-            const lines = buffer.split("\n");
-            buffer = lines.pop() ?? "";
+            const split = splitSSEEvents(buffer);
+            buffer = split.remainder;
 
-            for (const line of lines) {
-              const trimmed = line.trim();
-              if (!trimmed || !trimmed.startsWith("data: ")) continue;
+            for (const block of split.blocks) {
+              const dataStr = getSSEData(block);
+              if (dataStr === null) continue;
+              if (dataStr.trim() === "[DONE]") {
+                streamFinished = true;
+                break readStream;
+              }
 
-              const dataStr = trimmed.slice(6);
-              if (dataStr === "[DONE]") return;
-
+              let data: unknown;
               try {
-                const data = JSON.parse(dataStr);
-                const chunk = adapter.parseStreamChunk(data);
+                data = JSON.parse(dataStr);
+              } catch {
+                throw new AIServiceError(t("errorStreamFailed"), true);
+              }
+              const chunk = adapter.parseStreamChunk(data);
 
-                if (chunk?.finishReason === "content_filter") {
-                  throw new ContentFilteredError();
-                }
+              if (chunk?.finishReason === "content_filter") {
+                throw new ContentFilteredError();
+              }
 
-                if (chunk?.token) {
-                  yield chunk.token;
-                  yieldedAny = true;
-                }
-              } catch (e) {
-                if (e instanceof ContentFilteredError) throw e;
+              if (chunk?.token) {
+                yield chunk.token;
+                yieldedAny = true;
+                if (chunk.token.trim()) yieldedContent = true;
+              }
+            }
+          }
+
+          if (!streamFinished) {
+            buffer += decoder.decode();
+            const split = splitSSEEvents(buffer, true);
+            for (const block of split.blocks) {
+              const dataStr = getSSEData(block);
+              if (dataStr === null || dataStr.trim() === "[DONE]") continue;
+              let data: unknown;
+              try {
+                data = JSON.parse(dataStr);
+              } catch {
+                throw new AIServiceError(t("errorStreamFailed"), true);
+              }
+              const chunk = adapter.parseStreamChunk(data);
+              if (chunk?.finishReason === "content_filter") throw new ContentFilteredError();
+              if (chunk?.token) {
+                yield chunk.token;
+                yieldedAny = true;
+                if (chunk.token.trim()) yieldedContent = true;
               }
             }
           }
@@ -256,6 +288,9 @@ export async function* streamAIText(
           try { reader.releaseLock(); } catch { /* lock already released on stream error */ }
         }
 
+        if (!yieldedContent) {
+          throw new AIServiceError(t("errorStreamFailed"), true);
+        }
         return;
       } catch (error) {
         if (controller.signal.aborted) {

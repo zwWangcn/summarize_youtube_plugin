@@ -6,7 +6,7 @@
 import type { AIRequest, BuiltRequest, ProviderAdapter, StreamChunk } from "./types";
 
 function buildBody(params: AIRequest): string {
-  return JSON.stringify({
+  const body: Record<string, unknown> = {
     model: params.model,
     system: [{ type: "text" as const, text: params.systemPrompt }],
     messages: [
@@ -17,8 +17,9 @@ function buildBody(params: AIRequest): string {
     ],
     stream: true,
     max_tokens: params.maxOutputTokens ?? 16384,
-    temperature: params.temperature ?? 0.3,
-  });
+  };
+  if (typeof params.temperature === "number") body.temperature = params.temperature;
+  return JSON.stringify(body);
 }
 
 export const anthropicAdapter: ProviderAdapter = {
@@ -39,6 +40,11 @@ export const anthropicAdapter: ProviderAdapter = {
     if (!obj || typeof obj !== "object") return null;
 
     const type = obj.type as string;
+
+    if (type === "error") {
+      const error = obj.error as Record<string, unknown> | undefined;
+      throw new Error(typeof error?.message === "string" ? error.message : "Anthropic stream error");
+    }
 
     if (type === "content_block_delta") {
       const delta = obj.delta as Record<string, unknown> | undefined;

@@ -20,10 +20,6 @@ export function transcriptToText(transcript: Transcript): string {
     .join("\n");
 }
 
-export function isChineseLanguage(languageCode: string): boolean {
-  return /^zh(?:-|$)/i.test(languageCode);
-}
-
 export function isTranscriptInOutputLanguage(
   languageCode: string,
   outputLanguage: OutputLanguage,

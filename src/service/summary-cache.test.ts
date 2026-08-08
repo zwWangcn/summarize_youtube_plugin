@@ -15,8 +15,17 @@ describe("localized summary cache", () => {
       value: {
         storage: {
           local: {
-            get: vi.fn(async (key: string) => ({ [key]: store[key] })),
+            get: vi.fn(async (query?: string | string[] | null) => {
+              if (query == null) return { ...store };
+              if (Array.isArray(query)) {
+                return Object.fromEntries(query.map((key) => [key, store[key]]));
+              }
+              return { [query]: store[query] };
+            }),
             set: vi.fn(async (value: Record<string, unknown>) => Object.assign(store, value)),
+            remove: vi.fn(async (keys: string | string[]) => {
+              for (const key of Array.isArray(keys) ? keys : [keys]) delete store[key];
+            }),
           },
         },
       },
@@ -49,5 +58,15 @@ describe("localized summary cache", () => {
     expect(await getCachedSummary("youtube", "video-1", "en")).toBeNull();
     expect((await getCachedSummary("youtube", "video-1", "zh-CN"))?.text).toBe("旧总结");
     expect(await getCachedSummary("youtube", "video-1", "en")).toBeNull();
+  });
+
+  it("keeps concurrent writes for different videos", async () => {
+    await Promise.all([
+      setCachedSummary("youtube", "video-1", "One", "first", "en"),
+      setCachedSummary("youtube", "video-2", "Two", "second", "en"),
+    ]);
+
+    expect((await getCachedSummary("youtube", "video-1", "en"))?.text).toBe("first");
+    expect((await getCachedSummary("youtube", "video-2", "en"))?.text).toBe("second");
   });
 });

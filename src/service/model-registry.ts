@@ -42,6 +42,13 @@ export interface ProviderInfo {
   models: ModelInfo[];
 }
 
+export interface AIRequestProfile {
+  supportsTemperature: boolean;
+  maxOutputTokensField: "max_tokens" | "max_completion_tokens";
+  thinkingControl: "none" | "deepseek" | "qwen" | "openai";
+  instructionRole: "system" | "developer";
+}
+
 // ---------------------------------------------------------------------------
 // Providers & Models
 // ---------------------------------------------------------------------------
@@ -93,7 +100,7 @@ export const PROVIDERS: ProviderInfo[] = [
         descriptionKey: "modelDescGpt5",
         paramSize: "~2T MoE",
         pricing: { input: 1.25, output: 10.00, currency: "USD" },
-        contextWindow: 200_000,
+        contextWindow: 400_000,
       },
       {
         id: "gpt-5-mini",
@@ -102,7 +109,7 @@ export const PROVIDERS: ProviderInfo[] = [
         descriptionKey: "modelDescGpt5Mini",
         paramSize: "~200B",
         pricing: { input: 0.25, output: 2.00, currency: "USD" },
-        contextWindow: 128_000,
+        contextWindow: 400_000,
       },
       {
         id: "gpt-4.1",
@@ -126,7 +133,7 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "CL",
     models: [
       {
-        id: "claude-sonnet-5-20250702",
+        id: "claude-sonnet-5",
         name: "Claude Sonnet 5",
         provider: "anthropic",
         descriptionKey: "modelDescClaudeSonnet",
@@ -135,7 +142,7 @@ export const PROVIDERS: ProviderInfo[] = [
         contextWindow: 1_000_000,
       },
       {
-        id: "claude-opus-4-8-20250515",
+        id: "claude-opus-4-8",
         name: "Claude Opus 4.8",
         provider: "anthropic",
         descriptionKey: "modelDescClaudeOpus",
@@ -351,17 +358,67 @@ export function getProvider(id: string): ProviderInfo | undefined {
   return PROVIDERS.find((p) => p.id === id);
 }
 
-const ALL_MODELS = PROVIDERS.flatMap((p) => p.models);
-
-/** 根据 ID 获取单个模型信息（跨所有供应商） */
-export function getModel(id: string): ModelInfo | undefined {
-  return ALL_MODELS.find((m) => m.id === id);
-}
-
 /** 获取某个供应商下的所有模型 */
 export function getModelsByProvider(providerId: string): ModelInfo[] {
   const provider = getProvider(providerId);
   return provider?.models ?? [];
+}
+
+const LEGACY_MODEL_IDS: Record<string, string> = {
+  "claude-sonnet-5-20250702": "claude-sonnet-5",
+  "claude-opus-4-8-20250515": "claude-opus-4-8",
+};
+
+/** 将曾经发布过的错误/旧模型 ID 归一化，避免升级后破坏已保存设置。 */
+export function normalizeModelId(modelId: string): string {
+  return LEGACY_MODEL_IDS[modelId] ?? modelId;
+}
+
+/** 只在模型确实属于指定供应商时返回，防止 provider/model 状态串线。 */
+export function getModelForProvider(
+  providerId: string,
+  modelId: string,
+): ModelInfo | undefined {
+  const normalizedId = normalizeModelId(modelId);
+  return getProvider(providerId)?.models.find((model) => model.id === normalizedId);
+}
+
+/** 将持久化的 provider/model 组合归一化为注册表中的有效组合。 */
+export function resolveAISelection(
+  providerId: string | undefined,
+  modelId: string | undefined,
+): { provider: ProviderInfo; model: ModelInfo } {
+  const provider = getProvider(providerId || "deepseek") ?? PROVIDERS[0];
+  const model = getModelForProvider(provider.id, modelId || "") ?? provider.models[0];
+  return { provider, model };
+}
+
+/** 不同“兼容 API”之间仍有差异；在注册表旁集中声明请求能力。 */
+export function getAIRequestProfile(
+  providerId: string,
+  modelId: string,
+): AIRequestProfile {
+  const normalizedId = normalizeModelId(modelId);
+  const rejectsSamplingParameters = providerId === "anthropic" && (
+    normalizedId === "claude-sonnet-5" || normalizedId === "claude-opus-4-8"
+  );
+  const openAIReasoningModel = providerId === "openai" && (
+    normalizedId === "gpt-5" || normalizedId === "gpt-5-mini"
+  );
+  return {
+    supportsTemperature: !rejectsSamplingParameters && !openAIReasoningModel,
+    maxOutputTokensField: providerId === "openai"
+      ? "max_completion_tokens"
+      : "max_tokens",
+    thinkingControl: openAIReasoningModel
+      ? "openai"
+      : providerId === "deepseek"
+      ? "deepseek"
+      : providerId === "qwen"
+        ? "qwen"
+        : "none",
+    instructionRole: providerId === "openai" ? "developer" : "system",
+  };
 }
 
 /** 格式化价格字符串（用于 UI 显示） */

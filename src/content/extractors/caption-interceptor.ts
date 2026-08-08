@@ -2,19 +2,14 @@
  * 字幕拦截器。
  *
  * 内容脚本运行在 ISOLATED world（以正常加载 CRXJS bundle），
- * 通过 chrome.scripting.executeScript({world: 'MAIN'}) 将拦截逻辑注入到
- * 页面主世界，绕过 CSP 并在 YouTube 脚本之前 patch fetch / XHR。
+ * manifest 在 document_start 将独立脚本注入 MAIN world，
+ * 本模块只负责接收捕获结果并维护小型内存缓存。
  *
  * 主世界的拦截器通过 DOM CustomEvent 把捕获的字幕数据传回内容脚本。
  *
- * 字幕获取策略：
- *   1. 拦截器缓存（piggyback YouTube 播放器的 POT 签名请求）——静默，首选
- *   2. 调用 player.toggleSubtitlesOn() 静默开启字幕 + 等待拦截器捕获 —— 次选
- *   3. 直接 fetch（ytInitialPlayerResponse 中的 baseUrl，剥离 variant 参数）——最终回退
+ * 该缓存只是无等待的快速路径；主动获取由 InnerTube/直接 fetch 完成。
  */
 
-import { UserError } from "../../utils/errors";
-import { t } from "../../utils/i18n";
 import type { Transcript, TranscriptSegment } from "../transcript";
 
 // ---------------------------------------------------------------------------
@@ -29,6 +24,9 @@ interface CaptionCacheEntry {
 // Cache (ISOLATED world)
 // ---------------------------------------------------------------------------
 const captionCache = new Map<string, CaptionCacheEntry>();
+const CAPTION_CACHE_TTL_MS = 5 * 60 * 1000;
+const MAX_CAPTION_CACHE_ENTRIES = 12;
+const MAX_CAPTURED_CAPTION_CHARS = 5_000_000;
 
 export function parseJson3Captions(
   raw: string,
@@ -42,11 +40,19 @@ export function parseJson3Captions(
 
   const segments: TranscriptSegment[] = [];
   for (const ev of events as Array<Record<string, unknown>>) {
-    if (!ev.segs) continue;
-    const startMs = (ev.tStartMs as number) ?? 0;
-    const durationMs = (ev.dDurationMs as number) ?? 0;
-    const segs = ev.segs as Array<{ utf8?: string }>;
-    const text = segs.map((seg) => seg.utf8 ?? "").join("");
+    if (!Array.isArray(ev.segs)) continue;
+    const startMs = Number(ev.tStartMs);
+    const durationMs = Number(ev.dDurationMs);
+    if (!Number.isFinite(startMs) || startMs < 0 || !Number.isFinite(durationMs) || durationMs < 0) {
+      continue;
+    }
+    const text = (ev.segs as unknown[])
+      .map((seg) => {
+        if (!seg || typeof seg !== "object") return "";
+        const utf8 = (seg as Record<string, unknown>).utf8;
+        return typeof utf8 === "string" ? utf8 : "";
+      })
+      .join("");
     if (text.trim()) {
       segments.push({
         start: startMs / 1000,
@@ -74,93 +80,39 @@ function makeCacheKey(videoId: string, languageCode: string): string {
 }
 
 // ---------------------------------------------------------------------------
-// Player caption control (programmatic, no DOM button click)
-// ---------------------------------------------------------------------------
-
-export interface YouTubePlayer {
-  isSubtitlesOn?: () => boolean;
-  toggleSubtitlesOn?: () => void;
-  toggleSubtitles?: () => void;
-  seekTo?: (seconds: number, allowSeekAhead: boolean) => void;
-  getCurrentTime?: () => number;
-  playVideo?: () => void;
-}
-
-function getPlayer(): YouTubePlayer | null {
-  return document.querySelector("#movie_player") as unknown as YouTubePlayer | null;
-}
-
-/**
- * 静默开启字幕——使用播放器原生 JS API，不触发 DOM 事件/UI 动画。
- * 返回 true 表示字幕原本是关闭的（由我们临时开启），调用方需要在完成后恢复。
- */
-function silentlyEnableCaptions(): boolean {
-  const player = getPlayer();
-  if (!player) return false;
-
-  const wasOff = player.isSubtitlesOn?.() === false;
-  if (!wasOff) return false; // Already on, nothing to do
-
-  if (player.toggleSubtitlesOn) {
-    player.toggleSubtitlesOn();
-    console.log("[vas] Subtitles enabled programmatically via toggleSubtitlesOn()");
-    return true;
-  }
-
-  // Fallback: click the CC button (last resort for older YouTube versions)
-  const btn = document.querySelector(".ytp-subtitles-button") as HTMLButtonElement | null;
-  if (btn) {
-    btn.click();
-    console.log("[vas] Subtitles enabled via button click (fallback)");
-    return true;
-  }
-
-  return false;
-}
-
-/** 恢复字幕状态——如果之前由我们临时开启，则关闭。 */
-function restoreCaptions(wasToggledByUs: boolean): void {
-  if (!wasToggledByUs) return;
-
-  const player = getPlayer();
-  if (player?.toggleSubtitles) {
-    player.toggleSubtitles();
-    console.log("[vas] Subtitles restored to original state");
-  } else {
-    const btn = document.querySelector(".ytp-subtitles-button") as HTMLButtonElement | null;
-    btn?.click();
-  }
-}
-
-// ---------------------------------------------------------------------------
 // Public API
 // ---------------------------------------------------------------------------
 
 let installed = false;
 
-/** 请求 background worker 注入拦截器到 MAIN world（幂等）。 */
+/** 注册 MAIN world 捕获事件监听器（幂等）。 */
 export function initCaptionInterceptor(): void {
   if (installed) return;
   installed = true;
 
-  // Ask the background service worker to inject the interceptor into the
-  // MAIN world on our behalf.  The worker uses sender.tab.id from the
-  // message (no tabs permission needed) and chrome.scripting.executeScript
-  // (bypasses YouTube CSP).
-  chrome.runtime.sendMessage({ type: 'INJECT_CAPTION_INTERCEPTOR' }, () => {
-    if (chrome.runtime.lastError) {
-      console.debug("[vas] Interceptor message failed:", chrome.runtime.lastError.message);
-    }
-  });
-
   // Listen for captured captions from MAIN world
   // (DOM CustomEvents on document DO cross the isolated-world boundary)
   document.addEventListener('vas-caption-captured', ((e: Event) => {
-    const detail = (e as CustomEvent).detail;
-    if (!detail?.text) return;
+    const detail = (e as CustomEvent).detail as Record<string, unknown> | undefined;
+    if (
+      typeof detail?.url !== "string" ||
+      typeof detail.text !== "string" ||
+      !detail.text ||
+      detail.text.length > MAX_CAPTURED_CAPTION_CHARS
+    ) return;
 
-    const url: string = detail.url;
-    const raw: string = detail.text;
+    const url = detail.url;
+    const raw = detail.text;
+    try {
+      const parsedUrl = new URL(url);
+      const isYouTubeHost = parsedUrl.hostname === "youtube.com" ||
+        parsedUrl.hostname.endsWith(".youtube.com");
+      if (!isYouTubeHost || !parsedUrl.pathname.includes("/api/timedtext")) {
+        return;
+      }
+    } catch {
+      return;
+    }
     const lang = extractLangFromURL(url);
     const videoId = extractVideoIdFromURL(url);
     if (!videoId) return;
@@ -173,16 +125,29 @@ export function initCaptionInterceptor(): void {
     if (!transcript) return;
 
     captionCache.set(key, { transcript, timestamp: Date.now() });
+    while (captionCache.size > MAX_CAPTION_CACHE_ENTRIES) {
+      const oldestKey = [...captionCache.entries()]
+        .sort((a, b) => a[1].timestamp - b[1].timestamp)[0]?.[0];
+      if (!oldestKey) break;
+      captionCache.delete(oldestKey);
+    }
     console.log(`[vas] Cached captions: video=${videoId} lang=${lang} segments=${transcript.segments.length}`);
   }) as EventListener);
 }
 
 // ---------------------------------------------------------------------------
-// Wait for interceptor to capture timedtext
+// Read intercepted timedtext without waiting or changing player state
 // ---------------------------------------------------------------------------
 
 /** Check caption cache for a matching entry. */
-function checkCache(videoId: string, preferredLangs: string[]): Transcript | null {
+export function getCachedCaptionedText(
+  videoId: string,
+  preferredLangs: string[],
+): Transcript | null {
+  const cutoff = Date.now() - CAPTION_CACHE_TTL_MS;
+  for (const [key, entry] of captionCache) {
+    if (entry.timestamp < cutoff) captionCache.delete(key);
+  }
   // Preferred languages first
   for (const lang of preferredLangs) {
     const key = makeCacheKey(videoId, lang);
@@ -197,88 +162,4 @@ function checkCache(videoId: string, preferredLangs: string[]): Transcript | nul
     }
   }
   return null;
-}
-
-/**
- * 获取字幕文本。
- *
- * 策略（优先静默，逐步升级）：
- *   1. 检查拦截器缓存
- *   2. 如果 CC 关闭 → 调用 player.toggleSubtitlesOn() 静默开启（不点击 UI 按钮）
- *   3. 设置 PerformanceObserver 监听 timedtext 资源 + 轮询缓存
- *   4. 超时后回退到直接 fetch（由调用方处理）
- */
-export async function getCaptionedText(
-  videoId: string,
-  preferredLangs: string[],
-  timeoutMs: number = 8000,
-): Promise<Transcript> {
-  // 1. Check cache immediately
-  const cached = checkCache(videoId, preferredLangs);
-  if (cached) return cached;
-
-  // 2. If CC is off, silently enable it (player JS API, no visible UI change)
-  const toggledByUs = silentlyEnableCaptions();
-  console.log(`[vas] CC was off, toggled by us: ${toggledByUs}, waiting up to ${timeoutMs}ms...`);
-
-  return new Promise((resolve, reject) => {
-    let settled = false;
-
-    const done = (transcript: Transcript) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      resolve(transcript);
-    };
-
-    const fail = (err: Error) => {
-      if (settled) return;
-      settled = true;
-      cleanup();
-      reject(err);
-    };
-
-    // Watch for new timedtext resources (PerformanceObserver)
-    let observer: PerformanceObserver | null = null;
-    try {
-      observer = new PerformanceObserver((list) => {
-        for (const entry of list.getEntries()) {
-          if (entry.name.includes("/api/timedtext")) {
-            // Player just loaded a timedtext resource — interceptor should have it
-            setTimeout(() => {
-              const match = checkCache(videoId, preferredLangs);
-              if (match) done(match);
-            }, 100);
-            break;
-          }
-        }
-      });
-      observer.observe({ type: "resource", buffered: true });
-    } catch {
-      // PerformanceObserver may not be available
-    }
-
-    // Poll cache periodically
-    const pollInterval = setInterval(() => {
-      const match = checkCache(videoId, preferredLangs);
-      if (match) done(match);
-    }, 600);
-
-    // Overall timeout
-    const timer = setTimeout(() => {
-      const match = checkCache(videoId, preferredLangs);
-      if (match) {
-        done(match);
-      } else {
-        fail(new UserError(t("errorCaptionTimeout"), "YT_INTERCEPTOR_TIMEOUT"));
-      }
-    }, timeoutMs);
-
-    const cleanup = () => {
-      observer?.disconnect();
-      clearInterval(pollInterval);
-      clearTimeout(timer);
-      restoreCaptions(toggledByUs);
-    };
-  });
 }

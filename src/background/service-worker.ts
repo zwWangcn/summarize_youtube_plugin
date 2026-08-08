@@ -9,6 +9,7 @@
 
 import { streamAIText } from "../service/ai";
 import { hasAnyApiKey } from "../service/storage";
+import { clearExpiredCache } from "../service/summary-cache";
 import {
   AI_STREAM_PORT,
   type AIStreamEvent,
@@ -28,89 +29,10 @@ chrome.runtime.onInstalled.addListener((details) => {
 });
 
 // ---------------------------------------------------------------------------
-// Caption interceptor (injected into YouTube MAIN world at document_start)
-// ---------------------------------------------------------------------------
-// This function MUST be self-contained — it gets serialized and injected.
-function interceptorFunc(): void {
-  const FLAG = "__vas_interceptor_installed";
-  if ((window as unknown as Record<string, unknown>)[FLAG]) return;
-  (window as unknown as Record<string, unknown>)[FLAG] = true;
-  console.log("[vas] MAIN: interceptor installed");
-
-  function isTimedtext(u: string): boolean {
-    return u.includes("/api/timedtext");
-  }
-  function notify(url: string, text: string): void {
-    if (!text) return;
-    document.dispatchEvent(new CustomEvent("vas-caption-captured", {
-      detail: { url, text },
-    }));
-  }
-
-  // ---- Patch fetch ----
-  const _fetch = window.fetch.bind(window);
-  (window as unknown as Record<string, unknown>).fetch = function (
-    url: RequestInfo | URL, opts?: RequestInit
-  ): Promise<Response> {
-    const urlStr: string = typeof url === "string" ? url : (url as Request).url || "";
-    return _fetch(url, opts).then((resp: Response) => {
-      if (isTimedtext(urlStr)) {
-        resp.clone().text().then((t: string) => notify(urlStr, t)).catch(function () {});
-      }
-      return resp;
-    });
-  };
-
-  // ---- Patch XMLHttpRequest PROTOTYPE (not constructor!) ----
-  // Prototype patching works retroactively on already-created XHR instances.
-  const OrigXHR = (window as unknown as Record<string, unknown>).XMLHttpRequest as typeof XMLHttpRequest;
-  const origOpen = OrigXHR.prototype.open;
-  const origSend = OrigXHR.prototype.send;
-
-  OrigXHR.prototype.open = function (
-    method: string, url: string | URL, async?: boolean, user?: string | null, password?: string | null
-  ): void {
-    (this as unknown as Record<string, unknown>).__vas_url = url.toString();
-    return origOpen.call(this, method, url, async as boolean, user as string | null, password as string | null);
-  };
-
-  OrigXHR.prototype.send = function (body?: Document | XMLHttpRequestBodyInit | null): void {
-    const url = (this as unknown as Record<string, unknown>).__vas_url as string | undefined;
-    if (url && isTimedtext(url)) {
-      this.addEventListener("readystatechange", function () {
-        if (this.readyState === 4 && this.status === 200) {
-          notify(url, this.responseText);
-        }
-      });
-    }
-    return origSend.call(this, body);
-  };
-}
-
-// ---------------------------------------------------------------------------
 // Message routing
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
-    case "INJECT_CAPTION_INTERCEPTOR": {
-      if (!sender.tab?.id) {
-        sendResponse({ ok: false, error: "no tab id" });
-        break;
-      }
-      chrome.scripting.executeScript({
-        target: { tabId: sender.tab.id, frameIds: [0] },
-        func: interceptorFunc,
-        world: "MAIN",
-        injectImmediately: true,
-      }).then(() => {
-        sendResponse({ ok: true });
-      }).catch((err: Error) => {
-        console.debug("[vas] SW: injection failed:", err.message);
-        sendResponse({ ok: false, error: err.message });
-      });
-      return true;
-    }
-
     case "GET_API_KEY_STATUS": {
       // Only respond to messages from this extension (content scripts / popup),
       // not from other extensions or web pages sharing the runtime.
@@ -218,3 +140,6 @@ chrome.runtime.onConnect.addListener((port) => {
 // Prevent service worker from being terminated during long operations
 // (not strictly needed but good practice)
 console.log("[vas] Service worker ready");
+void clearExpiredCache().catch((error: unknown) => {
+  console.debug("[vas] Summary cache cleanup failed:", error);
+});

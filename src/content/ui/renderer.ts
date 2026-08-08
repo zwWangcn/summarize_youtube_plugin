@@ -121,14 +121,6 @@ export function renderStreaming(target: HTMLElement, markdown: string): void {
   }
 }
 
-/**
- * 渲染纯文本字幕到目标元素。
- */
-export function renderTranscript(target: HTMLElement, text: string): void {
-  target.innerHTML = `<pre class="vas-transcript">${escapeHtml(text)}</pre>`;
-  linkifyTimestampsInDom(target);
-}
-
 export interface TranscriptSectionRenderState {
   chunks: TranslationChunk[];
   loadedStart: number;
@@ -223,10 +215,4 @@ export function renderTranscriptSections(
     bottom.textContent = t("loadLaterCaptions");
     target.appendChild(bottom);
   }
-}
-
-function escapeHtml(str: string): string {
-  const div = document.createElement("div");
-  div.appendChild(document.createTextNode(str));
-  return div.innerHTML;
 }

@@ -1,95 +1,158 @@
-/**
- * 总结缓存模块 — 使用 chrome.storage.local 持久化 AI 总结结果。
- *
- * 设计要点：
- *   - 存储后端：chrome.storage.local（约 10MB 配额）
- *   - TTL：默认 7 天，过期自动淘汰
- *   - 容量控制：最多 50 条，超出按 LRU 淘汰最旧条目
- *   - 所有数据存于单一 key "vas-summaries" 下，避免 key 数量膨胀
- */
+/** 总结缓存：每条总结使用独立 storage key，避免多标签页整表覆盖。 */
 
 import type { OutputLanguage } from "../utils/i18n";
 
-// ---------------------------------------------------------------------------
-// Types
-// ---------------------------------------------------------------------------
 export interface CachedSummary {
-  text: string; // Markdown 格式的总结内容
-  videoTitle: string; // 视频标题（用于 UI 展示）
-  videoId: string; // 视频 ID
-  source: string; // Cache namespace, currently "youtube"
-  outputLanguage: OutputLanguage; // AI 输出语言
-  timestamp: number; // 缓存时间 (Date.now())
+  text: string;
+  videoTitle: string;
+  videoId: string;
+  source: string;
+  outputLanguage: OutputLanguage;
+  timestamp: number;
 }
 
-// ---------------------------------------------------------------------------
-// Constants
-// ---------------------------------------------------------------------------
-const STORAGE_KEY = "vas-summaries";
-const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000; // 7 天
+const LEGACY_STORAGE_KEY = "vas-summaries";
+const STORAGE_PREFIX = "vas-summary:";
+const ACCESS_PREFIX = "vas-summary-access:";
+const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
+const ACCESS_TOUCH_INTERVAL_MS = 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 
-type CacheIndex = Record<string, CachedSummary>;
+type LegacyCacheIndex = Record<string, CachedSummary>;
 
-// ---------------------------------------------------------------------------
-// Internal helpers
-// ---------------------------------------------------------------------------
-async function readIndex(): Promise<CacheIndex> {
-  const result = await chrome.storage.local.get(STORAGE_KEY);
-  return (result[STORAGE_KEY] as CacheIndex) ?? {};
-}
-
-async function writeIndex(index: CacheIndex): Promise<void> {
-  await chrome.storage.local.set({ [STORAGE_KEY]: index });
-}
-
-/** 构造缓存 key：source:videoId:outputLanguage */
-function makeKey(source: string, videoId: string, outputLanguage: OutputLanguage): string {
+function logicalKey(source: string, videoId: string, outputLanguage: OutputLanguage): string {
   return `${source}:${videoId}:${outputLanguage}`;
 }
 
-function makeLegacyKey(source: string, videoId: string): string {
+function legacyKey(source: string, videoId: string): string {
   return `${source}:${videoId}`;
 }
 
-// ---------------------------------------------------------------------------
-// Public API
-// ---------------------------------------------------------------------------
+function storageKey(source: string, videoId: string, outputLanguage: OutputLanguage): string {
+  return STORAGE_PREFIX + [source, videoId, outputLanguage].map(encodeURIComponent).join(":");
+}
 
-/**
- * 读取缓存的总结。
- * 如果缓存不存在或已过期，返回 null。
- */
+function accessKey(source: string, videoId: string, outputLanguage: OutputLanguage): string {
+  return ACCESS_PREFIX + [source, videoId, outputLanguage].map(encodeURIComponent).join(":");
+}
+
+function accessKeyForStorageKey(key: string): string {
+  return ACCESS_PREFIX + key.slice(STORAGE_PREFIX.length);
+}
+
+function asCachedSummary(value: unknown): CachedSummary | null {
+  if (!value || typeof value !== "object") return null;
+  const item = value as CachedSummary;
+  if (
+    typeof item.text !== "string" ||
+    typeof item.videoTitle !== "string" ||
+    typeof item.videoId !== "string" ||
+    typeof item.source !== "string" ||
+    typeof item.outputLanguage !== "string" ||
+    !Number.isFinite(item.timestamp)
+  ) return null;
+  return item;
+}
+
+async function migrateLegacyEntry(
+  source: string,
+  videoId: string,
+  outputLanguage: OutputLanguage,
+): Promise<CachedSummary | null> {
+  const result = await chrome.storage.local.get(LEGACY_STORAGE_KEY);
+  const index = (result[LEGACY_STORAGE_KEY] as LegacyCacheIndex | undefined) ?? {};
+  const localizedKey = logicalKey(source, videoId, outputLanguage);
+  const oldKey = index[localizedKey]
+    ? localizedKey
+    : outputLanguage === "zh-CN" && index[legacyKey(source, videoId)]
+      ? legacyKey(source, videoId)
+      : "";
+  if (!oldKey) return null;
+  const oldValue = index[oldKey] as Partial<CachedSummary> | undefined;
+  if (
+    !oldValue ||
+    typeof oldValue.text !== "string" ||
+    typeof oldValue.videoTitle !== "string" ||
+    typeof oldValue.videoId !== "string" ||
+    typeof oldValue.source !== "string" ||
+    !Number.isFinite(oldValue.timestamp)
+  ) return null;
+
+  const entry: CachedSummary = {
+    text: oldValue.text,
+    videoTitle: oldValue.videoTitle,
+    videoId: oldValue.videoId,
+    source: oldValue.source,
+    outputLanguage,
+    timestamp: oldValue.timestamp!,
+  };
+  await chrome.storage.local.set({
+    [storageKey(source, videoId, outputLanguage)]: entry,
+    [accessKey(source, videoId, outputLanguage)]: Date.now(),
+  });
+  delete index[oldKey];
+  if (Object.keys(index).length) await chrome.storage.local.set({ [LEGACY_STORAGE_KEY]: index });
+  else await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
+  return entry;
+}
+
+async function cleanupEntries(protectedKey?: string): Promise<void> {
+  const all = await chrome.storage.local.get(null);
+  const now = Date.now();
+  const valid: Array<[string, CachedSummary, number]> = [];
+  const toRemove: string[] = [];
+  for (const [key, value] of Object.entries(all)) {
+    if (!key.startsWith(STORAGE_PREFIX)) continue;
+    const entry = asCachedSummary(value);
+    if (!entry || now - entry.timestamp > CACHE_TTL_MS) {
+      if (key !== protectedKey) toRemove.push(key, accessKeyForStorageKey(key));
+    }
+    else {
+      const lastAccessed = Number(all[accessKeyForStorageKey(key)]);
+      valid.push([key, entry, Number.isFinite(lastAccessed) ? lastAccessed : entry.timestamp]);
+    }
+  }
+
+  for (const key of Object.keys(all)) {
+    if (!key.startsWith(ACCESS_PREFIX)) continue;
+    const contentKey = STORAGE_PREFIX + key.slice(ACCESS_PREFIX.length);
+    if (!(contentKey in all) && contentKey !== protectedKey) toRemove.push(key);
+  }
+
+  const overflow = valid.length - MAX_CACHE_ENTRIES;
+  if (overflow > 0) {
+    valid
+      .filter(([key]) => key !== protectedKey)
+      .sort((a, b) => a[2] - b[2])
+      .slice(0, overflow)
+      .forEach(([key]) => toRemove.push(key, accessKeyForStorageKey(key)));
+  }
+  if (toRemove.length) await chrome.storage.local.remove([...new Set(toRemove)]);
+}
+
 export async function getCachedSummary(
   source: string,
   videoId: string,
   outputLanguage: OutputLanguage,
 ): Promise<CachedSummary | null> {
-  const index = await readIndex();
-  const key = makeKey(source, videoId, outputLanguage);
-  let entry = index[key];
-  const legacyKey = makeLegacyKey(source, videoId);
-  if (!entry && outputLanguage === "zh-CN" && index[legacyKey]) {
-    entry = { ...index[legacyKey], outputLanguage: "zh-CN" };
-    index[key] = entry;
-    delete index[legacyKey];
-    await writeIndex(index);
-  }
+  const key = storageKey(source, videoId, outputLanguage);
+  const accessStorageKey = accessKey(source, videoId, outputLanguage);
+  const result = await chrome.storage.local.get([key, accessStorageKey]);
+  let entry = asCachedSummary(result[key]);
+  if (!entry) entry = await migrateLegacyEntry(source, videoId, outputLanguage);
   if (!entry) return null;
 
-  if (Date.now() - entry.timestamp > CACHE_TTL_MS) {
-    // 惰性清理过期条目
-    delete index[key];
-    await writeIndex(index);
+  const now = Date.now();
+  if (now - entry.timestamp > CACHE_TTL_MS) {
     return null;
+  }
+  const lastAccessed = Number(result[accessStorageKey]);
+  if (!Number.isFinite(lastAccessed) || now - lastAccessed >= ACCESS_TOUCH_INTERVAL_MS) {
+    await chrome.storage.local.set({ [accessStorageKey]: now });
   }
   return entry;
 }
 
-/**
- * 写入总结缓存。
- * 写入前自动清理过期条目，超出上限时淘汰最旧条目（LRU）。
- */
 export async function setCachedSummary(
   source: string,
   videoId: string,
@@ -97,31 +160,9 @@ export async function setCachedSummary(
   text: string,
   outputLanguage: OutputLanguage,
 ): Promise<void> {
-  const index = await readIndex();
-
-  // 1. 清理过期条目
   const now = Date.now();
-  for (const k of Object.keys(index)) {
-    if (now - index[k].timestamp > CACHE_TTL_MS) {
-      delete index[k];
-    }
-  }
-
-  // 2. 检查容量，按 LRU 淘汰最旧的
-  const keys = Object.keys(index);
-  if (keys.length >= MAX_CACHE_ENTRIES) {
-    // 按 timestamp 升序排列，最旧的在前面
-    const sorted = keys.sort((a, b) => index[a].timestamp - index[b].timestamp);
-    // 需要腾出多少个槽位
-    const toRemove = sorted.slice(0, keys.length - MAX_CACHE_ENTRIES + 1);
-    for (const k of toRemove) {
-      delete index[k];
-    }
-  }
-
-  // 3. 写入新条目
-  const key = makeKey(source, videoId, outputLanguage);
-  index[key] = {
+  const key = storageKey(source, videoId, outputLanguage);
+  const entry: CachedSummary = {
     text,
     videoTitle,
     videoId,
@@ -129,40 +170,31 @@ export async function setCachedSummary(
     outputLanguage,
     timestamp: now,
   };
-
-  await writeIndex(index);
+  await chrome.storage.local.set({
+    [key]: entry,
+    [accessKey(source, videoId, outputLanguage)]: now,
+  });
+  await cleanupEntries(key);
 }
 
-/**
- * 删除指定视频的缓存（用于「再次总结」强制刷新）。
- */
 export async function invalidateCache(
   source: string,
   videoId: string,
   outputLanguage: OutputLanguage,
 ): Promise<void> {
-  const index = await readIndex();
-  const key = makeKey(source, videoId, outputLanguage);
-  delete index[key];
-  if (outputLanguage === "zh-CN") delete index[makeLegacyKey(source, videoId)];
-  await writeIndex(index);
+  await chrome.storage.local.remove([
+    storageKey(source, videoId, outputLanguage),
+    accessKey(source, videoId, outputLanguage),
+  ]);
+
+  const result = await chrome.storage.local.get(LEGACY_STORAGE_KEY);
+  const index = (result[LEGACY_STORAGE_KEY] as LegacyCacheIndex | undefined) ?? {};
+  delete index[logicalKey(source, videoId, outputLanguage)];
+  if (outputLanguage === "zh-CN") delete index[legacyKey(source, videoId)];
+  if (Object.keys(index).length) await chrome.storage.local.set({ [LEGACY_STORAGE_KEY]: index });
+  else if (result[LEGACY_STORAGE_KEY]) await chrome.storage.local.remove(LEGACY_STORAGE_KEY);
 }
 
-/**
- * 清空所有过期的缓存条目。
- * 可在扩展启动时调用，做一次全局清理。
- */
 export async function clearExpiredCache(): Promise<void> {
-  const index = await readIndex();
-  const now = Date.now();
-  let changed = false;
-  for (const k of Object.keys(index)) {
-    if (now - index[k].timestamp > CACHE_TTL_MS) {
-      delete index[k];
-      changed = true;
-    }
-  }
-  if (changed) {
-    await writeIndex(index);
-  }
+  await cleanupEntries();
 }

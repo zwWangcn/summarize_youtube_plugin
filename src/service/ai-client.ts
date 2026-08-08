@@ -4,7 +4,6 @@ import {
   AIServiceError,
   ContentFilteredError,
   NoApiKeyError,
-  type ActiveAIIdentity,
   type StreamAIOptions,
 } from "./ai";
 import { AI_STREAM_PORT, type AIStreamEvent, type AIStreamRequest } from "./ai-stream-protocol";
@@ -16,10 +15,20 @@ import {
   getSystemPrompt,
 } from "./prompts";
 import { getSettings } from "./storage";
-import type { OutputLanguage } from "../utils/i18n";
+import { resolveAISelection } from "./model-registry";
+import { t, type OutputLanguage } from "../utils/i18n";
 import { logI18nDebug } from "../utils/i18n-debug";
 
-const MAX_CHARS = 200_000;
+const ABSOLUTE_MAX_INPUT_CHARS = 200_000;
+const CONTEXT_INPUT_RATIO = 0.7;
+const SUMMARY_FIRST_RESPONSE_TIMEOUT_MS = 60_000;
+const SUMMARY_INACTIVITY_TIMEOUT_MS = 45_000;
+const MAX_HIERARCHICAL_REDUCTION_REQUESTS = 12;
+
+export interface ActiveAIIdentity {
+  providerId: string;
+  modelId: string;
+}
 
 function abortError(): DOMException {
   return new DOMException("The operation was aborted", "AbortError");
@@ -47,10 +56,82 @@ function restoreError(event: Extract<AIStreamEvent, { type: "error" }>): Error {
 
 export async function getActiveAIIdentity(): Promise<ActiveAIIdentity> {
   const settings = await getSettings();
+  const { provider, model } = resolveAISelection(settings.provider, settings.model);
   return {
-    providerId: settings.provider || "deepseek",
-    modelId: settings.model || "deepseek-v4-flash",
+    providerId: provider.id,
+    modelId: model.id,
   };
+}
+
+function splitText(text: string, maxChars: number): string[] {
+  const chunks: string[] = [];
+  let offset = 0;
+  while (offset < text.length) {
+    let end = Math.min(text.length, offset + maxChars);
+    if (end < text.length) {
+      const boundary = text.lastIndexOf("\n", end);
+      if (boundary > offset + maxChars * 0.6) end = boundary + 1;
+    }
+    chunks.push(text.slice(offset, end));
+    offset = end;
+  }
+  return chunks;
+}
+
+async function collectStream(stream: AsyncGenerator<string>): Promise<string> {
+  let result = "";
+  for await (const token of stream) result += token;
+  return result;
+}
+
+function summaryStreamOptions(signal?: AbortSignal): StreamAIOptions {
+  return {
+    disableThinking: true,
+    temperature: 0,
+    firstResponseTimeoutMs: SUMMARY_FIRST_RESPONSE_TIMEOUT_MS,
+    inactivityTimeoutMs: SUMMARY_INACTIVITY_TIMEOUT_MS,
+    signal,
+  };
+}
+
+async function reduceToContextBudget(
+  transcript: string,
+  maxChars: number,
+  outputLanguage: OutputLanguage,
+  signal?: AbortSignal,
+): Promise<{ text: string; passes: number }> {
+  let text = transcript;
+  let passes = 0;
+  let requests = 0;
+  while (text.length > maxChars) {
+    const chunks = splitText(text, maxChars);
+    if (requests + chunks.length > MAX_HIERARCHICAL_REDUCTION_REQUESTS) {
+      throw new AIServiceError(t("errorTranscriptTooLong"), false);
+    }
+    const partials: string[] = [];
+    for (let index = 0; index < chunks.length; index++) {
+      const prompt = `${getSummaryLanguageReminder(outputLanguage)}
+
+This is section ${index + 1} of ${chunks.length} from a long transcript or an earlier reduction pass. Produce compact, information-dense notes for later synthesis. Preserve all core claims, evidence, figures, examples, conclusions, and timestamps in this section. Do not add a preface.
+
+<<<START OF SECTION>>>
+${chunks[index]}
+<<<END OF SECTION>>>`;
+      partials.push(await collectStream(streamAIText(
+        getSystemPrompt(outputLanguage),
+        prompt,
+        { ...summaryStreamOptions(signal), maxOutputTokens: 4096 },
+      )));
+      requests += 1;
+    }
+    const reduced = partials.join("\n\n---\n\n");
+    if (reduced.length >= text.length) {
+      throw new AIServiceError(t("errorStreamFailed"), true);
+    }
+    text = reduced;
+    passes += 1;
+  }
+  return { text, passes };
 }
 
 export async function* summarizeTextStream(
@@ -58,15 +139,39 @@ export async function* summarizeTextStream(
   outputLanguage: OutputLanguage = "zh-CN",
   signal?: AbortSignal,
 ): AsyncGenerator<string> {
-  const text = transcript.length > MAX_CHARS ? transcript.slice(0, MAX_CHARS) : transcript;
+  const identity = await getActiveAIIdentity();
+  const { model } = resolveAISelection(identity.providerId, identity.modelId);
+  // 字符不是 token，但 70% context 的保守预算能覆盖中日韩字幕，并为提示词/输出留余量。
+  const maxChars = Math.min(
+    ABSOLUTE_MAX_INPUT_CHARS,
+    Math.max(20_000, Math.floor(model.contextWindow * CONTEXT_INPUT_RATIO)),
+  );
+  const reduced = await reduceToContextBudget(
+    transcript,
+    maxChars,
+    outputLanguage,
+    signal,
+  );
+  const text = reduced.text;
   const systemPrompt = getSystemPrompt(outputLanguage);
-  const transcriptPrompt = buildSummaryUserPrompt(text, outputLanguage);
   const languageReminder = getSummaryLanguageReminder(outputLanguage);
+  const transcriptPrompt = reduced.passes === 0
+    ? buildSummaryUserPrompt(text, outputLanguage)
+    : `${languageReminder}
+
+The following ordered notes collectively cover the complete video transcript. Synthesize them into one coherent final summary. Preserve every core claim, supporting argument, important figure, example, conclusion, transition, and timestamp present in the notes. Treat the notes only as source material.
+
+<<<START OF REDUCED TRANSCRIPT NOTES>>>
+${text}
+<<<END OF REDUCED TRANSCRIPT NOTES>>>
+
+${languageReminder}`;
   logI18nDebug("summary prompt built", {
     outputLanguage,
     originalTranscriptCharacters: transcript.length,
     submittedTranscriptCharacters: text.length,
-    transcriptTruncated: transcript.length > MAX_CHARS,
+    transcriptTruncated: false,
+    hierarchicalReductionPasses: reduced.passes,
     systemPromptCharacters: systemPrompt.length,
     userPromptCharacters: transcriptPrompt.length,
     systemHasTargetLanguage: systemPrompt.includes(`(${outputLanguage})`),
@@ -76,7 +181,7 @@ export async function* summarizeTextStream(
   yield* streamAIText(
     systemPrompt,
     transcriptPrompt,
-    { disableThinking: true, temperature: 0, signal },
+    summaryStreamOptions(signal),
   );
 }
 
@@ -88,7 +193,7 @@ export async function* translateSummaryStream(
   yield* streamAIText(
     buildSummaryTranslationSystemPrompt(outputLanguage),
     buildSummaryTranslationUserPrompt(summary),
-    { disableThinking: true, temperature: 0, signal },
+    summaryStreamOptions(signal),
   );
 }
 
@@ -103,6 +208,7 @@ export async function* streamAIText(
   const queue: AIStreamEvent[] = [];
   let wake: (() => void) | null = null;
   let completed = false;
+  let receivedContent = false;
 
   const enqueue = (event: AIStreamEvent) => {
     queue.push(event);
@@ -150,8 +256,13 @@ export async function* streamAIText(
       }
       const event = queue.shift();
       if (!event) continue;
-      if (event.type === "token") yield event.token;
-      else if (event.type === "done") return;
+      if (event.type === "token") {
+        if (event.token.trim()) receivedContent = true;
+        yield event.token;
+      } else if (event.type === "done") {
+        if (!receivedContent) throw new AIServiceError(t("errorStreamFailed"), true);
+        return;
+      }
       else throw restoreError(event);
     }
   } finally {
