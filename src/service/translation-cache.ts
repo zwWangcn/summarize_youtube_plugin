@@ -26,7 +26,7 @@ export interface CachedTranslation extends TranslationCacheIdentity {
 const STORAGE_KEY = "vas-translations";
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
-const PIPELINE_VERSION = 2;
+const PIPELINE_VERSION = 3;
 
 type CacheIndex = Record<string, CachedTranslation>;
 

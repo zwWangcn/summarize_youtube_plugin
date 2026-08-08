@@ -592,6 +592,9 @@ export async function initContentScript(
         isFullTranslation ? "translationAllDone" : "translationSectionDone",
       );
     })().catch((error: unknown) => {
+      for (const chunkId of requestedChunkIds) {
+        delete partialTranslatedSections[chunkId];
+      }
       if ((error as Error)?.name === "AbortError") return;
       const message = error instanceof Error ? error.message : t("translationFailed");
       translationProgressText = t("translationStopped", message);

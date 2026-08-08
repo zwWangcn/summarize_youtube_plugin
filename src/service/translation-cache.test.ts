@@ -35,12 +35,13 @@ describe("section translation cache", () => {
   });
 
   it("merges independently completed sections and supports a section retry", async () => {
-    await setCachedTranslationSection(identity, {
+    const cached = await setCachedTranslationSection(identity, {
       chunkId: 0,
       targetStart: 0,
       targetEnd: 2,
       segments: [{ start: 0, duration: 3, text: "第一段" }],
     });
+    expect(cached.pipelineVersion).toBe(3);
     await setCachedTranslationSection(identity, {
       chunkId: 2,
       targetStart: 5,

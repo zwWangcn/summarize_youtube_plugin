@@ -43,7 +43,7 @@ Three paths are tried in priority order:
 
 Translation now lives inside **Raw Captions**. Captions are split by source character count, open near the current playback position, and load in either direction as you scroll. Scrolling never triggers an AI request. Translate the current section, retry one section, or use **Translate All** to fill only missing sections, then switch between Source and Translation views.
 
-The extension still repairs broken segmentation conservatively and keeps translated timestamps clickable. Each completed section is cached for seven days by video, source language, target language, provider, and model, so full translation resumes after closing the panel. Captions already written in the selected target language do not trigger a translation request.
+The extension sends timestamped captions together with surrounding context so the AI can turn broken fragments into natural sentences and estimate second-level start times. Translated sentences do not need to map one-to-one to the original fragments, and their timestamps remain clickable. Each completed section is cached for seven days by video, source language, target language, provider, and model, so full translation resumes after closing the panel. Captions already written in the selected target language do not trigger a translation request.
 
 ### UI and Output Language
 
