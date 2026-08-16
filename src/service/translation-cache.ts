@@ -34,7 +34,8 @@ const LEGACY_STORAGE_KEY = "vas-translations";
 const STORAGE_PREFIX = "vas-translation-section:";
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
-const PIPELINE_VERSION = 4;
+// Increment whenever local cue construction or cue-to-translation alignment changes.
+const PIPELINE_VERSION = 7;
 
 function identityKey(identity: TranslationCacheIdentity): string {
   return [
@@ -67,6 +68,15 @@ function asStoredSection(value: unknown): StoredSection | null {
     !Number.isInteger(section.targetStart) ||
     !Number.isInteger(section.targetEnd) ||
     !Array.isArray(section.segments) ||
+    section.segments.some((segment) => (
+      !segment ||
+      !Number.isInteger(segment.cueId) ||
+      !Number.isInteger(segment.sourceStartId) ||
+      !Number.isInteger(segment.sourceEndId) ||
+      !Number.isFinite(segment.start) ||
+      !Number.isFinite(segment.duration) ||
+      typeof segment.text !== "string"
+    )) ||
     !Number.isFinite(section.timestamp)
   ) return null;
   return item;

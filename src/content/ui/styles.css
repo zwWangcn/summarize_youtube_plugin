@@ -188,6 +188,12 @@
   flex-shrink: 0;
 }
 .vas-toolbar-spacer { flex: 1; }
+.vas-btn-bilingual.vas-active {
+  border-color: var(--vas-text-secondary);
+  background: var(--vas-bg-btn-hover);
+  color: var(--vas-text-primary);
+  box-shadow: inset 0 0 0 1px var(--vas-border-btn);
+}
 
 /* ---- Transcript controls ---- */
 .vas-transcript-tools {

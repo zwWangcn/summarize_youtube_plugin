@@ -1,4 +1,4 @@
-import { beforeEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 vi.mock("./ai-client", () => ({
   streamAIText: vi.fn(),
@@ -17,8 +17,14 @@ import type { Transcript, TranscriptSegment } from "../content/transcript";
 
 const streamAITextMock = vi.mocked(streamAIText);
 
-function segment(text: string, start: number = 0, duration: number = 1): TranscriptSegment {
-  return { start, duration, text };
+function segment(
+  text: string,
+  start: number = 0,
+  duration: number = 1,
+  sourceStartId?: number,
+  sourceEndId?: number,
+): TranscriptSegment {
+  return { start, duration, text, sourceStartId, sourceEndId };
 }
 
 function transcript(segments: TranscriptSegment[]): Transcript {
@@ -38,54 +44,36 @@ function failingStream(error: Error): AsyncGenerator<string> {
 }
 
 describe("buildTranslationChunks", () => {
-  it("covers all source segments exactly once", () => {
+  it("covers every aligned cue once and caps stable sections by duration", () => {
     const segments = [
-      segment("aaaa", 0),
-      segment("bbbb", 1),
-      segment("cccc", 2),
-      segment("dddd", 3),
+      segment("a", 0, 20),
+      segment("b", 20, 20),
+      segment("c", 40, 20),
+      segment("d", 60, 20),
     ];
-    const chunks = buildTranslationChunks(segments, 30);
+    const chunks = buildTranslationChunks(segments, 4_000, 60);
 
     expect(chunks.map(({ targetStart, targetEnd }) => [targetStart, targetEnd]))
-      .toEqual([[0, 0], [1, 1], [2, 2], [3, 3]]);
-    expect(chunks[1].contextStart).toBe(0);
-    expect(chunks[1].contextEnd).toBe(3);
+      .toEqual([[0, 2], [3, 3]]);
+    expect(chunks.map((chunk) => chunk.id)).toEqual([0, 1]);
   });
 
   it("returns no chunks for an empty transcript", () => {
     expect(buildTranslationChunks([])).toEqual([]);
   });
 
-  it("assigns stable ids and never splits an oversized caption", () => {
-    const segments = [
-      segment("a".repeat(20), 0),
-      segment("b".repeat(200), 1),
-      segment("c".repeat(20), 2),
-    ];
-    const chunks = buildTranslationChunks(segments, 60);
-
-    expect(chunks.map((chunk) => chunk.id)).toEqual([0, 1, 2]);
+  it("never splits an oversized cue", () => {
+    const chunks = buildTranslationChunks([
+      segment("a".repeat(200), 0, 90),
+      segment("next", 90, 2),
+    ], 60, 60);
     expect(chunks.map(({ targetStart, targetEnd }) => [targetStart, targetEnd]))
-      .toEqual([[0, 0], [1, 1], [2, 2]]);
-  });
-
-  it("looks ahead to finish a sentence near the character boundary", () => {
-    const segments = [
-      segment("unfinished fragment", 0),
-      segment("ends here.", 1),
-      segment("next fragment", 2),
-    ];
-
-    expect(buildTranslationChunks(segments, 45)[0]).toMatchObject({
-      targetStart: 0,
-      targetEnd: 1,
-    });
+      .toEqual([[0, 0], [1, 1]]);
   });
 });
 
-describe("timestamped translation prompts", () => {
-  it("asks for natural timed sentences with complete source-ID coverage", () => {
+describe("aligned translation prompts", () => {
+  it("requires one immutable translation per target cue", () => {
     const source = transcript([
       segment("context", 1905, 3),
       segment("And now with", 1908, 3),
@@ -102,107 +90,42 @@ describe("timestamped translation prompts", () => {
     const systemPrompt = buildTranslationSystemPrompt("zh-CN");
     const userPrompt = buildTranslationUserPrompt(source, chunk);
 
-    expect(systemPrompt).toContain("natural complete sentences");
-    expect(systemPrompt).toContain('{"type":"complete"}');
-    expect(userPrompt).toContain('"sourceId":1,"startTime":"31:48","text":"And now with"');
+    expect(systemPrompt).toContain("Never merge, split, skip, duplicate, or reorder cues");
+    expect(systemPrompt).toContain("Do not return timestamps");
+    expect(systemPrompt).toContain('{"type":"caption","cueId":12');
+    expect(userPrompt).toContain('"cueId":1,"startTime":"31:48","endTime":"31:51"');
     expect(userPrompt).toContain("CONTEXT BEFORE — DO NOT TRANSLATE");
-    expect(userPrompt).toContain("Allowed TARGET startTime range: 31:48-31:53 inclusive");
-    expect(systemPrompt).toContain("sourceStartId");
-    expect(systemPrompt).toContain("sourceEndId");
+    expect(userPrompt).toContain("TARGET cue IDs: 1-2 inclusive");
   });
 });
 
 describe("validateTranslationLine", () => {
-  it("accepts estimated and repeated in-range timestamps", () => {
+  it("accepts only the next expected cue ID", () => {
     expect(validateTranslationLine(
-      '{"type":"caption","sourceStartId":4,"sourceEndId":5,"startTime":"31:49","translatedText":"译文"}',
-      1908,
-      1917,
-      1909,
+      '{"type":"caption","cueId":4,"translatedText":"译文"}',
       4,
       8,
-    )).toEqual({
-      type: "caption",
-      sourceStartId: 4,
-      sourceEndId: 5,
-      start: 1909,
-      translatedText: "译文",
-    });
-    expect(validateTranslationLine(
-      '{"type":"complete"}',
-      1908,
-      1917,
-      1909,
-      6,
-      8,
-    )).toEqual({ type: "complete" });
+    )).toEqual({ type: "caption", cueId: 4, translatedText: "译文" });
+    expect(validateTranslationLine('{"type":"complete"}', 9, 8))
+      .toEqual({ type: "complete" });
   });
 
-  it("accepts hour-format timestamps", () => {
-    expect(validateTranslationLine(
-      '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"1:02:03","translatedText":"长视频译文"}',
-      3720,
-      3740,
-      null,
-      0,
-      0,
-    )).toEqual({
-      type: "caption",
-      sourceStartId: 0,
-      sourceEndId: 0,
-      start: 3723,
-      translatedText: "长视频译文",
-    });
-  });
-
-  it("rejects out-of-range and decreasing timestamps", () => {
+  it("rejects missing, duplicate, out-of-order, timestamped, and empty records", () => {
+    expect(() => validateTranslationLine("not json", 0, 1)).toThrow(TranslationFormatError);
     expect(() => validateTranslationLine(
-      '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"31:47","translatedText":"越界"}',
-      1908,
-      1917,
-      null,
+      '{"type":"caption","cueId":1,"translatedText":"skip"}',
       0,
-      0,
-    )).toThrow(TranslationFormatError);
-    expect(() => validateTranslationLine(
-      '{"type":"caption","sourceStartId":1,"sourceEndId":1,"startTime":"31:50","translatedText":"倒序"}',
-      1908,
-      1917,
-      1911,
-      1,
       1,
     )).toThrow(TranslationFormatError);
-  });
-
-  it("rejects malformed records and empty translations", () => {
-    expect(() => validateTranslationLine("not json", 0, 10, null, 0, 0))
-      .toThrow(TranslationFormatError);
     expect(() => validateTranslationLine(
-      '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"0:01","translatedText":""}',
+      '{"type":"caption","cueId":0,"startTime":"0:01","translatedText":"timed"}',
       0,
-      10,
-      null,
-      0,
-      0,
-    )).toThrow(TranslationFormatError);
-  });
-
-  it("rejects source-ID gaps and overlaps", () => {
-    expect(() => validateTranslationLine(
-      '{"type":"caption","sourceStartId":2,"sourceEndId":3,"startTime":"0:01","translatedText":"漏了一段"}',
-      0,
-      10,
-      null,
       1,
-      3,
     )).toThrow(TranslationFormatError);
     expect(() => validateTranslationLine(
-      '{"type":"caption","sourceStartId":1,"sourceEndId":4,"startTime":"0:01","translatedText":"越界"}',
+      '{"type":"caption","cueId":0,"translatedText":""}',
       0,
-      10,
-      null,
       1,
-      3,
     )).toThrow(TranslationFormatError);
   });
 });
@@ -212,36 +135,52 @@ describe("translateTranscriptChunk", () => {
     streamAITextMock.mockReset();
   });
 
-  it("maps naturally resegmented sentences back to estimated timestamps", async () => {
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.restoreAllMocks();
+  });
+
+  it("keeps local cue timing and original source ranges", async () => {
     const source = transcript([
-      segment("And now with", 1908, 3),
-      segment("step two completed, I was", 1911, 3),
-      segment("almost done.", 1914, 3),
+      segment("had attempted it and not finished because it's a brutal event.", 178, 6, 20, 22),
+      segment("One of the best things about doing the race is afterwards you finish.", 184, 6, 23, 24),
     ]);
     const chunk = buildTranslationChunks(source.segments)[0];
     streamAITextMock.mockImplementation(() => tokenStream(
-      '{"type":"caption","sourceStartId":0,"sourceEndId":1,"startTime":"31:49","translatedText":"现在，第二步已经完成，"}\n',
-      '{"type":"caption","sourceStartId":2,"sourceEndId":2,"startTime":"31:54","translatedText":"我就快完成了。"}\n',
+      '{"type":"caption","cueId":0,"translatedText":"许多人尝试过却未能完成，因为这是一场残酷的赛事。"}\n',
+      '{"type":"caption","cueId":1,"translatedText":"参加比赛最棒的事情之一就是最终完赛。"}\n',
       '{"type":"complete"}\n',
     ));
 
     await expect(translateTranscriptChunk(source, chunk, "zh-CN")).resolves.toEqual([
-      { start: 1909, duration: 5, text: "现在，第二步已经完成，" },
-      { start: 1914, duration: 3, text: "我就快完成了。" },
+      {
+        cueId: 0,
+        sourceStartId: 20,
+        sourceEndId: 22,
+        start: 178,
+        duration: 6,
+        text: "许多人尝试过却未能完成，因为这是一场残酷的赛事。",
+      },
+      {
+        cueId: 1,
+        sourceStartId: 23,
+        sourceEndId: 24,
+        start: 184,
+        duration: 6,
+        text: "参加比赛最棒的事情之一就是最终完赛。",
+      },
     ]);
-    expect(streamAITextMock).toHaveBeenCalledTimes(1);
-    expect(streamAITextMock.mock.calls[0][1]).toContain("TRANSLATE ALL OF THIS");
   });
 
-  it("retries a missing completion marker with the exact validation reason", async () => {
+  it("retries a missing completion marker with the validation reason", async () => {
     const source = transcript([segment("hello world", 0, 2)]);
     const chunk = buildTranslationChunks(source.segments)[0];
     streamAITextMock
       .mockImplementationOnce(() => tokenStream(
-        '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"0:00","translatedText":"你好，世界。"}\n',
+        '{"type":"caption","cueId":0,"translatedText":"你好，世界。"}\n',
       ))
       .mockImplementationOnce(() => tokenStream(
-        '{"type":"caption","sourceStartId":0,"sourceEndId":0,"startTime":"0:00","translatedText":"你好，世界。"}\n',
+        '{"type":"caption","cueId":0,"translatedText":"你好，世界。"}\n',
         '{"type":"complete"}\n',
       ));
 
@@ -258,7 +197,7 @@ describe("translateTranscriptChunk", () => {
     expect(progress).toContainEqual({ length: 0, repairing: true });
   });
 
-  it("splits the source range after two format failures", async () => {
+  it("splits a range after repeated format failures without merging cues", async () => {
     const source = transcript([
       segment("zero", 0, 2),
       segment("one", 2, 2),
@@ -269,28 +208,55 @@ describe("translateTranscriptChunk", () => {
     const outputs = [
       "not json\n",
       "still not json\n",
-      '{"type":"caption","sourceStartId":0,"sourceEndId":1,"startTime":"0:00","translatedText":"前半。"}\n{"type":"complete"}\n',
-      '{"type":"caption","sourceStartId":2,"sourceEndId":3,"startTime":"0:04","translatedText":"后半。"}\n{"type":"complete"}\n',
+      '{"type":"caption","cueId":0,"translatedText":"零"}\n' +
+        '{"type":"caption","cueId":1,"translatedText":"一"}\n' +
+        '{"type":"complete"}\n',
+      '{"type":"caption","cueId":2,"translatedText":"二"}\n' +
+        '{"type":"caption","cueId":3,"translatedText":"三"}\n' +
+        '{"type":"complete"}\n',
     ];
     streamAITextMock.mockImplementation(() => tokenStream(outputs.shift()!));
 
-    await expect(translateTranscriptChunk(source, chunk, "zh-CN")).resolves.toEqual([
-      { start: 0, duration: 4, text: "前半。" },
-      { start: 4, duration: 4, text: "后半。" },
-    ]);
+    await expect(translateTranscriptChunk(source, chunk, "zh-CN"))
+      .resolves.toMatchObject([
+        { cueId: 0, start: 0, duration: 2, text: "零" },
+        { cueId: 1, start: 2, duration: 2, text: "一" },
+        { cueId: 2, start: 4, duration: 2, text: "二" },
+        { cueId: 3, start: 6, duration: 2, text: "三" },
+      ]);
     expect(streamAITextMock).toHaveBeenCalledTimes(4);
   });
 
-  it("does not split provider or network errors", async () => {
-    const source = transcript([
-      segment("zero", 0, 2),
-      segment("one", 2, 2),
-    ]);
+  it("retries a failed network batch without splitting cues", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    const source = transcript([segment("zero", 0, 2), segment("one", 2, 2)]);
+    const chunk = buildTranslationChunks(source.segments)[0];
+    streamAITextMock
+      .mockImplementationOnce(() => failingStream(new Error("Failed to fetch")))
+      .mockImplementationOnce(() => tokenStream(
+        '{"type":"caption","cueId":0,"translatedText":"零"}\n',
+        '{"type":"caption","cueId":1,"translatedText":"一"}\n',
+        '{"type":"complete"}\n',
+      ));
+
+    const result = translateTranscriptChunk(source, chunk, "zh-CN");
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toMatchObject([{ cueId: 0 }, { cueId: 1 }]);
+    expect(streamAITextMock).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not split an exhausted network error into smaller requests", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    const source = transcript([segment("zero", 0, 2), segment("one", 2, 2)]);
     const chunk = buildTranslationChunks(source.segments)[0];
     streamAITextMock.mockImplementation(() => failingStream(new Error("network failed")));
 
-    await expect(translateTranscriptChunk(source, chunk, "zh-CN"))
-      .rejects.toThrow("network failed");
-    expect(streamAITextMock).toHaveBeenCalledTimes(1);
+    const result = translateTranscriptChunk(source, chunk, "zh-CN");
+    const assertion = expect(result).rejects.toThrow("network failed");
+    await vi.runAllTimersAsync();
+    await assertion;
+    expect(streamAITextMock).toHaveBeenCalledTimes(2);
   });
 });

@@ -41,6 +41,24 @@ function waitForRetryDelay(ms: number, signal?: AbortSignal): Promise<void> {
   });
 }
 
+function normalizeRequestError(error: unknown): Error {
+  if (error instanceof AIServiceError ||
+      error instanceof NoApiKeyError ||
+      error instanceof ContentFilteredError ||
+      (error as Error)?.name === "AbortError") {
+    return error as Error;
+  }
+  const value = error as Error | undefined;
+  if (
+    value?.name === "TypeError" ||
+    /failed to fetch|network(?:error| request)?|load failed|connection (?:closed|reset)/i
+      .test(value?.message ?? "")
+  ) {
+    return new AIServiceError(t("errorNetworkRequestFailed"), true);
+  }
+  return value instanceof Error ? value : new AIServiceError(t("errorStreamFailed"), true);
+}
+
 export interface StreamAIOptions {
   maxOutputTokens?: number;
   temperature?: number;
@@ -307,8 +325,9 @@ export async function* streamAIText(
         if (timeoutId) clearTimeout(timeoutId);
         options.signal?.removeEventListener("abort", abortFromCaller);
       }
-    } catch (e) {
-      lastError = e as Error;
+    } catch (caught) {
+      const e = normalizeRequestError(caught);
+      lastError = e;
 
       // 以下错误一律不重试，直接抛出：
       // 1. 配置/Key 缺失、内容过滤
@@ -322,6 +341,10 @@ export async function* streamAIText(
       if (attempt === maxRetries) {
         throw e;
       }
+      console.debug(
+        `[vas] AI request failed; retrying ${attempt + 1}/${maxRetries}:`,
+        e.message,
+      );
     }
   }
 

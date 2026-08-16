@@ -127,8 +127,8 @@ export interface TranscriptSectionRenderState {
   loadedEnd: number;
   activeChunkId: number;
   view: "source" | "translation";
-  translations: Record<number, TranslatedSegment[]>;
-  partialTranslations?: Record<number, TranslatedSegment[]>;
+  translations: Record<number, TranslatedSegment>;
+  partialTranslations?: Record<number, TranslatedSegment>;
   withTimestamps: boolean;
 }
 
@@ -187,23 +187,23 @@ export function renderTranscriptSections(
 
     const body = document.createElement("div");
     body.className = "vas-section-body";
-    const translated = state.partialTranslations?.[chunkId] ?? state.translations[chunkId];
-    if (state.view === "translation" && translated?.length) {
-      body.classList.add("vas-translated");
-      for (const segment of translated) {
-        appendCaptionLine(body, segment.start, segment.text, state.withTimestamps);
+    let hasMissingTranslation = false;
+    if (state.view === "translation") body.classList.add("vas-translated");
+    for (let index = chunk.targetStart; index <= chunk.targetEnd; index++) {
+      const source = transcript.segments[index];
+      const translated = state.partialTranslations?.[index] ?? state.translations[index];
+      if (state.view === "translation" && translated) {
+        appendCaptionLine(body, source.start, translated.text, state.withTimestamps);
+      } else {
+        appendCaptionLine(body, source.start, source.text, state.withTimestamps);
+        if (state.view === "translation") hasMissingTranslation = true;
       }
-    } else {
-      for (let index = chunk.targetStart; index <= chunk.targetEnd; index++) {
-        const segment = transcript.segments[index];
-        appendCaptionLine(body, segment.start, segment.text, state.withTimestamps);
-      }
-      if (state.view === "translation") {
-        const hint = document.createElement("div");
-        hint.className = "vas-untranslated-hint";
-        hint.textContent = t("sectionNotTranslated");
-        body.appendChild(hint);
-      }
+    }
+    if (hasMissingTranslation) {
+      const hint = document.createElement("div");
+      hint.className = "vas-untranslated-hint";
+      hint.textContent = t("sectionNotTranslated");
+      body.appendChild(hint);
     }
     section.appendChild(body);
     target.appendChild(section);

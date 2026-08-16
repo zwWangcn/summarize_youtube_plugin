@@ -31,6 +31,7 @@ export interface PanelCallbacks {
   onTranscriptViewChange?: (view: TranscriptView) => void;
   onTranslateCurrent?: (forceRefresh: boolean) => void;
   onTranslateAll?: () => void;
+  onBilingualSubtitlesChange?: (enabled: boolean) => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -61,6 +62,7 @@ export class Panel {
   private summarizeBtn: HTMLButtonElement;
   private summaryTranslateBtn: HTMLButtonElement;
   private transcriptBtn: HTMLButtonElement;
+  private bilingualBtn: HTMLButtonElement;
   private transcriptTools: HTMLElement;
   private sourceViewBtn: HTMLButtonElement;
   private translationViewBtn: HTMLButtonElement;
@@ -135,6 +137,7 @@ export class Panel {
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
     this.summaryTranslateBtn = this.panel.querySelector(".vas-btn-summary-translate")!;
     this.transcriptBtn = this.panel.querySelector(".vas-btn-transcript")!;
+    this.bilingualBtn = this.panel.querySelector(".vas-btn-bilingual")!;
     this.transcriptTools = this.panel.querySelector(".vas-transcript-tools")!;
     this.sourceViewBtn = this.panel.querySelector(".vas-view-source")!;
     this.translationViewBtn = this.panel.querySelector(".vas-view-translation")!;
@@ -271,6 +274,7 @@ export class Panel {
       <div class="vas-toolbar">
         <button class="vas-btn vas-btn-primary vas-btn-summarize">${t("aiSummary")}</button>
         <button class="vas-btn vas-btn-transcript">${t("rawTranscript")}</button>
+        <button class="vas-btn vas-btn-bilingual" type="button" aria-pressed="false">${t("bilingualSubtitles")}</button>
         <button class="vas-btn vas-btn-summary-translate" style="display:none"></button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
@@ -320,6 +324,11 @@ export class Panel {
     this.transcriptBtn.addEventListener("click", () => {
       this.timestampToggle.style.display = "flex";
       this.callbacks.onTranscript(this.timestampCheckbox.checked);
+    });
+    this.bilingualBtn.addEventListener("click", () => {
+      const enabled = this.bilingualBtn.getAttribute("aria-pressed") !== "true";
+      this.setBilingualSubtitlesEnabled(enabled);
+      this.callbacks.onBilingualSubtitlesChange?.(enabled);
     });
     this.sourceViewBtn.addEventListener("click", () => {
       this.setTranscriptView("source");
@@ -583,6 +592,12 @@ export class Panel {
     this.summarizeBtn.disabled = disabled;
     this.transcriptBtn.disabled = disabled;
     this.summaryTranslateBtn.disabled = disabled || this.summaryTranslationBusy;
+  }
+
+  setBilingualSubtitlesEnabled(enabled: boolean): void {
+    this.bilingualBtn.setAttribute("aria-pressed", String(enabled));
+    this.bilingualBtn.classList.toggle("vas-active", enabled);
+    this.bilingualBtn.title = t(enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles");
   }
 
   showSummaryTranslationAction(targetLanguage: string): void {

@@ -14,6 +14,17 @@ const identity: TranslationCacheIdentity = {
   targetLanguage: "zh-CN",
 };
 
+function translated(cueId: number, start: number, duration: number, text: string) {
+  return {
+    cueId,
+    sourceStartId: cueId,
+    sourceEndId: cueId,
+    start,
+    duration,
+    text,
+  };
+}
+
 describe("section translation cache", () => {
   let store: Record<string, unknown>;
 
@@ -48,14 +59,14 @@ describe("section translation cache", () => {
       chunkId: 0,
       targetStart: 0,
       targetEnd: 2,
-      segments: [{ start: 0, duration: 3, text: "第一段" }],
+      segments: [translated(0, 0, 3, "第一段")],
     });
-    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(4);
+    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(7);
     await setCachedTranslationSection(identity, {
       chunkId: 2,
       targetStart: 5,
       targetEnd: 7,
-      segments: [{ start: 10, duration: 3, text: "第三段" }],
+      segments: [translated(5, 10, 3, "第三段")],
     });
 
     expect(Object.keys((await getCachedTranslation(identity))!.sections)).toEqual(["0", "2"]);
@@ -69,7 +80,7 @@ describe("section translation cache", () => {
       chunkId: 0,
       targetStart: 0,
       targetEnd: 0,
-      segments: [{ start: 0, duration: 1, text: "译文" }],
+      segments: [translated(0, 0, 1, "译文")],
     });
 
     expect(await getCachedTranslation({ ...identity, modelId: "other-model" })).toBeNull();
@@ -80,7 +91,7 @@ describe("section translation cache", () => {
       chunkId: 0,
       targetStart: 0,
       targetEnd: 0,
-      segments: [{ start: 0, duration: 1, text: "译文" }],
+      segments: [translated(0, 0, 1, "译文")],
     });
 
     expect(await getCachedTranslation({ ...identity, targetLanguage: "en" })).toBeNull();
@@ -92,13 +103,13 @@ describe("section translation cache", () => {
         chunkId: 0,
         targetStart: 0,
         targetEnd: 1,
-        segments: [{ start: 0, duration: 2, text: "第一段" }],
+        segments: [translated(0, 0, 2, "第一段")],
       }),
       setCachedTranslationSection(identity, {
         chunkId: 1,
         targetStart: 2,
         targetEnd: 3,
-        segments: [{ start: 2, duration: 2, text: "第二段" }],
+        segments: [translated(2, 2, 2, "第二段")],
       }),
     ]);
     expect(Object.keys((await getCachedTranslation(identity))!.sections).sort())

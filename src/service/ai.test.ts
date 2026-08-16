@@ -24,6 +24,7 @@ describe("AI stream cancellation", () => {
   });
 
   afterEach(() => {
+    vi.useRealTimers();
     vi.unstubAllGlobals();
     vi.restoreAllMocks();
   });
@@ -48,6 +49,31 @@ describe("AI stream cancellation", () => {
 
     await expect(consume).rejects.toMatchObject({ name: "AbortError" });
     expect(fetchMock).toHaveBeenCalledTimes(1);
+  });
+
+  it("automatically retries a Failed to fetch network error", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    const fetchMock = vi.fn()
+      .mockRejectedValueOnce(new TypeError("Failed to fetch"))
+      .mockResolvedValueOnce(new Response(
+        'data: {"choices":[{"delta":{"content":"recovered"},"finish_reason":"stop"}]}\n\n',
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ));
+    vi.stubGlobal("fetch", fetchMock);
+
+    const result = (async () => {
+      let text = "";
+      for await (const chunk of streamAIText("system", "user", { maxRetries: 1 })) {
+        text += chunk;
+      }
+      return text;
+    })();
+
+    await vi.runAllTimersAsync();
+    await expect(result).resolves.toBe("recovered");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+    vi.useRealTimers();
   });
 
   it("parses data fields without a space and flushes the final SSE event", async () => {

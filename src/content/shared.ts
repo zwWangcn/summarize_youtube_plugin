@@ -1,6 +1,7 @@
 /** YouTube 内容脚本的 UI、字幕、翻译和 SPA 生命周期编排。 */
 
 import { Panel, type TranscriptView } from "./ui/panel";
+import { BilingualSubtitleOverlay } from "./ui/bilingual-overlay";
 import {
   renderMarkdown,
   renderStreaming,
@@ -13,7 +14,13 @@ import {
 } from "../service/ai-client";
 import { formatTime } from "../utils/text";
 import type { Transcript } from "./transcript";
-import { isTranscriptInOutputLanguage, transcriptToText } from "./transcript";
+import {
+  buildAlignedTranscript,
+  findActiveCueIndex,
+  getCaptionPrefetchRange,
+  isTranscriptInOutputLanguage,
+  transcriptToText,
+} from "./transcript";
 import { UserError } from "../utils/errors";
 import {
   translateTranscriptChunk,
@@ -34,7 +41,7 @@ import {
 } from "../service/summary-cache";
 import { handleError } from "./error-handler";
 import { runSummaryCacheOperation } from "./summary-cache-operation";
-import { getSettings } from "../service/storage";
+import { getSettings, setSettings } from "../service/storage";
 import {
   getOutputLanguageInfo,
   getUiLocale,
@@ -242,8 +249,8 @@ export async function initContentScript(
   let transcriptData: Transcript | null = null;
   let transcriptVideoId = "";
   let transcriptChunks: TranslationChunk[] = [];
-  let translatedSections: Record<number, TranslatedSegment[]> = {};
-  let partialTranslatedSections: Record<number, TranslatedSegment[]> = {};
+  let translatedCues: Record<number, TranslatedSegment> = {};
+  let partialTranslatedCues: Record<number, TranslatedSegment> = {};
   let translationIdentityKey = "";
   let transcriptView: TranscriptView = "source";
   let activeChunkId = 0;
@@ -253,12 +260,49 @@ export async function initContentScript(
   let transcriptScrollTop = 0;
   let translationTask: Promise<void> | null = null;
   let translationAbort: AbortController | null = null;
+  let translationJobs: TranslationJob[] = [];
+  let currentTranslationJob: TranslationJob | null = null;
+  let fullTranslationRequested = false;
   let summaryAbort: AbortController | null = null;
   let summaryTranslationAbort: AbortController | null = null;
   let displayedSummary: DisplayedSummary | null = null;
   let translationProgressText = "";
   let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
+  let bilingualEnabled = initialSettings.bilingualSubtitlesEnabled;
+  let bilingualOverlay: BilingualSubtitleOverlay | null = null;
+  let bilingualVideo: HTMLVideoElement | null = null;
+  let bilingualSyncHandler: (() => void) | null = null;
+  let bilingualFrameCallbackId: number | null = null;
+  let bilingualFrameCueId = -2;
+  let autoTranslationErrors: Record<number, string> = {};
+  let autoTranslationBlockedMessage = "";
+
+  type TranslationJobKind = "overlay" | "section" | "all";
+  interface TranslationJob {
+    kind: TranslationJobKind;
+    targetStart: number;
+    targetEnd: number;
+    forceRefresh: boolean;
+    sectionId?: number;
+  }
+
+  function destroyBilingualOverlay(): void {
+    if (bilingualVideo && bilingualSyncHandler) {
+      for (const event of ["timeupdate", "seeking", "seeked", "loadedmetadata", "play"]) {
+        bilingualVideo.removeEventListener(event, bilingualSyncHandler);
+      }
+    }
+    if (bilingualVideo && bilingualFrameCallbackId !== null) {
+      bilingualVideo.cancelVideoFrameCallback(bilingualFrameCallbackId);
+    }
+    bilingualFrameCallbackId = null;
+    bilingualFrameCueId = -2;
+    bilingualVideo = null;
+    bilingualSyncHandler = null;
+    bilingualOverlay?.destroy();
+    bilingualOverlay = null;
+  }
 
   function clearTranscriptState(): void {
     transcriptStateVersion += 1;
@@ -271,27 +315,71 @@ export async function initContentScript(
     transcriptData = null;
     transcriptVideoId = "";
     transcriptChunks = [];
-    translatedSections = {};
-    partialTranslatedSections = {};
+    translatedCues = {};
+    partialTranslatedCues = {};
     translationIdentityKey = "";
     transcriptView = "source";
     translationTask = null;
     translationAbort = null;
+    translationJobs = [];
+    currentTranslationJob = null;
+    fullTranslationRequested = false;
+    autoTranslationErrors = {};
+    autoTranslationBlockedMessage = "";
     translationProgressText = "";
     transcriptScrollTop = 0;
+    destroyBilingualOverlay();
   }
 
   chrome.storage.onChanged.addListener((changes, areaName) => {
-    const next = changes.outputLanguage?.newValue;
-    if (areaName !== "sync" || !isOutputLanguage(next) || next === outputLanguage) return;
-    logI18nDebug("content output language changed", {
-      previousOutputLanguage: outputLanguage,
-      outputLanguage: next,
-    });
-    outputLanguage = next;
-    clearTranscriptState();
-    currentPanel?.reset();
-    currentPanel?.setTranslationAvailable(true);
+    if (areaName === "local") {
+      const apiKeyChanged = Object.keys(changes).some((key) => key.startsWith("vas-api-key:"));
+      if (apiKeyChanged && bilingualEnabled && autoTranslationBlockedMessage) {
+        autoTranslationErrors = {};
+        autoTranslationBlockedMessage = "";
+        setTimeout(() => syncBilingualOverlay(), 0);
+      }
+      return;
+    }
+    if (areaName !== "sync") return;
+    const nextLanguage = changes.outputLanguage?.newValue;
+    if (isOutputLanguage(nextLanguage) && nextLanguage !== outputLanguage) {
+      logI18nDebug("content output language changed", {
+        previousOutputLanguage: outputLanguage,
+        outputLanguage: nextLanguage,
+      });
+      outputLanguage = nextLanguage;
+      clearTranscriptState();
+      currentPanel?.reset();
+      currentPanel?.setTranslationAvailable(true);
+      currentPanel?.setBilingualSubtitlesEnabled(bilingualEnabled);
+      if (bilingualEnabled && extractor.isOnVideoPage()) {
+        void activateBilingualOverlay();
+      }
+    }
+
+    const nextBilingual = changes.bilingualSubtitlesEnabled?.newValue;
+    if (typeof nextBilingual === "boolean" && nextBilingual !== bilingualEnabled) {
+      bilingualEnabled = nextBilingual;
+      currentPanel?.setBilingualSubtitlesEnabled(bilingualEnabled);
+      autoTranslationErrors = {};
+      autoTranslationBlockedMessage = "";
+      if (bilingualEnabled && extractor.isOnVideoPage()) void activateBilingualOverlay();
+      else destroyBilingualOverlay();
+    }
+
+    if (changes.provider || changes.model) {
+      translationAbort?.abort();
+      translationJobs = [];
+      translatedCues = {};
+      partialTranslatedCues = {};
+      translationIdentityKey = "";
+      autoTranslationErrors = {};
+      autoTranslationBlockedMessage = "";
+      if (bilingualEnabled && transcriptData) {
+        void ensureTranslationCache().then(() => syncBilingualOverlay()).catch(() => {});
+      }
+    }
   });
 
   async function ensureTranscript(
@@ -300,7 +388,7 @@ export async function initContentScript(
   ): Promise<Transcript> {
     const videoId = extractor.getVideoId();
     if (transcriptData && transcriptVideoId === videoId) return transcriptData;
-    const transcript = await extractor.getTranscript();
+    const transcript = buildAlignedTranscript(await extractor.getTranscript());
     if (expectedVersion !== transcriptStateVersion) {
       throw new DOMException("The operation was aborted", "AbortError");
     }
@@ -381,7 +469,12 @@ export async function initContentScript(
         formatTime(last.start + last.duration),
       ]),
     );
-    panel.setCurrentSectionTranslated(Boolean(translatedSections[activeChunkId]));
+    panel.setCurrentSectionTranslated(
+      Array.from(
+        { length: chunk.targetEnd - chunk.targetStart + 1 },
+        (_, offset) => chunk.targetStart + offset,
+      ).every((cueId) => Boolean(translatedCues[cueId])),
+    );
     panel.setTranscriptView(transcriptView);
     panel.setTranslationProgress(translationProgressText);
   }
@@ -396,8 +489,8 @@ export async function initContentScript(
       loadedEnd: loadedChunkEnd,
       activeChunkId,
       view: transcriptView,
-      translations: translatedSections,
-      partialTranslations: partialTranslatedSections,
+      translations: translatedCues,
+      partialTranslations: partialTranslatedCues,
       withTimestamps: transcriptWithTimestamps,
     });
     if (preserveScroll) content.scrollTop = previousTop;
@@ -456,8 +549,8 @@ export async function initContentScript(
     };
     const key = JSON.stringify(identity);
     if (translationIdentityKey !== key) {
-      translatedSections = {};
-      partialTranslatedSections = {};
+      translatedCues = {};
+      partialTranslatedCues = {};
       const cached = await getCachedTranslation(identity);
       if (expectedVersion !== transcriptStateVersion) {
         throw new DOMException("The operation was aborted", "AbortError");
@@ -469,7 +562,20 @@ export async function initContentScript(
           chunk.targetStart === section.targetStart &&
           chunk.targetEnd === section.targetEnd
         ) {
-          translatedSections[section.chunkId] = section.segments;
+          for (const segment of section.segments) {
+            const source = transcript.segments[segment.cueId];
+            if (
+              source &&
+              segment.cueId >= chunk.targetStart &&
+              segment.cueId <= chunk.targetEnd &&
+              segment.start === source.start &&
+              segment.duration === source.duration &&
+              segment.sourceStartId === (source.sourceStartId ?? segment.cueId) &&
+              segment.sourceEndId === (source.sourceEndId ?? segment.cueId)
+            ) {
+              translatedCues[segment.cueId] = segment;
+            }
+          }
         }
       }
       translationIdentityKey = key;
@@ -487,6 +593,7 @@ export async function initContentScript(
       { passive: true },
     );
     panel.setTranslationAvailable(true);
+    panel.setBilingualSubtitlesEnabled(bilingualEnabled);
     const title = extractor.getVideoTitle();
     if (title) panel.setTitle(title);
     panel.setTheme(isYouTubeDarkMode());
@@ -494,6 +601,7 @@ export async function initContentScript(
     panel.bindToPlayer(target);
     panel.injectPanel(document.body);
     void panel.initPanelWidth();
+    if (bilingualEnabled) void activateBilingualOverlay(target);
     return panel;
   }
 
@@ -504,117 +612,417 @@ export async function initContentScript(
     return currentPanel;
   }
 
+  function isChunkTranslated(chunk: TranslationChunk): boolean {
+    for (let cueId = chunk.targetStart; cueId <= chunk.targetEnd; cueId++) {
+      if (!translatedCues[cueId]) return false;
+    }
+    return true;
+  }
+
+  function clearPartialRange(start: number, end: number): void {
+    for (let cueId = start; cueId <= end; cueId++) delete partialTranslatedCues[cueId];
+  }
+
+  function commitTranslatedSegments(segments: TranslatedSegment[]): void {
+    for (const segment of segments) {
+      translatedCues[segment.cueId] = segment;
+      delete partialTranslatedCues[segment.cueId];
+      delete autoTranslationErrors[segment.cueId];
+    }
+  }
+
+  async function persistTranslationRange(
+    identity: TranslationCacheIdentity,
+    start: number,
+    end: number,
+  ): Promise<void> {
+    const affected = transcriptChunks.filter(
+      (chunk) => chunk.targetEnd >= start && chunk.targetStart <= end,
+    );
+    for (const chunk of affected) {
+      const segments: TranslatedSegment[] = [];
+      for (let cueId = chunk.targetStart; cueId <= chunk.targetEnd; cueId++) {
+        if (translatedCues[cueId]) segments.push(translatedCues[cueId]);
+      }
+      if (!segments.length) continue;
+      await setCachedTranslationSection(identity, {
+        chunkId: chunk.id,
+        targetStart: chunk.targetStart,
+        targetEnd: chunk.targetEnd,
+        segments,
+      });
+    }
+  }
+
+  async function persistTranslationRangeSafely(
+    identity: TranslationCacheIdentity,
+    start: number,
+    end: number,
+  ): Promise<void> {
+    try {
+      await persistTranslationRange(identity, start, end);
+    } catch (error) {
+      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+      console.debug("[vas] Translation cache write failed:", detail);
+      if (currentPanel?.getMode() === "transcript") {
+        currentPanel.showWarning(t("translationCacheWriteFailed"));
+      }
+    }
+  }
+
+  function renderTranslationConsumers(): void {
+    const panel = currentPanel;
+    if (panel?.getMode() === "transcript") renderTranscriptReader(panel);
+    syncBilingualOverlay();
+  }
+
+  async function processTranslationJob(
+    job: TranslationJob,
+    controller: AbortController,
+    stateVersion: number,
+  ): Promise<void> {
+    const transcript = transcriptData!;
+    const identity = await ensureTranslationCache(stateVersion);
+    const assertCurrent = () => {
+      if (controller.signal.aborted || stateVersion !== transcriptStateVersion) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+    };
+    assertCurrent();
+
+    if (job.forceRefresh) {
+      const affected = transcriptChunks.filter(
+        (chunk) => chunk.targetEnd >= job.targetStart && chunk.targetStart <= job.targetEnd,
+      );
+      for (const chunk of affected) await invalidateTranslationSection(identity, chunk.id);
+      for (let cueId = job.targetStart; cueId <= job.targetEnd; cueId++) {
+        delete translatedCues[cueId];
+        delete autoTranslationErrors[cueId];
+      }
+      assertCurrent();
+    }
+
+    const ranges: Array<{ start: number; end: number }> = [];
+    let cursor = job.targetStart;
+    while (cursor <= job.targetEnd) {
+      while (cursor <= job.targetEnd && translatedCues[cursor]) cursor += 1;
+      if (cursor > job.targetEnd) break;
+      const start = cursor;
+      while (cursor <= job.targetEnd && !translatedCues[cursor]) cursor += 1;
+      ranges.push({ start, end: cursor - 1 });
+    }
+
+    for (const range of ranges) {
+      assertCurrent();
+      const requestChunk: TranslationChunk = {
+        id: job.sectionId ?? -1,
+        targetStart: range.start,
+        targetEnd: range.end,
+        contextStart: Math.max(0, range.start - 8),
+        contextEnd: Math.min(transcript.segments.length - 1, range.end + 8),
+      };
+      let latestPartial: TranslatedSegment[] = [];
+      clearPartialRange(range.start, range.end);
+      try {
+        const result = await translateTranscriptChunk(
+          transcript,
+          requestChunk,
+          identity.targetLanguage,
+          (partial, formatRetry) => {
+            if (controller.signal.aborted || stateVersion !== transcriptStateVersion) return;
+            latestPartial = partial;
+            clearPartialRange(range.start, range.end);
+            for (const segment of partial) partialTranslatedCues[segment.cueId] = segment;
+            if (formatRetry && job.sectionId !== undefined) {
+              translationProgressText = t("repairingSectionFormat", String(job.sectionId + 1));
+            }
+            renderTranslationConsumers();
+          },
+          controller.signal,
+        );
+        assertCurrent();
+        clearPartialRange(range.start, range.end);
+        commitTranslatedSegments(result);
+        await persistTranslationRangeSafely(identity, range.start, range.end);
+      } catch (error) {
+        clearPartialRange(range.start, range.end);
+        if (latestPartial.length) {
+          commitTranslatedSegments(latestPartial);
+          await persistTranslationRangeSafely(identity, range.start, range.end);
+        }
+        throw error;
+      } finally {
+        renderTranslationConsumers();
+      }
+    }
+    if (job.kind !== "overlay") autoTranslationBlockedMessage = "";
+  }
+
+  function enqueueTranslationJob(job: TranslationJob): void {
+    if (!transcriptData || job.targetStart > job.targetEnd) return;
+    const alreadyCurrent = currentTranslationJob &&
+      currentTranslationJob.kind === job.kind &&
+      currentTranslationJob.targetStart <= job.targetStart &&
+      currentTranslationJob.targetEnd >= job.targetEnd;
+    const alreadyQueued = translationJobs.some((queued) =>
+      queued.kind === job.kind &&
+      queued.targetStart <= job.targetStart &&
+      queued.targetEnd >= job.targetEnd,
+    );
+    if (alreadyCurrent || alreadyQueued) return;
+
+    if (job.kind === "overlay") {
+      translationJobs = translationJobs.filter((queued) => queued.kind !== "overlay");
+      if (
+        currentTranslationJob?.kind === "overlay" &&
+        (job.targetStart > currentTranslationJob.targetEnd ||
+          job.targetEnd < currentTranslationJob.targetStart)
+      ) {
+        translationAbort?.abort();
+      }
+      translationJobs.unshift(job);
+    } else if (job.kind === "section") {
+      const firstNonOverlay = translationJobs.findIndex((queued) => queued.kind !== "overlay");
+      translationJobs.splice(firstNonOverlay < 0 ? translationJobs.length : firstNonOverlay, 0, job);
+    } else {
+      translationJobs.push(job);
+    }
+    startTranslationWorker();
+  }
+
+  function startTranslationWorker(): void {
+    if (translationTask || !transcriptData) return;
+    const stateVersion = transcriptStateVersion;
+    const panel = getPanel();
+    panel.setTranslationActionsBusy(true);
+    const task = (async () => {
+      while (translationJobs.length && stateVersion === transcriptStateVersion) {
+        const job = translationJobs.shift()!;
+        currentTranslationJob = job;
+        const controller = new AbortController();
+        translationAbort = controller;
+        if (job.kind === "all") {
+          const completed = transcriptChunks.filter(isChunkTranslated).length;
+          translationProgressText = t("translatingAllProgress", [
+            String(completed),
+            String(transcriptChunks.length),
+          ]);
+        } else if (job.kind === "section" && job.sectionId !== undefined) {
+          translationProgressText = t("translatingSectionProgress", [
+            String(job.sectionId + 1),
+            String(transcriptChunks.length),
+          ]);
+        }
+        panel.setTranslationProgress(translationProgressText);
+
+        try {
+          await processTranslationJob(job, controller, stateVersion);
+          bilingualOverlay?.setSourceReady(true);
+          if (job.kind === "section") translationProgressText = t("translationSectionDone");
+        } catch (error) {
+          if ((error as Error)?.name !== "AbortError") {
+            const message = error instanceof Error ? error.message : t("translationFailed");
+            if (job.kind === "overlay") {
+              autoTranslationBlockedMessage = message;
+              for (let cueId = job.targetStart; cueId <= job.targetEnd; cueId++) {
+                if (!translatedCues[cueId]) autoTranslationErrors[cueId] = message;
+              }
+              if ((error as Error)?.name === "NoApiKeyError") {
+                bilingualOverlay?.setSourceReady(false);
+              }
+            } else {
+              translationProgressText = t("translationStopped", message);
+              translationJobs = translationJobs.filter((queued) => queued.kind === "overlay");
+              fullTranslationRequested = false;
+              if (panel.getMode() === "transcript") panel.showWarning(message);
+            }
+            const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+            console.debug("[vas] Translation stopped:", detail);
+          }
+        } finally {
+          currentTranslationJob = null;
+          translationAbort = null;
+          renderTranslationConsumers();
+        }
+      }
+      if (fullTranslationRequested && transcriptChunks.every(isChunkTranslated)) {
+        translationProgressText = t("translationAllDone");
+      }
+      fullTranslationRequested = false;
+    })().finally(() => {
+      if (translationTask !== task) return;
+      translationTask = null;
+      translationAbort = null;
+      currentTranslationJob = null;
+      panel.setTranslationActionsBusy(false);
+      panel.setTranslationProgress(translationProgressText);
+      renderTranslationConsumers();
+      if (translationJobs.length) startTranslationWorker();
+    });
+    translationTask = task;
+  }
+
   function runTranslationQueue(
     panel: Panel,
     requestedChunkIds: number[],
     forceRefresh: boolean,
     isFullTranslation: boolean,
   ): void {
-    if (translationTask || !transcriptData) return;
-    const transcript = transcriptData;
-    const stateVersion = transcriptStateVersion;
-    const controller = new AbortController();
-    translationAbort = controller;
-    const assertCurrent = () => {
-      if (controller.signal.aborted || stateVersion !== transcriptStateVersion) {
-        throw new DOMException("The operation was aborted", "AbortError");
-      }
-    };
-    panel.setTranslationActionsBusy(true);
+    if (!transcriptData) return;
     if (!isFullTranslation) {
       transcriptView = "translation";
       panel.setTranscriptView("translation");
     }
-
-    const task = (async () => {
-      const identity = await ensureTranslationCache(stateVersion);
-      assertCurrent();
-      if (forceRefresh && requestedChunkIds.length === 1) {
-        const chunkId = requestedChunkIds[0];
-        await invalidateTranslationSection(identity, chunkId);
-        assertCurrent();
-        delete translatedSections[chunkId];
-      }
-      const pending = requestedChunkIds.filter(
-        (chunkId) => forceRefresh || !translatedSections[chunkId],
-      );
-      if (!pending.length) {
-        translationProgressText = t(
-          isFullTranslation ? "translationAllAlreadyDone" : "translationSectionAlreadyDone",
-        );
-        return;
-      }
-
-      for (let index = 0; index < pending.length; index++) {
-        assertCurrent();
-        const chunkId = pending[index];
-        const chunk = transcriptChunks[chunkId];
-        translationProgressText = isFullTranslation
-          ? t("translatingAllProgress", [
-            String(Object.keys(translatedSections).length),
-            String(transcriptChunks.length),
-          ])
-          : t("translatingSectionProgress", [
-            String(chunkId + 1),
-            String(transcriptChunks.length),
-          ]);
-        panel.setTranslationProgress(translationProgressText);
-
-        const result = await translateTranscriptChunk(
-          transcript,
-          chunk,
-          identity.targetLanguage,
-          (partial, formatRetry) => {
-            if (controller.signal.aborted || stateVersion !== transcriptStateVersion) return;
-            partialTranslatedSections[chunkId] = partial;
-            translationProgressText = formatRetry
-              ? t("repairingSectionFormat", String(chunkId + 1))
-              : translationProgressText;
-            if (panel.getMode() === "transcript") renderTranscriptReader(panel);
-          },
-          controller.signal,
-        );
-        assertCurrent();
-        delete partialTranslatedSections[chunkId];
-        translatedSections[chunkId] = result;
-        try {
-          await setCachedTranslationSection(identity, {
-            chunkId,
-            targetStart: chunk.targetStart,
-            targetEnd: chunk.targetEnd,
-            segments: result,
-          });
-          assertCurrent();
-        } catch (error) {
-          assertCurrent();
-          const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
-          console.debug("[vas] Translation section cache write failed:", detail);
-          panel.showWarning(t("translationCacheWriteFailed"));
-        }
-        if (panel.getMode() === "transcript") renderTranscriptReader(panel);
-      }
+    const chunks = requestedChunkIds
+      .map((chunkId) => transcriptChunks[chunkId])
+      .filter(Boolean);
+    const pending = chunks.filter((chunk) => forceRefresh || !isChunkTranslated(chunk));
+    if (!pending.length) {
       translationProgressText = t(
-        isFullTranslation ? "translationAllDone" : "translationSectionDone",
+        isFullTranslation ? "translationAllAlreadyDone" : "translationSectionAlreadyDone",
       );
-    })().catch((error: unknown) => {
-      for (const chunkId of requestedChunkIds) {
-        delete partialTranslatedSections[chunkId];
-      }
-      if ((error as Error)?.name === "AbortError") return;
-      const message = error instanceof Error ? error.message : t("translationFailed");
-      translationProgressText = t("translationStopped", message);
-      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
-      console.debug("[vas] Translation stopped:", detail);
-      if (panel.getMode() === "transcript") panel.showWarning(message);
-    }).finally(() => {
-      if (stateVersion !== transcriptStateVersion || translationTask !== task) return;
-      translationTask = null;
-      translationAbort = null;
-      panel.setTranslationActionsBusy(false);
       panel.setTranslationProgress(translationProgressText);
-      if (panel.getMode() === "transcript") renderTranscriptReader(panel);
+      return;
+    }
+    if (isFullTranslation) fullTranslationRequested = true;
+    for (const chunk of pending) {
+      enqueueTranslationJob({
+        kind: isFullTranslation ? "all" : "section",
+        targetStart: chunk.targetStart,
+        targetEnd: chunk.targetEnd,
+        forceRefresh,
+        sectionId: chunk.id,
+      });
+    }
+  }
+
+  function maybeQueueOverlayPrefetch(currentCueId: number): void {
+    if (!transcriptData || isTranscriptInOutputLanguage(transcriptData.languageCode, outputLanguage)) return;
+    if (autoTranslationBlockedMessage) return;
+    const range = getCaptionPrefetchRange(
+      transcriptData.segments,
+      currentCueId,
+      getCurrentPlaybackTime(),
+      (cueId) => Boolean(translatedCues[cueId]),
+    );
+    if (!range || autoTranslationErrors[range.start] || partialTranslatedCues[range.start]) return;
+    enqueueTranslationJob({
+      kind: "overlay",
+      targetStart: range.start,
+      targetEnd: range.end,
+      forceRefresh: false,
     });
-    translationTask = task;
+  }
+
+  function retryBilingualTranslation(): void {
+    if (!bilingualOverlay || !transcriptData || !bilingualEnabled) return;
+    const currentTime = getCurrentPlaybackTime();
+    const cueId = findActiveCueIndex(transcriptData.segments, currentTime);
+    if (cueId < 0) return;
+
+    autoTranslationBlockedMessage = "";
+    autoTranslationErrors = {};
+    bilingualOverlay.setSourceReady(true);
+    const range = getCaptionPrefetchRange(
+      transcriptData.segments,
+      cueId,
+      currentTime,
+      (candidateCueId) => Boolean(translatedCues[candidateCueId]),
+    );
+    if (range) {
+      clearPartialRange(range.start, range.end);
+      enqueueTranslationJob({
+        kind: "overlay",
+        targetStart: range.start,
+        targetEnd: range.end,
+        forceRefresh: false,
+      });
+    }
+    syncBilingualOverlay(currentTime);
+  }
+
+  function syncBilingualOverlay(playbackTime: number = getCurrentPlaybackTime()): void {
+    if (!bilingualOverlay || !transcriptData || !bilingualEnabled) return;
+    const cueId = findActiveCueIndex(transcriptData.segments, playbackTime);
+    if (cueId < 0) {
+      bilingualOverlay.setCue(null);
+      return;
+    }
+    const source = transcriptData.segments[cueId];
+    const translated = partialTranslatedCues[cueId] ?? translatedCues[cueId];
+    const translationNeeded = !isTranscriptInOutputLanguage(
+      transcriptData.languageCode,
+      outputLanguage,
+    );
+    const errorText = translationNeeded && !translated
+      ? (autoTranslationErrors[cueId] || autoTranslationBlockedMessage)
+      : "";
+    bilingualOverlay.setCue({
+      sourceText: source.text,
+      translationText: translationNeeded ? translated?.text : undefined,
+      statusText: translationNeeded && !translated
+        ? (errorText || t("bilingualTranslating"))
+        : undefined,
+      retryText: errorText ? t("bilingualRetry") : undefined,
+    });
+    if (translationNeeded) maybeQueueOverlayPrefetch(cueId);
+  }
+
+  async function activateBilingualOverlay(preferredPlayer?: HTMLElement): Promise<void> {
+    if (!bilingualEnabled || !extractor.isOnVideoPage()) return;
+    const player = preferredPlayer?.matches("#movie_player, #player-container, #player")
+      ? preferredPlayer
+      : config.findInjectTarget();
+    if (!player) return;
+    destroyBilingualOverlay();
+    const overlay = new BilingualSubtitleOverlay(player, () => {
+      if (bilingualOverlay !== overlay) return;
+      if (transcriptData) retryBilingualTranslation();
+      else void activateBilingualOverlay(player);
+    });
+    bilingualOverlay = overlay;
+    overlay.setCue({ sourceText: t("fetchingTranscript") });
+    const stateVersion = transcriptStateVersion;
+    try {
+      const transcript = await ensureTranscript(getPanel(), stateVersion);
+      if (!bilingualEnabled || bilingualOverlay !== overlay || stateVersion !== transcriptStateVersion) return;
+      if (!transcriptChunks.length) transcriptChunks = buildTranslationChunks(transcript.segments);
+      if (!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)) {
+        await ensureTranslationCache(stateVersion);
+      }
+      if (!bilingualEnabled || bilingualOverlay !== overlay || stateVersion !== transcriptStateVersion) return;
+      overlay.setSourceReady(true);
+      const video = player.querySelector("video") ?? document.querySelector("video");
+      if (video) {
+        bilingualVideo = video;
+        bilingualSyncHandler = () => syncBilingualOverlay();
+        for (const event of ["timeupdate", "seeking", "seeked", "loadedmetadata", "play"]) {
+          video.addEventListener(event, bilingualSyncHandler, { passive: true });
+        }
+        if (typeof video.requestVideoFrameCallback === "function") {
+          const syncVideoFrame: VideoFrameRequestCallback = (_now, metadata) => {
+            if (bilingualVideo !== video || bilingualOverlay !== overlay || !bilingualEnabled) return;
+            const frameCueId = transcriptData
+              ? findActiveCueIndex(transcriptData.segments, metadata.mediaTime)
+              : -1;
+            if (frameCueId !== bilingualFrameCueId) {
+              bilingualFrameCueId = frameCueId;
+              syncBilingualOverlay(metadata.mediaTime);
+            }
+            bilingualFrameCallbackId = video.requestVideoFrameCallback(syncVideoFrame);
+          };
+          bilingualFrameCallbackId = video.requestVideoFrameCallback(syncVideoFrame);
+        }
+      }
+      syncBilingualOverlay();
+    } catch (error) {
+      if ((error as Error)?.name === "AbortError" || bilingualOverlay !== overlay) return;
+      overlay.setSourceReady(false);
+      overlay.setCue({
+        sourceText: error instanceof Error ? error.message : t("translationFailed"),
+        retryText: t("bilingualRetry"),
+      });
+    }
   }
 
   // ── Callbacks ──────────────────────────────────────────────────────
@@ -1023,10 +1431,28 @@ export async function initContentScript(
       );
     },
 
+    onBilingualSubtitlesChange: (enabled: boolean) => {
+      bilingualEnabled = enabled;
+      autoTranslationErrors = {};
+      autoTranslationBlockedMessage = "";
+      void setSettings({ bilingualSubtitlesEnabled: enabled }).catch((error) => {
+        const detail = error instanceof Error ? error.message : String(error);
+        console.debug("[vas] Failed to persist bilingual subtitle setting:", detail);
+      });
+      if (enabled) {
+        void activateBilingualOverlay();
+      } else {
+        translationJobs = translationJobs.filter((job) => job.kind !== "overlay");
+        if (currentTranslationJob?.kind === "overlay") translationAbort?.abort();
+        destroyBilingualOverlay();
+      }
+    },
+
     onClose: () => {
       summaryAbort?.abort();
       summaryTranslationAbort?.abort();
-      translationAbort?.abort();
+      translationJobs = translationJobs.filter((job) => job.kind === "overlay");
+      if (currentTranslationJob?.kind !== "overlay") translationAbort?.abort();
     },
 
     onSeek: (seconds: number) => {
@@ -1063,6 +1489,7 @@ export async function initContentScript(
   }
 
   function destroyPanel(): void {
+    destroyBilingualOverlay();
     currentPanel?.destroy();
     currentPanel = null;
   }
@@ -1078,11 +1505,13 @@ export async function initContentScript(
 
       const vasRoot = document.getElementById("vas-root");
       const triggerInDom = currentPanel?.getTrigger()?.parentNode;
+      const overlayInDom = document.getElementById("vas-bilingual-overlay");
 
       if (!vasRoot || !triggerInDom) {
         console.log(`[vas] UI missing after ${delay}ms (root=${!!vasRoot}, trigger=${!!triggerInDom}), re-injecting...`);
         injectOnVideoPage();
       }
+      if (vasRoot && bilingualEnabled && !overlayInDom) void activateBilingualOverlay();
     }, delay);
   });
 
@@ -1103,6 +1532,7 @@ export async function initContentScript(
           const p = getPanel();
           p.reset();
           p.setTranslationAvailable(true);
+          p.setBilingualSubtitlesEnabled(bilingualEnabled);
           const t = extractor.getVideoTitle();
           if (t) p.setTitle(t);
           p.setTheme(isYouTubeDarkMode());
@@ -1113,6 +1543,7 @@ export async function initContentScript(
             p.injectTrigger(newTarget);
             p.bindToPlayer(newTarget);
           }
+          if (bilingualEnabled) void activateBilingualOverlay();
         }, 800);
       }
     } else {

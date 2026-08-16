@@ -11,7 +11,9 @@ An AI-powered summarizer for YouTube videos. Extract captions with one click and
 - **Multilingual output** — summaries and caption translations support Chinese (Simplified and Traditional), English, Japanese, Korean, Spanish, French, and German
 - **Localized UI** — follows Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English, with English as the fallback
 - **Raw captions** — click timestamps to seek
-- **Section-based subtitle translation** — translates the current caption section or resumes the full transcript
+- **In-player bilingual subtitles** — source and translation stay on a client-owned timeline, remain selectable/copyable, and work in theater/fullscreen modes
+- **Section-based subtitle translation** — prefetches about 60 seconds from playback or resumes the full transcript in the reader
+- **Network failure recovery** — transient API failures retry automatically; exhausted caption requests can be retried from the player overlay
 - **Real-time streaming** — token-level, character-by-character output
 - **SPA navigation awareness** — auto-detects video switches
 - **Multi-language captions** — picks the best track (ja > en > zh)
@@ -41,9 +43,9 @@ Three paths are tried in priority order:
 
 ### Subtitle Translation and Repair
 
-Translation now lives inside **Raw Captions**. Captions are split by source character count, open near the current playback position, and load in either direction as you scroll. Scrolling never triggers an AI request. Translate the current section, retry one section, or use **Translate All** to fill only missing sections, then switch between Source and Translation views.
+Translation is shared by the in-player bilingual overlay and the **Raw Captions** reader. The extension first detects sentence endings inside each YouTube event. It prefers JSON3 word timing for the next sentence's start, falls back to text-length interpolation only when word timing is unavailable, and then merges same-sentence fragments across adjacent events. Complete sentences, clear pauses, line breaks, speaker markers, and the display-length limit form boundaries. The model must return exactly one translation for every cue ID and cannot merge, split, or retime cues.
 
-The extension sends timestamped captions together with surrounding context so the AI can turn broken fragments into natural sentences and estimate second-level start times. Translated sentences do not need to map one-to-one to the original fragments, and their timestamps remain clickable. Each completed section is cached for seven days by video, source language, target language, provider, and model, so full translation resumes after closing the panel. Captions already written in the selected target language do not trigger a translation request.
+Surrounding cues are still supplied as read-only context for terminology and incomplete phrases, but their meaning cannot move into the current cue. Playback prefetches roughly 60 seconds from the current position and requests more when less than 15 seconds remain; seeking outside that window prioritizes the new position. The player and reader share the same seven-day cache. Player captions synchronize against per-frame media time. Overlay text can be selected and copied directly, and DOM updates pause while a selection is active. Captions already in the selected target language do not trigger an AI request.
 
 ### UI and Output Language
 
@@ -103,6 +105,7 @@ Dev hot-reload: `npm run dev`
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
 5. When the caption language differs from the output language, use **Translate Section** or **Translate All** inside the captions view
+6. Use **Bilingual Subtitles** to enable the global in-player overlay; the switch is remembered across tabs and browser restarts
 
 ## License
 
