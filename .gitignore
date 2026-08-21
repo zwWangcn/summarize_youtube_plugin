@@ -3,6 +3,7 @@ node_modules/
 
 # Build output
 dist/
+.pages-dist/
 
 # OS files
 .DS_Store

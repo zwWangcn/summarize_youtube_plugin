@@ -1,6 +1,6 @@
 {
   "name": "summarize-youtube-extension",
-  "version": "1.2.4",
+  "version": "1.2.5",
   "description": "Chrome extension for AI-powered YouTube summaries, caption translation, and bilingual subtitles",
   "type": "module",
   "license": "MIT",
@@ -30,6 +30,8 @@
   "scripts": {
     "dev": "vite",
     "build": "tsc && vite build",
+    "build:privacy": "node scripts/build-privacy-page.mjs",
+    "icons:build": "node scripts/build-icons.mjs",
     "test": "vitest run",
     "preview": "vite preview"
   },
@@ -42,6 +44,7 @@
     "@crxjs/vite-plugin": "^2.7.1",
     "@types/chrome": "^0.0.313",
     "@types/dompurify": "^3.2.0",
+    "sharp": "^0.35.3",
     "typescript": "^5.8.3",
     "vite": "^6.3.1",
     "vitest": "^4.1.10"

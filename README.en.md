@@ -9,7 +9,7 @@ An AI summary and caption-translation companion for YouTube. Stream structured s
 - **Free model switching** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok, 20+ models, one-click switch in the popup
 - **One-click AI summary** — streams a structured Markdown summary
 - **Multilingual output** — summaries and caption translations support Chinese (Simplified and Traditional), English, Japanese, Korean, Spanish, French, and German
-- **Localized UI** — follows Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English, with English as the fallback
+- **Localized UI** — manually choose Simplified Chinese, Traditional Chinese, Japanese, Korean, or English for the settings popup
 - **Raw captions** — click timestamps to seek
 - **In-player bilingual subtitles** — source and translation stay on a client-owned timeline, remain selectable/copyable, and work in theater/fullscreen modes
 - **Section-based subtitle translation** — prefetches about 60 seconds from playback or resumes the full transcript in the reader
@@ -49,7 +49,9 @@ Surrounding cues are still supplied as read-only context for terminology and inc
 
 ### UI and Output Language
 
-The manifest, popup, and YouTube panel use Chrome's native i18n system and follow Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. Other Chrome UI languages fall back to English. The popup's **Summary and translation language** controls both AI summaries and caption translations: it is initialized from Chrome once, then remains fixed until the user changes it. Supported languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German.
+The settings popup lets you manually choose Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. It initializes that choice from Chrome once, falls back to English for unsupported Chrome locales, and then keeps your selection. The manifest and YouTube panel continue to follow Chrome's UI language.
+
+The separate **Summary and translation language** controls both AI summaries and caption translations. It is also initialized from Chrome once, then remains fixed until the user changes it. Supported output languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German.
 
 ### SPA Navigation Awareness
 
@@ -96,7 +98,7 @@ Dev hot-reload: `npm run dev`
    - [Tongyi Qwen](https://bailian.console.aliyun.com/#/api-key)
    - [Zhipu GLM](https://open.bigmodel.cn/usercenter/apikeys)
    - [xAI Grok](https://console.x.ai)
-2. Click the extension icon → pick a provider, model, and summary and translation language → enter the API key → save
+2. Click the extension icon → choose the popup UI and output languages → pick a provider and model → enter the API key → save
 
 ### Summarize and Translate a Video
 
@@ -114,4 +116,4 @@ Dev hot-reload: `npm run dev`
 
 ## Privacy
 
-See the [Privacy Policy](PRIVACY.md).
+See the [Privacy Policy](https://zwwangcn.github.io/summarize_youtube_plugin/privacy/).

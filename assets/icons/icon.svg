@@ -1,8 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Video AI summary">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="AI summary and translation">
   <rect x="18" y="10" width="92" height="108" rx="22" fill="#f7f7f8" stroke="#dadde2" stroke-width="3"/>
-  <rect x="8" y="25" width="72" height="50" rx="15" fill="#ff1724"/>
-  <path d="M36 39v22l19-11-19-11Z" fill="#fff"/>
+  <path d="M25 73 39 29h14l14 44H55l-2.6-9H39.6L37 73H25Zm17.5-19h7l-3.5-12-3.5 12Z" fill="#ef233c" fill-rule="evenodd"/>
+  <path d="M71 29h12v44H71Z" fill="#ef233c"/>
   <rect x="35" y="86" width="40" height="8" rx="4" fill="#c9ccd1"/>
-  <rect x="35" y="101" width="32" height="8" rx="4" fill="#ff1724"/>
+  <rect x="35" y="101" width="32" height="8" rx="4" fill="#ef233c"/>
   <path d="M100 65c2 14 9 21 23 23-14 2-21 9-23 23-2-14-9-21-23-23 14-2 21-9 23-23Z" fill="#ff6a00"/>
 </svg>
