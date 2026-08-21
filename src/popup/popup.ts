@@ -15,12 +15,22 @@ import {
   getModelsByProvider,
   getModelForProvider,
   resolveAISelection,
-  formatPricing,
   formatContextWindow,
 } from "../service/model-registry";
 import type { ProviderInfo, ModelInfo } from "../service/model-registry";
-import { OUTPUT_LANGUAGES, getUiLocale, t } from "../utils/i18n";
+import {
+  OUTPUT_LANGUAGES,
+  UI_LANGUAGES,
+  getUiLocale,
+  isUiLanguage,
+  t as chromeT,
+  type UiLanguage,
+} from "../utils/i18n";
 import { logI18nDebug } from "../utils/i18n-debug";
+import {
+  loadPopupTranslator,
+  type PopupTranslator,
+} from "./popup-i18n";
 import {
   DEFAULT_SUBTITLE_STYLE,
   getSubtitleContainerCssValues,
@@ -36,6 +46,7 @@ import {
 // ── DOM refs ────────────────────────────────────────────────────────
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
+const uiLanguageSelect = document.getElementById("uiLanguage") as HTMLSelectElement;
 const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSelectElement;
 const learningModeInput = document.getElementById("learningMode") as HTMLInputElement;
 const bilingualDefaultInput = document.getElementById("bilingualDefault") as HTMLInputElement;
@@ -68,7 +79,6 @@ const subtitleMaxWidthValue = document.getElementById("subtitleMaxWidthValue") a
 
 // Model info card elements
 const infoParamSize = document.getElementById("infoParamSize") as HTMLSpanElement;
-const infoPricing = document.getElementById("infoPricing") as HTMLSpanElement;
 const infoContext = document.getElementById("infoContext") as HTMLSpanElement;
 const infoDesc = document.getElementById("infoDesc") as HTMLSpanElement;
 
@@ -79,6 +89,8 @@ let apiKeyLoadVersion = 0;
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let subtitleStyleSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let subtitleStyle: SubtitleStyleSettings = { ...DEFAULT_SUBTITLE_STYLE };
+let activeUiLanguage: UiLanguage = "en";
+let t: PopupTranslator = chromeT;
 
 async function loadApiKeyForProvider(providerId: string): Promise<void> {
   const version = ++apiKeyLoadVersion;
@@ -106,16 +118,23 @@ async function loadApiKeyForProvider(providerId: string): Promise<void> {
 
 // ── Init ─────────────────────────────────────────────────────────────
 async function init(): Promise<void> {
-  document.documentElement.lang = getUiLocale();
-  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
-    element.textContent = t(element.dataset.i18n!);
-  });
-  document.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach((element) => {
-    element.title = t(element.dataset.i18nTitle!);
-  });
-  document.querySelectorAll<HTMLElement>("[data-i18n-aria-label]").forEach((element) => {
-    element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel!));
-  });
+  const settings = await getSettings();
+  activeUiLanguage = settings.uiLanguage;
+  try {
+    t = await loadPopupTranslator(activeUiLanguage, chromeT);
+  } catch (err) {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] UI catalog load failed:", detail);
+  }
+  renderLocalizedUi();
+
+  for (const language of UI_LANGUAGES) {
+    const opt = document.createElement("option");
+    opt.value = language.code;
+    opt.textContent = language.nativeName;
+    uiLanguageSelect.appendChild(opt);
+  }
+  uiLanguageSelect.value = activeUiLanguage;
 
   // Populate provider dropdown
   for (const p of PROVIDERS) {
@@ -131,8 +150,7 @@ async function init(): Promise<void> {
     outputLanguageSelect.appendChild(opt);
   }
 
-  // Load saved settings
-  const settings = await getSettings();
+  // Apply saved settings
   const selection = resolveAISelection(settings.provider, settings.model);
   const savedProvider = selection.provider.id;
   const savedModel = selection.model.id;
@@ -145,6 +163,7 @@ async function init(): Promise<void> {
   renderSubtitleTypography();
   logI18nDebug("popup settings loaded", {
     chromeUiLocale: getUiLocale(),
+    uiLanguage: activeUiLanguage,
     outputLanguage: settings.outputLanguage,
     providerId: savedProvider,
     modelId: savedModel,
@@ -160,6 +179,21 @@ async function init(): Promise<void> {
   updateApiKeyUI(currentProvider);
   // Load saved API key for this provider
   await loadApiKeyForProvider(currentProvider.id);
+}
+
+function renderLocalizedUi(): void {
+  document.documentElement.lang = activeUiLanguage;
+  document.querySelectorAll<HTMLElement>("[data-i18n]").forEach((element) => {
+    element.textContent = t(element.dataset.i18n!);
+  });
+  document.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach((element) => {
+    element.title = t(element.dataset.i18nTitle!);
+  });
+  document.querySelectorAll<HTMLElement>("[data-i18n-aria-label]").forEach((element) => {
+    element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel!));
+  });
+  updateModelInfo();
+  toggleKeyBtn.textContent = t(keyVisible ? "hideKey" : "showKey");
 }
 
 function activateTab(tabId: PopupTabId, focus: boolean = false): void {
@@ -267,8 +301,7 @@ function populateModels(providerId: string): void {
   for (const m of models) {
     const opt = document.createElement("option");
     opt.value = m.id;
-    const symbol = m.pricing.currency === "CNY" ? "¥" : "$";
-    opt.textContent = `${m.name} · ${symbol}${m.pricing.input}/M`;
+    opt.textContent = m.name;
     modelSelect.appendChild(opt);
   }
 }
@@ -277,13 +310,11 @@ function populateModels(providerId: string): void {
 function updateModelInfo(): void {
   if (!currentModel) {
     infoParamSize.textContent = "—";
-    infoPricing.textContent = "—";
     infoContext.textContent = "—";
     infoDesc.textContent = "—";
     return;
   }
   infoParamSize.textContent = currentModel.paramSize;
-  infoPricing.textContent = t("perMillionTokens", formatPricing(currentModel.pricing));
   infoContext.textContent = formatContextWindow(currentModel.contextWindow);
   infoDesc.textContent = t(currentModel.descriptionKey);
 }
@@ -321,6 +352,28 @@ outputLanguageSelect.addEventListener("change", () => {
   void saveAutomaticSettings({
     outputLanguage: outputLanguageSelect.value as Settings["outputLanguage"],
   });
+});
+
+uiLanguageSelect.addEventListener("change", async () => {
+  const nextLanguage = uiLanguageSelect.value;
+  if (!isUiLanguage(nextLanguage) || nextLanguage === activeUiLanguage) return;
+  const previousLanguage = activeUiLanguage;
+  uiLanguageSelect.disabled = true;
+  try {
+    const nextTranslator = await loadPopupTranslator(nextLanguage, chromeT);
+    await setSettings({ uiLanguage: nextLanguage });
+    activeUiLanguage = nextLanguage;
+    t = nextTranslator;
+    renderLocalizedUi();
+    showStatus(t("settingsSaved"), "success");
+  } catch (err) {
+    uiLanguageSelect.value = previousLanguage;
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] UI language change failed:", detail);
+    showStatus(t("saveFailed"), "error");
+  } finally {
+    uiLanguageSelect.disabled = false;
+  }
 });
 
 learningModeInput.addEventListener("change", () => {
@@ -395,13 +448,13 @@ saveAiBtn.addEventListener("click", async () => {
     }
 
     await setApiKey(pid, key);
-
     await setSettings({
       provider: pid,
       model: mid,
     });
     logI18nDebug("popup settings saved", {
       chromeUiLocale: getUiLocale(),
+      uiLanguage: activeUiLanguage,
       outputLanguage: outputLanguageSelect.value,
       providerId: pid,
       modelId: mid,

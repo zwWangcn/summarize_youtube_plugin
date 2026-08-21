@@ -10,16 +10,6 @@
 /** API 格式分类 */
 export type ApiFormat = "openai-compat" | "anthropic-messages" | "gemini";
 
-/** 定价货币 */
-export type Currency = "USD" | "CNY";
-
-/** 每百万 token 定价 */
-export interface Pricing {
-  input: number;       // 输入价格 per 1M tokens
-  output: number;      // 输出价格 per 1M tokens
-  currency: Currency;
-}
-
 /** 单个模型信息 */
 export interface ModelInfo {
   id: string;              // API 调用时使用的 model ID
@@ -27,7 +17,6 @@ export interface ModelInfo {
   provider: string;        // 所属供应商 ID
   descriptionKey: string;  // 本地化简介消息键
   paramSize: string;       // 参数等级（如 "~2T MoE"、"355B"、"—" 未知）
-  pricing: Pricing;        // 每百万 token 价格
   contextWindow: number;   // 上下文窗口大小（tokens）
 }
 
@@ -69,7 +58,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "deepseek",
         descriptionKey: "modelDescDeepseekV4Flash",
         paramSize: "284B MoE / 13B active",
-        pricing: { input: 0.14, output: 0.28, currency: "USD" },
         contextWindow: 1_000_000,
       },
       {
@@ -78,7 +66,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "deepseek",
         descriptionKey: "modelDescDeepseekV4",
         paramSize: "1.6T MoE / 49B active",
-        pricing: { input: 0.435, output: 0.87, currency: "USD" },
         contextWindow: 1_000_000,
       },
     ],
@@ -99,7 +86,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "openai",
         descriptionKey: "modelDescGpt5",
         paramSize: "~2T MoE",
-        pricing: { input: 1.25, output: 10.00, currency: "USD" },
         contextWindow: 400_000,
       },
       {
@@ -108,7 +94,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "openai",
         descriptionKey: "modelDescGpt5Mini",
         paramSize: "~200B",
-        pricing: { input: 0.25, output: 2.00, currency: "USD" },
         contextWindow: 400_000,
       },
       {
@@ -117,7 +102,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "openai",
         descriptionKey: "modelDescGpt41",
         paramSize: "~1.7T",
-        pricing: { input: 2.00, output: 8.00, currency: "USD" },
         contextWindow: 1_000_000,
       },
     ],
@@ -138,7 +122,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "anthropic",
         descriptionKey: "modelDescClaudeSonnet",
         paramSize: "—",
-        pricing: { input: 2.00, output: 10.00, currency: "USD" },
         contextWindow: 1_000_000,
       },
       {
@@ -147,7 +130,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "anthropic",
         descriptionKey: "modelDescClaudeOpus",
         paramSize: "—",
-        pricing: { input: 5.00, output: 25.00, currency: "USD" },
         contextWindow: 200_000,
       },
       {
@@ -156,7 +138,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "anthropic",
         descriptionKey: "modelDescClaudeHaiku",
         paramSize: "—",
-        pricing: { input: 0.80, output: 4.00, currency: "USD" },
         contextWindow: 200_000,
       },
     ],
@@ -177,7 +158,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "gemini",
         descriptionKey: "modelDescGemini25Pro",
         paramSize: "—",
-        pricing: { input: 1.25, output: 10.00, currency: "USD" },
         contextWindow: 1_000_000,
       },
       {
@@ -186,7 +166,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "gemini",
         descriptionKey: "modelDescGemini25Flash",
         paramSize: "—",
-        pricing: { input: 0.30, output: 2.50, currency: "USD" },
         contextWindow: 1_000_000,
       },
       {
@@ -195,7 +174,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "gemini",
         descriptionKey: "modelDescGemini25FlashLite",
         paramSize: "—",
-        pricing: { input: 0.10, output: 0.40, currency: "USD" },
         contextWindow: 1_000_000,
       },
     ],
@@ -216,7 +194,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "moonshot",
         descriptionKey: "modelDescKimiK2",
         paramSize: "~1T MoE",
-        pricing: { input: 6.50, output: 27.00, currency: "CNY" },
         contextWindow: 128_000,
       },
       {
@@ -225,7 +202,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "moonshot",
         descriptionKey: "modelDescKimiThinking",
         paramSize: "~1T MoE",
-        pricing: { input: 6.50, output: 27.00, currency: "CNY" },
         contextWindow: 128_000,
       },
       {
@@ -234,7 +210,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "moonshot",
         descriptionKey: "modelDescKimiTurbo",
         paramSize: "~1T MoE",
-        pricing: { input: 4.00, output: 21.00, currency: "CNY" },
         contextWindow: 128_000,
       },
     ],
@@ -255,7 +230,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "qwen",
         descriptionKey: "modelDescQwenMax",
         paramSize: "—",
-        pricing: { input: 1.20, output: 6.00, currency: "USD" },
         contextWindow: 252_000,
       },
       {
@@ -264,7 +238,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "qwen",
         descriptionKey: "modelDescQwenPlus",
         paramSize: "—",
-        pricing: { input: 0.40, output: 2.40, currency: "USD" },
         contextWindow: 1_000_000,
       },
       {
@@ -273,7 +246,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "qwen",
         descriptionKey: "modelDescQwenFlash",
         paramSize: "—",
-        pricing: { input: 0.10, output: 0.40, currency: "USD" },
         contextWindow: 1_000_000,
       },
     ],
@@ -294,7 +266,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "zhipu",
         descriptionKey: "modelDescGlm47",
         paramSize: "744B",
-        pricing: { input: 4.00, output: 18.00, currency: "CNY" },
         contextWindow: 128_000,
       },
       {
@@ -303,7 +274,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "zhipu",
         descriptionKey: "modelDescGlm45",
         paramSize: "355B(A) MoE",
-        pricing: { input: 2.00, output: 8.00, currency: "CNY" },
         contextWindow: 128_000,
       },
       {
@@ -312,7 +282,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "zhipu",
         descriptionKey: "modelDescGlm45Air",
         paramSize: "106B(A) MoE",
-        pricing: { input: 0.80, output: 2.00, currency: "CNY" },
         contextWindow: 128_000,
       },
     ],
@@ -333,7 +302,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "grok",
         descriptionKey: "modelDescGrok4",
         paramSize: "—",
-        pricing: { input: 1.25, output: 2.50, currency: "USD" },
         contextWindow: 1_000_000,
       },
       {
@@ -342,7 +310,6 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "grok",
         descriptionKey: "modelDescGrok4Fast",
         paramSize: "—",
-        pricing: { input: 0.20, output: 0.50, currency: "USD" },
         contextWindow: 2_000_000,
       },
     ],
@@ -419,14 +386,6 @@ export function getAIRequestProfile(
         : "none",
     instructionRole: providerId === "openai" ? "developer" : "system",
   };
-}
-
-/** 格式化价格字符串（用于 UI 显示） */
-export function formatPricing(p: Pricing): string {
-  if (p.currency === "CNY") {
-    return `¥${p.input}/¥${p.output}`;
-  }
-  return `$${p.input}/$${p.output}`;
 }
 
 /** 格式化上下文窗口为人类可读字符串 */

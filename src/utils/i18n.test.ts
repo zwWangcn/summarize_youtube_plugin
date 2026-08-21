@@ -1,7 +1,10 @@
 import { describe, expect, it } from "vitest";
 import {
   OUTPUT_LANGUAGES,
+  UI_LANGUAGES,
+  isUiLanguage,
   outputLanguageFromLocale,
+  uiLanguageFromLocale,
 } from "./i18n";
 
 describe("output language locale mapping", () => {
@@ -27,5 +30,29 @@ describe("output language locale mapping", () => {
   it("keeps output language codes unique", () => {
     const codes = OUTPUT_LANGUAGES.map((language) => language.code);
     expect(new Set(codes).size).toBe(codes.length);
+  });
+});
+
+describe("popup UI language locale mapping", () => {
+  it.each([
+    ["zh-CN", "zh-CN"],
+    ["zh_Hans", "zh-CN"],
+    ["zh-TW", "zh-TW"],
+    ["zh-Hant-HK", "zh-TW"],
+    ["zh-HK", "zh-TW"],
+    ["en-US", "en"],
+    ["ja-JP", "ja"],
+    ["ko-KR", "ko"],
+  ] as const)("maps %s to %s", (locale, expected) => {
+    expect(uiLanguageFromLocale(locale)).toBe(expected);
+  });
+
+  it("falls back unsupported locales to English", () => {
+    expect(uiLanguageFromLocale("fr-FR")).toBe("en");
+  });
+
+  it("validates only the five supported fixed UI languages", () => {
+    expect(UI_LANGUAGES.every((language) => isUiLanguage(language.code))).toBe(true);
+    expect(isUiLanguage("fr")).toBe(false);
   });
 });

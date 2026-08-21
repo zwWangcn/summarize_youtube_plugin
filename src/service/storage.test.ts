@@ -56,6 +56,36 @@ describe("settings and API key storage", () => {
     expect(syncStore.outputLanguage).toBe("ja");
   });
 
+  it("initializes and persists a fixed popup UI language from Chrome", async () => {
+    const { getSettings } = await import("./storage");
+    expect((await getSettings()).uiLanguage).toBe("ja");
+    expect(syncStore.uiLanguage).toBe("ja");
+  });
+
+  it("does not replace an initialized popup UI language when Chrome changes", async () => {
+    syncStore.uiLanguage = "zh-TW";
+    uiLanguage = "ko-KR";
+    const { getSettings } = await import("./storage");
+    expect((await getSettings()).uiLanguage).toBe("zh-TW");
+    expect(syncStore.uiLanguage).toBe("zh-TW");
+  });
+
+  it("reads back a popup UI language saved through the settings API", async () => {
+    const { getSettings, setSettings } = await import("./storage");
+    await getSettings();
+    await setSettings({ uiLanguage: "ko" });
+    expect((await getSettings()).uiLanguage).toBe("ko");
+    expect(syncStore.uiLanguage).toBe("ko");
+  });
+
+  it("recovers an invalid popup UI language with the English fallback", async () => {
+    syncStore.uiLanguage = "fr";
+    uiLanguage = "fr-FR";
+    const { getSettings } = await import("./storage");
+    expect((await getSettings()).uiLanguage).toBe("en");
+    expect(syncStore.uiLanguage).toBe("en");
+  });
+
   it("does not replace an initialized output language when the UI locale changes", async () => {
     syncStore.outputLanguage = "fr";
     uiLanguage = "de-DE";

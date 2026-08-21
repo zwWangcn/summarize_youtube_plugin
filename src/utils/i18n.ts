@@ -9,10 +9,23 @@ export const OUTPUT_LANGUAGES = [
   { code: "de", nativeName: "Deutsch", englishName: "German" },
 ] as const;
 
+export const UI_LANGUAGES = [
+  { code: "zh-CN", catalog: "zh_CN", nativeName: "简体中文" },
+  { code: "zh-TW", catalog: "zh_TW", nativeName: "繁體中文" },
+  { code: "en", catalog: "en", nativeName: "English" },
+  { code: "ja", catalog: "ja", nativeName: "日本語" },
+  { code: "ko", catalog: "ko", nativeName: "한국어" },
+] as const;
+
 export type OutputLanguage = (typeof OUTPUT_LANGUAGES)[number]["code"];
+export type UiLanguage = (typeof UI_LANGUAGES)[number]["code"];
 
 export function isOutputLanguage(value: unknown): value is OutputLanguage {
   return OUTPUT_LANGUAGES.some((language) => language.code === value);
+}
+
+export function isUiLanguage(value: unknown): value is UiLanguage {
+  return UI_LANGUAGES.some((language) => language.code === value);
 }
 
 export function t(key: string, substitutions?: string | string[]): string {
@@ -23,6 +36,20 @@ export function t(key: string, substitutions?: string | string[]): string {
 export function getUiLocale(): string {
   if (typeof chrome === "undefined" || !chrome.i18n?.getUILanguage) return "zh-CN";
   return chrome.i18n.getUILanguage() || "zh-CN";
+}
+
+export function uiLanguageFromLocale(locale: string): UiLanguage {
+  const normalized = locale.trim().toLowerCase().replaceAll("_", "-");
+  if (/^zh-(tw|hk|mo|hant)(?:-|$)/.test(normalized)) return "zh-TW";
+  if (/^zh(?:-|$)/.test(normalized)) return "zh-CN";
+  for (const code of ["en", "ja", "ko"] as const) {
+    if (normalized === code || normalized.startsWith(`${code}-`)) return code;
+  }
+  return "en";
+}
+
+export function getInitialUiLanguage(): UiLanguage {
+  return uiLanguageFromLocale(getUiLocale());
 }
 
 export function outputLanguageFromLocale(locale: string): OutputLanguage {

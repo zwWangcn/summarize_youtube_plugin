@@ -6,8 +6,11 @@
 
 import {
   getInitialOutputLanguage,
+  getInitialUiLanguage,
   isOutputLanguage,
+  isUiLanguage,
   type OutputLanguage,
+  type UiLanguage,
 } from "../utils/i18n";
 import {
   DEFAULT_SUBTITLE_STYLE,
@@ -22,6 +25,8 @@ export interface Settings {
   model: string;
   /** YouTube 总结和字幕翻译的目标语言 */
   outputLanguage: OutputLanguage;
+  /** 扩展设置弹窗使用的固定界面语言。 */
+  uiLanguage: UiLanguage;
   /** 学习模式下仅在悬停字幕时显示译文。 */
   learningModeEnabled: boolean;
   /** 隐藏原文并持续显示译文；启用时学习模式暂不生效。 */
@@ -32,7 +37,7 @@ export interface Settings {
   subtitleStyle: SubtitleStyleSettings;
 }
 
-const DEFAULTS: Omit<Settings, "outputLanguage"> = {
+const DEFAULTS: Omit<Settings, "outputLanguage" | "uiLanguage"> = {
   provider: "deepseek",
   model: "deepseek-v4-flash",
   learningModeEnabled: false,
@@ -45,7 +50,6 @@ const API_KEYS_KEY = "apiKeys";
 const API_KEY_PREFIX = "vas-api-key:";
 const V1_MIGRATION_KEY = "vas-settings-migrated-v2";
 const LOCAL_KEYS_MIGRATION_KEY = "vas-api-keys-migrated-v4";
-
 let migrationPromise: Promise<void> | null = null;
 
 function normalizeApiKeys(value: unknown): Record<string, string> {
@@ -127,10 +131,19 @@ export async function getSettings(): Promise<Settings> {
   const result = await chrome.storage.sync.get({
     ...DEFAULTS,
     outputLanguage: null,
+    uiLanguage: null,
   });
+  const initializedSettings: Partial<Settings> = {};
   if (!isOutputLanguage(result.outputLanguage)) {
     result.outputLanguage = getInitialOutputLanguage();
-    await chrome.storage.sync.set({ outputLanguage: result.outputLanguage });
+    initializedSettings.outputLanguage = result.outputLanguage;
+  }
+  if (!isUiLanguage(result.uiLanguage)) {
+    result.uiLanguage = getInitialUiLanguage();
+    initializedSettings.uiLanguage = result.uiLanguage;
+  }
+  if (Object.keys(initializedSettings).length) {
+    await chrome.storage.sync.set(initializedSettings);
   }
   return {
     ...result,

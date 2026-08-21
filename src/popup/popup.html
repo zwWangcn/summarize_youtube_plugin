@@ -26,9 +26,14 @@
       <section id="panel-general" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-general" data-panel="general">
         <div class="page-intro">
           <h2 data-i18n="generalSettingsTitle">通用设置</h2>
-          <p data-i18n="generalSettingsHint">选择 AI 总结和字幕翻译共同使用的目标语言。</p>
+          <p data-i18n="generalSettingsHint">选择设置弹窗的界面语言，以及总结和字幕翻译使用的目标语言。</p>
         </div>
         <div class="settings-card">
+          <section class="section">
+            <label class="label" for="uiLanguage" data-i18n="uiLanguageLabel">界面语言</label>
+            <select id="uiLanguage" class="input"></select>
+            <p class="hint" data-i18n="uiLanguageHint">仅用于扩展设置弹窗</p>
+          </section>
           <section class="section">
             <label class="label" for="outputLanguage" data-i18n="outputLanguageLabel">总结与翻译语言</label>
             <select id="outputLanguage" class="input"></select>
@@ -139,7 +144,6 @@
           </section>
           <section id="modelInfo" class="model-info">
             <div class="info-row"><span class="info-label" data-i18n="paramSizeLabel">参数等级</span><span id="infoParamSize" class="info-value">—</span></div>
-            <div class="info-row"><span class="info-label" data-i18n="pricingLabel">输入 / 输出</span><span id="infoPricing" class="info-value">—</span></div>
             <div class="info-row"><span class="info-label" data-i18n="contextWindowLabel">上下文窗口</span><span id="infoContext" class="info-value">—</span></div>
             <div class="info-row"><span class="info-label" data-i18n="descriptionLabel">简介</span><span id="infoDesc" class="info-value">—</span></div>
           </section>
@@ -155,7 +159,7 @@
 
         <section class="privacy-notice">
           <p data-i18n="dataDisclosure">执行总结或翻译时，视频字幕和 API Key 会直接发送给你选择的 AI 服务商；开发者不会接收这些数据。</p>
-          <a class="privacy-link" href="https://github.com/zwWangcn/summarize_youtube_plugin/blob/main/PRIVACY.md" target="_blank" rel="noopener" data-i18n="privacyPolicy">隐私政策</a>
+          <a class="privacy-link" href="https://zwwangcn.github.io/summarize_youtube_plugin/privacy/" target="_blank" rel="noopener" data-i18n="privacyPolicy">隐私政策</a>
         </section>
         <button id="saveAiBtn" class="btn-primary" data-i18n="saveAiSettings">保存 AI 配置</button>
         <button id="clearKeysBtn" class="btn-secondary" data-i18n="clearAllApiKeys">删除本设备全部 API Key</button>
