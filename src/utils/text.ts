@@ -15,18 +15,20 @@ export function formatTime(seconds: number): string {
 
 /**
  * 将时间戳字符串解析为总秒数。formatTime 的逆运算。
- * 支持 M:SS / MM:SS / H:MM:SS / HH:MM:SS，冒号兼容全角「：」。
+ * 支持 M:SS / MM:SS（分钟可超过 59）/ H:M:SS / HH:MM:SS，
+ * 冒号兼容全角「：」。
  * 无法解析时返回 null。
  */
 export function parseTimestampToSeconds(ts: string): number | null {
   const parts = ts.replace(/：/g, ":").split(":");
   if (parts.length !== 2 && parts.length !== 3) return null;
-  const nums = parts.map((p) => parseInt(p, 10));
-  if (nums.some((n) => !Number.isFinite(n))) return null;
-  // 秒、分必须两位；小时可一位。防止把普通数字误判为时间戳。
-  if (parts[1].length !== 2) return null;
-  if (parts.length === 3 && parts[2].length !== 2) return null;
+  if (!parts.every((part) => /^\d+$/.test(part))) return null;
+  const nums = parts.map(Number);
+  // 秒必须两位。小时格式容忍 AI
+  // 偶尔输出的 H:M:SS（例如 1:2:03），后续的范围校验仍会拒绝非法分钟。
+  if (parts.at(-1)?.length !== 2) return null;
   const [h, m, s] = parts.length === 3 ? nums : [0, ...nums];
-  if (m >= 60 || s >= 60) return null;
+  // 两段式中 m 是“总分钟”，因此 76:20 合法；三段式中才要求分钟 < 60。
+  if ((parts.length === 3 && m >= 60) || s >= 60) return null;
   return h * 3600 + m * 60 + s;
 }
