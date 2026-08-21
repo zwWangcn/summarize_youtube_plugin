@@ -80,6 +80,44 @@ describe("settings and API key storage", () => {
     expect(syncStore.learningModeEnabled).toBe(true);
   });
 
+  it("provides classic subtitle styling without writing defaults for existing users", async () => {
+    const { getSettings } = await import("./storage");
+    expect((await getSettings()).subtitleStyle).toEqual({
+      preset: "classic",
+      sourceFontScale: 100,
+      translationFontScale: 100,
+      sourceColor: "#DBDBDB",
+      translationColor: "#FFFFFF",
+      backgroundColor: "#080808",
+      backgroundOpacity: 76,
+      bottomOffset: 11,
+    });
+    expect(syncStore.subtitleStyle).toBeUndefined();
+  });
+
+  it("normalizes subtitle styling before storing and reading it", async () => {
+    const { getSettings, setSettings } = await import("./storage");
+    await setSettings({
+      subtitleStyle: {
+        preset: "custom",
+        sourceFontScale: 50,
+        translationFontScale: 120,
+        sourceColor: "#aabbcc",
+        translationColor: "invalid",
+        backgroundColor: "#000000",
+        backgroundOpacity: 120,
+        bottomOffset: 20,
+      },
+    });
+    expect(syncStore.subtitleStyle).toMatchObject({
+      sourceFontScale: 75,
+      sourceColor: "#AABBCC",
+      translationColor: "#FFFFFF",
+      backgroundOpacity: 95,
+    });
+    expect((await getSettings()).subtitleStyle).toEqual(syncStore.subtitleStyle);
+  });
+
   it("migrates legacy synced API keys to local storage and removes the synced copy", async () => {
     syncStore.apiKeys = { deepseek: " synced-key " };
     localStore = { apiKeys: { openai: "local-key" } };

@@ -9,6 +9,11 @@ import {
   isOutputLanguage,
   type OutputLanguage,
 } from "../utils/i18n";
+import {
+  DEFAULT_SUBTITLE_STYLE,
+  normalizeSubtitleStyle,
+  type SubtitleStyleSettings,
+} from "./subtitle-style";
 
 export interface Settings {
   /** 当前选中的供应商 */
@@ -19,12 +24,15 @@ export interface Settings {
   outputLanguage: OutputLanguage;
   /** 学习模式下仅在悬停字幕时显示译文。 */
   learningModeEnabled: boolean;
+  /** 播放器双语字幕的同步样式设置。 */
+  subtitleStyle: SubtitleStyleSettings;
 }
 
 const DEFAULTS: Omit<Settings, "outputLanguage"> = {
   provider: "deepseek",
   model: "deepseek-v4-flash",
   learningModeEnabled: false,
+  subtitleStyle: DEFAULT_SUBTITLE_STYLE,
 };
 
 const API_KEYS_KEY = "apiKeys";
@@ -118,12 +126,20 @@ export async function getSettings(): Promise<Settings> {
     result.outputLanguage = getInitialOutputLanguage();
     await chrome.storage.sync.set({ outputLanguage: result.outputLanguage });
   }
-  return result as Settings;
+  return {
+    ...result,
+    subtitleStyle: normalizeSubtitleStyle(result.subtitleStyle),
+  } as Settings;
 }
 
 export async function setSettings(partial: Partial<Settings>): Promise<void> {
   await ensureMigrations();
-  await chrome.storage.sync.set(partial);
+  await chrome.storage.sync.set({
+    ...partial,
+    ...(partial.subtitleStyle === undefined
+      ? {}
+      : { subtitleStyle: normalizeSubtitleStyle(partial.subtitleStyle) }),
+  });
 }
 
 export async function getApiKeys(): Promise<Record<string, string>> {
