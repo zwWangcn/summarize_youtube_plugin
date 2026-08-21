@@ -5,6 +5,8 @@
   "providerLabel": { "message": "AI 供应商" },
   "modelLabel": { "message": "模型" },
   "outputLanguageLabel": { "message": "YouTube 输出语言" },
+  "learningModeLabel": { "message": "学习模式" },
+  "learningModeHint": { "message": "仅在鼠标悬停字幕时显示译文" },
   "paramSizeLabel": { "message": "参数等级" },
   "pricingLabel": { "message": "输入 / 输出" },
   "contextWindowLabel": { "message": "上下文窗口" },

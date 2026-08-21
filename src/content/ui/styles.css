@@ -97,6 +97,18 @@
   background: var(--vas-bg-header);
   flex-shrink: 0;
 }
+.vas-header-brand {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  flex: 1;
+  margin-right: 8px;
+}
+.vas-header-brand-icon {
+  flex: 0 0 auto;
+  color: #818cf8;
+}
 .vas-header-title {
   font-size: 15px;
   font-weight: 600;
@@ -104,8 +116,8 @@
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
+  min-width: 0;
   flex: 1;
-  margin-right: 8px;
 }
 .vas-header-actions {
   display: flex;

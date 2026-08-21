@@ -33,6 +33,8 @@ export class BilingualSubtitleOverlay {
   private pendingCue: BilingualOverlayCue | null = null;
   private renderedCue: BilingualOverlayCue | null = null;
   private selectionFrozen = false;
+  private learningMode = false;
+  private hovered = false;
   private readonly onSelectionChange: () => void;
 
   constructor(player: HTMLElement, onRetry?: () => void) {
@@ -135,6 +137,14 @@ export class BilingualSubtitleOverlay {
     this.retryEl.type = "button";
     this.retryEl.className = "retry hidden";
     this.retryEl.addEventListener("click", () => onRetry?.());
+    this.card.addEventListener("mouseenter", () => {
+      this.hovered = true;
+      this.renderPendingCue();
+    });
+    this.card.addEventListener("mouseleave", () => {
+      this.hovered = false;
+      this.renderPendingCue();
+    });
     this.card.append(this.sourceEl, this.translationEl, this.statusEl, this.retryEl);
     wrap.appendChild(this.card);
     this.shadow.appendChild(wrap);
@@ -146,6 +156,13 @@ export class BilingualSubtitleOverlay {
 
   setSourceReady(ready: boolean): void {
     this.player.classList.toggle(PLAYER_ACTIVE_CLASS, ready);
+  }
+
+  setLearningMode(enabled: boolean): void {
+    if (this.learningMode === enabled) return;
+    this.learningMode = enabled;
+    this.renderedCue = null;
+    if (!this.selectionFrozen) this.renderPendingCue();
   }
 
   setCue(cue: BilingualOverlayCue | null): void {
@@ -180,7 +197,8 @@ export class BilingualSubtitleOverlay {
         cue.sourceText === this.renderedCue.sourceText &&
         cue.translationText === this.renderedCue.translationText &&
         cue.statusText === this.renderedCue.statusText &&
-        cue.retryText === this.renderedCue.retryText)
+        cue.retryText === this.renderedCue.retryText &&
+        !this.learningMode)
     ) return;
     this.renderedCue = cue ? { ...cue } : null;
     if (!cue?.sourceText) {
@@ -194,11 +212,12 @@ export class BilingualSubtitleOverlay {
 
     this.card.classList.remove("hidden");
     this.sourceEl.textContent = cue.sourceText;
+    const showTranslation = !this.learningMode || this.hovered;
     this.translationEl.textContent = cue.translationText ?? "";
-    this.translationEl.classList.toggle("hidden", !cue.translationText);
+    this.translationEl.classList.toggle("hidden", !showTranslation || !cue.translationText);
     this.statusEl.textContent = cue.statusText ?? "";
-    this.statusEl.classList.toggle("hidden", !cue.statusText);
+    this.statusEl.classList.toggle("hidden", !showTranslation || !cue.statusText);
     this.retryEl.textContent = cue.retryText ?? "";
-    this.retryEl.classList.toggle("hidden", !cue.retryText);
+    this.retryEl.classList.toggle("hidden", !showTranslation || !cue.retryText);
   }
 }

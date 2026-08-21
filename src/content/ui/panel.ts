@@ -17,6 +17,7 @@
 import panelStyles from "./styles.css?inline";
 import { linkifyTimestampsInDom } from "./renderer";
 import { t } from "../../utils/i18n";
+import { bilingualSubtitlesIconMarkup } from "./icons";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -31,7 +32,6 @@ export interface PanelCallbacks {
   onTranscriptViewChange?: (view: TranscriptView) => void;
   onTranslateCurrent?: (forceRefresh: boolean) => void;
   onTranslateAll?: () => void;
-  onBilingualSubtitlesChange?: (enabled: boolean) => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -62,7 +62,6 @@ export class Panel {
   private summarizeBtn: HTMLButtonElement;
   private summaryTranslateBtn: HTMLButtonElement;
   private transcriptBtn: HTMLButtonElement;
-  private bilingualBtn: HTMLButtonElement;
   private transcriptTools: HTMLElement;
   private sourceViewBtn: HTMLButtonElement;
   private translationViewBtn: HTMLButtonElement;
@@ -137,7 +136,6 @@ export class Panel {
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
     this.summaryTranslateBtn = this.panel.querySelector(".vas-btn-summary-translate")!;
     this.transcriptBtn = this.panel.querySelector(".vas-btn-transcript")!;
-    this.bilingualBtn = this.panel.querySelector(".vas-btn-bilingual")!;
     this.transcriptTools = this.panel.querySelector(".vas-transcript-tools")!;
     this.sourceViewBtn = this.panel.querySelector(".vas-view-source")!;
     this.translationViewBtn = this.panel.querySelector(".vas-view-translation")!;
@@ -175,6 +173,7 @@ export class Panel {
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
+      gap: "7px",
       height: "36px",
       padding: "0 14px",
       border: "1px solid rgba(255,255,255,0.15)",
@@ -191,7 +190,7 @@ export class Panel {
       transition: "opacity 0.3s ease, background 0.2s",
     });
 
-    btn.textContent = t("aiSummary");
+    btn.innerHTML = `${bilingualSubtitlesIconMarkup(16, "vas-trigger-icon")}<span>${t("aiSummary")}</span>`;
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "rgba(0, 0, 0, 0.8)";
     });
@@ -265,7 +264,10 @@ export class Panel {
     el.className = "vas-panel vas-collapsed";
     el.innerHTML = `
       <div class="vas-header">
-        <span class="vas-header-title">${t("extensionName")}</span>
+        <div class="vas-header-brand">
+          ${bilingualSubtitlesIconMarkup(22, "vas-header-brand-icon")}
+          <span class="vas-header-title">${t("extensionName")}</span>
+        </div>
         <div class="vas-header-actions">
           <button class="vas-btn-icon vas-btn-reset-width" title="${t("resetWidthTitle")}" style="display:none">↺</button>
           <button class="vas-btn-icon vas-btn-close" title="${t("closeTitle")}">✕</button>
@@ -274,7 +276,6 @@ export class Panel {
       <div class="vas-toolbar">
         <button class="vas-btn vas-btn-primary vas-btn-summarize">${t("aiSummary")}</button>
         <button class="vas-btn vas-btn-transcript">${t("rawTranscript")}</button>
-        <button class="vas-btn vas-btn-bilingual" type="button" aria-pressed="false">${t("bilingualSubtitles")}</button>
         <button class="vas-btn vas-btn-summary-translate" style="display:none"></button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
@@ -325,11 +326,6 @@ export class Panel {
       this.timestampToggle.style.display = "flex";
       this.callbacks.onTranscript(this.timestampCheckbox.checked);
     });
-    this.bilingualBtn.addEventListener("click", () => {
-      const enabled = this.bilingualBtn.getAttribute("aria-pressed") !== "true";
-      this.setBilingualSubtitlesEnabled(enabled);
-      this.callbacks.onBilingualSubtitlesChange?.(enabled);
-    });
     this.sourceViewBtn.addEventListener("click", () => {
       this.setTranscriptView("source");
       this.callbacks.onTranscriptViewChange?.("source");
@@ -356,9 +352,10 @@ export class Panel {
     this.resizeHandle.addEventListener("mousedown", (e) => this.startResize(e));
     // Reset width button
     this.resetWidthBtn.addEventListener("click", () => this.resetPanelWidth());
-    // 时间戳点击跳转（事件委托——缓存视图与流式渲染都写入 contentEl，共用此监听器；
-    // 流式每次重建 innerHTML 不影响父级监听）
-    this.contentEl.addEventListener("click", (e) => {
+    // 时间戳跳转使用 pointerdown 委托。流式渲染会在鼠标按下到 click
+    // 派发之间重建 innerHTML，直接响应按下可避免目标节点被替换后丢失操作。
+    this.contentEl.addEventListener("pointerdown", (e) => {
+      if (e.button !== 0) return;
       const tsEl = (e.target as HTMLElement).closest<HTMLElement>(".vas-ts");
       if (!tsEl) return;
       const seconds = Number(tsEl.getAttribute("data-seconds"));
@@ -500,6 +497,7 @@ export class Panel {
         <div class="vas-thinking-dot"></div>
         <span>${t("aiThinking")}</span>
       </div>`;
+    this.contentEl.scrollTop = 0;
     this.loadingEl.style.display = "none";
     this.contentEl.style.display = "block";
     this.stopElapsedTimer();
@@ -572,7 +570,7 @@ export class Panel {
   setContent(html: string): void {
     this.contentEl.innerHTML = html;
     linkifyTimestampsInDom(this.contentEl);
-    this.contentEl.scrollTop = this.contentEl.scrollHeight;
+    this.contentEl.scrollTop = 0;
   }
 
   showError(message: string): void {
@@ -592,12 +590,6 @@ export class Panel {
     this.summarizeBtn.disabled = disabled;
     this.transcriptBtn.disabled = disabled;
     this.summaryTranslateBtn.disabled = disabled || this.summaryTranslationBusy;
-  }
-
-  setBilingualSubtitlesEnabled(enabled: boolean): void {
-    this.bilingualBtn.setAttribute("aria-pressed", String(enabled));
-    this.bilingualBtn.classList.toggle("vas-active", enabled);
-    this.bilingualBtn.title = t(enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles");
   }
 
   showSummaryTranslationAction(targetLanguage: string): void {

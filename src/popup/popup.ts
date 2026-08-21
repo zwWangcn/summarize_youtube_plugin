@@ -25,6 +25,7 @@ import { logI18nDebug } from "../utils/i18n-debug";
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
 const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSelectElement;
+const learningModeInput = document.getElementById("learningMode") as HTMLInputElement;
 const apiKeyInput = document.getElementById("apiKey") as HTMLInputElement;
 const toggleKeyBtn = document.getElementById("toggleKey") as HTMLButtonElement;
 const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
@@ -98,6 +99,7 @@ async function init(): Promise<void> {
   const savedProvider = selection.provider.id;
   const savedModel = selection.model.id;
   outputLanguageSelect.value = settings.outputLanguage;
+  learningModeInput.checked = settings.learningModeEnabled;
   logI18nDebug("popup settings loaded", {
     chromeUiLocale: getUiLocale(),
     outputLanguage: settings.outputLanguage,
@@ -211,6 +213,7 @@ saveBtn.addEventListener("click", async () => {
       provider: pid,
       model: mid,
       outputLanguage: outputLanguageSelect.value as Awaited<ReturnType<typeof getSettings>>["outputLanguage"],
+      learningModeEnabled: learningModeInput.checked,
     });
     logI18nDebug("popup settings saved", {
       chromeUiLocale: getUiLocale(),

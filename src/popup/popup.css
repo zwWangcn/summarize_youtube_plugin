@@ -56,6 +56,12 @@ body {
   margin-bottom: 20px;
   text-align: center;
 }
+.brand-icon {
+  display: block;
+  width: 40px;
+  height: 40px;
+  margin: 0 auto 10px;
+}
 .header h1 {
   font-size: 18px;
   font-weight: 600;
@@ -79,6 +85,10 @@ body {
   font-weight: 500;
   color: var(--vas-text-muted);
 }
+.setting-toggle-row { display: flex; align-items: center; justify-content: space-between; gap: 16px; }
+.setting-toggle-row .label { margin-bottom: 0; }
+.setting-toggle-hint { margin-top: 2px; }
+.setting-toggle { width: 18px; height: 18px; accent-color: #818cf8; cursor: pointer; flex: 0 0 auto; }
 
 /* ---- Input Row ---- */
 .input-row {

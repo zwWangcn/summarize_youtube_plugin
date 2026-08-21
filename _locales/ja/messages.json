@@ -5,6 +5,8 @@
   "providerLabel": { "message": "AI プロバイダー" },
   "modelLabel": { "message": "モデル" },
   "outputLanguageLabel": { "message": "YouTube 出力言語" },
+  "learningModeLabel": { "message": "学習モード" },
+  "learningModeHint": { "message": "字幕にカーソルを重ねたときだけ翻訳を表示" },
   "paramSizeLabel": { "message": "パラメータ規模" },
   "pricingLabel": { "message": "入力／出力" },
   "contextWindowLabel": { "message": "コンテキストウィンドウ" },

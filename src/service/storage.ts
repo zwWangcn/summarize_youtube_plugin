@@ -17,14 +17,14 @@ export interface Settings {
   model: string;
   /** YouTube 总结和字幕翻译的目标语言 */
   outputLanguage: OutputLanguage;
-  /** 在 YouTube 播放器内显示可选择复制的双语字幕。 */
-  bilingualSubtitlesEnabled: boolean;
+  /** 学习模式下仅在悬停字幕时显示译文。 */
+  learningModeEnabled: boolean;
 }
 
 const DEFAULTS: Omit<Settings, "outputLanguage"> = {
   provider: "deepseek",
   model: "deepseek-v4-flash",
-  bilingualSubtitlesEnabled: false,
+  learningModeEnabled: false,
 };
 
 const API_KEYS_KEY = "apiKeys";

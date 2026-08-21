@@ -99,26 +99,16 @@ export function renderMarkdown(markdown: string): string {
  * 对于流式输出，简单地替换整个 innerHTML 在性能上可接受
  * （markdown 最大 16384 tokens ≈ 几十 KB）。
  *
- * 滚动策略：只有当用户本来就在底部时才自动跟随滚动；
- * 如果用户向上翻阅前面的内容，不强制拉回底部。
+ * 滚动策略：始终保持当前阅读位置。
+ * 初始 scrollTop 为 0，因此长总结在流式生成时也会停留在顶部；
+ * 用户主动滚动后则保持对应的滚动位置。
  */
 export function renderStreaming(target: HTMLElement, markdown: string): void {
-  const SCROLL_THRESHOLD = 3; // px，底部判定容错
-  const wasAtBottom =
-    target.scrollTop + target.clientHeight >=
-    target.scrollHeight - SCROLL_THRESHOLD;
   const previousScrollTop = target.scrollTop;
 
   target.innerHTML = renderMarkdown(markdown);
   linkifyTimestampsInDom(target);
-
-  if (wasAtBottom) {
-    // 用户本来在底部——自动跟随最新内容
-    target.scrollTop = target.scrollHeight;
-  } else {
-    // 用户正在向上翻阅——保持当前阅读位置不动
-    target.scrollTop = previousScrollTop;
-  }
+  target.scrollTop = previousScrollTop;
 }
 
 export interface TranscriptSectionRenderState {

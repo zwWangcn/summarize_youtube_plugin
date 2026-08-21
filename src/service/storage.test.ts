@@ -72,12 +72,12 @@ describe("settings and API key storage", () => {
     expect(syncStore.outputLanguage).toBe("de");
   });
 
-  it("defaults and persists the global bilingual subtitle switch", async () => {
+  it("defaults and persists the learning mode switch", async () => {
     const { getSettings, setSettings } = await import("./storage");
-    expect((await getSettings()).bilingualSubtitlesEnabled).toBe(false);
-    await setSettings({ bilingualSubtitlesEnabled: true });
-    expect((await getSettings()).bilingualSubtitlesEnabled).toBe(true);
-    expect(syncStore.bilingualSubtitlesEnabled).toBe(true);
+    expect((await getSettings()).learningModeEnabled).toBe(false);
+    await setSettings({ learningModeEnabled: true });
+    expect((await getSettings()).learningModeEnabled).toBe(true);
+    expect(syncStore.learningModeEnabled).toBe(true);
   });
 
   it("migrates legacy synced API keys to local storage and removes the synced copy", async () => {

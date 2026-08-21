@@ -5,6 +5,8 @@
   "providerLabel": { "message": "AI provider" },
   "modelLabel": { "message": "Model" },
   "outputLanguageLabel": { "message": "YouTube output language" },
+  "learningModeLabel": { "message": "Learning mode" },
+  "learningModeHint": { "message": "Show translations only when hovering over captions" },
   "paramSizeLabel": { "message": "Parameter class" },
   "pricingLabel": { "message": "Input / output" },
   "contextWindowLabel": { "message": "Context window" },

@@ -2,6 +2,7 @@
 
 import { Panel, type TranscriptView } from "./ui/panel";
 import { BilingualSubtitleOverlay } from "./ui/bilingual-overlay";
+import { PlayerTranslationToggle } from "./ui/player-translation-toggle";
 import {
   renderMarkdown,
   renderStreaming,
@@ -41,7 +42,7 @@ import {
 } from "../service/summary-cache";
 import { handleError } from "./error-handler";
 import { runSummaryCacheOperation } from "./summary-cache-operation";
-import { getSettings, setSettings } from "../service/storage";
+import { getSettings } from "../service/storage";
 import {
   getOutputLanguageInfo,
   getUiLocale,
@@ -269,7 +270,11 @@ export async function initContentScript(
   let translationProgressText = "";
   let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
-  let bilingualEnabled = initialSettings.bilingualSubtitlesEnabled;
+  // Translation is intentionally scoped to a single content-script lifetime and video.
+  // Unseen videos start enabled; revisiting in the same tab restores the user's choice.
+  const bilingualStateByVideo = new Map<string, boolean>();
+  let bilingualEnabled = true;
+  let learningModeEnabled = initialSettings.learningModeEnabled;
   let bilingualOverlay: BilingualSubtitleOverlay | null = null;
   let bilingualVideo: HTMLVideoElement | null = null;
   let bilingualSyncHandler: (() => void) | null = null;
@@ -277,6 +282,10 @@ export async function initContentScript(
   let bilingualFrameCueId = -2;
   let autoTranslationErrors: Record<number, string> = {};
   let autoTranslationBlockedMessage = "";
+
+  const playerTranslationToggle = new PlayerTranslationToggle((enabled) => {
+    setBilingualEnabled(enabled);
+  });
 
   type TranslationJobKind = "overlay" | "section" | "all";
   interface TranslationJob {
@@ -302,6 +311,28 @@ export async function initContentScript(
     bilingualSyncHandler = null;
     bilingualOverlay?.destroy();
     bilingualOverlay = null;
+  }
+
+  function setBilingualEnabled(enabled: boolean): void {
+    const videoId = extractor.getVideoId();
+    if (videoId) bilingualStateByVideo.set(videoId, enabled);
+    bilingualEnabled = enabled;
+    playerTranslationToggle.setEnabled(enabled);
+    autoTranslationErrors = {};
+    autoTranslationBlockedMessage = "";
+    if (enabled && extractor.isOnVideoPage()) {
+      void activateBilingualOverlay();
+      return;
+    }
+    translationJobs = translationJobs.filter((job) => job.kind !== "overlay");
+    if (currentTranslationJob?.kind === "overlay") translationAbort?.abort();
+    destroyBilingualOverlay();
+  }
+
+  function restoreBilingualEnabledForCurrentVideo(): void {
+    const videoId = extractor.getVideoId();
+    bilingualEnabled = videoId ? (bilingualStateByVideo.get(videoId) ?? true) : true;
+    playerTranslationToggle.setEnabled(bilingualEnabled);
   }
 
   function clearTranscriptState(): void {
@@ -352,20 +383,15 @@ export async function initContentScript(
       clearTranscriptState();
       currentPanel?.reset();
       currentPanel?.setTranslationAvailable(true);
-      currentPanel?.setBilingualSubtitlesEnabled(bilingualEnabled);
       if (bilingualEnabled && extractor.isOnVideoPage()) {
         void activateBilingualOverlay();
       }
     }
 
-    const nextBilingual = changes.bilingualSubtitlesEnabled?.newValue;
-    if (typeof nextBilingual === "boolean" && nextBilingual !== bilingualEnabled) {
-      bilingualEnabled = nextBilingual;
-      currentPanel?.setBilingualSubtitlesEnabled(bilingualEnabled);
-      autoTranslationErrors = {};
-      autoTranslationBlockedMessage = "";
-      if (bilingualEnabled && extractor.isOnVideoPage()) void activateBilingualOverlay();
-      else destroyBilingualOverlay();
+    const nextLearningMode = changes.learningModeEnabled?.newValue;
+    if (typeof nextLearningMode === "boolean" && nextLearningMode !== learningModeEnabled) {
+      learningModeEnabled = nextLearningMode;
+      bilingualOverlay?.setLearningMode(learningModeEnabled);
     }
 
     if (changes.provider || changes.model) {
@@ -388,7 +414,7 @@ export async function initContentScript(
   ): Promise<Transcript> {
     const videoId = extractor.getVideoId();
     if (transcriptData && transcriptVideoId === videoId) return transcriptData;
-    const transcript = buildAlignedTranscript(await extractor.getTranscript());
+    const transcript = await buildAlignedTranscript(await extractor.getTranscript());
     if (expectedVersion !== transcriptStateVersion) {
       throw new DOMException("The operation was aborted", "AbortError");
     }
@@ -593,13 +619,14 @@ export async function initContentScript(
       { passive: true },
     );
     panel.setTranslationAvailable(true);
-    panel.setBilingualSubtitlesEnabled(bilingualEnabled);
     const title = extractor.getVideoTitle();
     if (title) panel.setTitle(title);
     panel.setTheme(isYouTubeDarkMode());
     panel.injectTrigger(target);
     panel.bindToPlayer(target);
     panel.injectPanel(document.body);
+    playerTranslationToggle.mount(target);
+    playerTranslationToggle.setEnabled(bilingualEnabled);
     void panel.initPanelWidth();
     if (bilingualEnabled) void activateBilingualOverlay(target);
     return panel;
@@ -981,6 +1008,9 @@ export async function initContentScript(
       else void activateBilingualOverlay(player);
     });
     bilingualOverlay = overlay;
+    overlay.setLearningMode(learningModeEnabled);
+    playerTranslationToggle.mount(player);
+    playerTranslationToggle.setEnabled(bilingualEnabled);
     overlay.setCue({ sourceText: t("fetchingTranscript") });
     const stateVersion = transcriptStateVersion;
     try {
@@ -1431,23 +1461,6 @@ export async function initContentScript(
       );
     },
 
-    onBilingualSubtitlesChange: (enabled: boolean) => {
-      bilingualEnabled = enabled;
-      autoTranslationErrors = {};
-      autoTranslationBlockedMessage = "";
-      void setSettings({ bilingualSubtitlesEnabled: enabled }).catch((error) => {
-        const detail = error instanceof Error ? error.message : String(error);
-        console.debug("[vas] Failed to persist bilingual subtitle setting:", detail);
-      });
-      if (enabled) {
-        void activateBilingualOverlay();
-      } else {
-        translationJobs = translationJobs.filter((job) => job.kind !== "overlay");
-        if (currentTranslationJob?.kind === "overlay") translationAbort?.abort();
-        destroyBilingualOverlay();
-      }
-    },
-
     onClose: () => {
       summaryAbort?.abort();
       summaryTranslationAbort?.abort();
@@ -1490,6 +1503,7 @@ export async function initContentScript(
 
   function destroyPanel(): void {
     destroyBilingualOverlay();
+    playerTranslationToggle.destroy();
     currentPanel?.destroy();
     currentPanel = null;
   }
@@ -1519,6 +1533,7 @@ export async function initContentScript(
   watchNavigation(() => {
     clearTranscriptState();
     if (extractor.isOnVideoPage()) {
+      restoreBilingualEnabledForCurrentVideo();
       // Entered a video page (or navigated to a new video)
       if (!document.getElementById("vas-root")) {
         // Fresh entry — wait for DOM, then inject
@@ -1532,7 +1547,6 @@ export async function initContentScript(
           const p = getPanel();
           p.reset();
           p.setTranslationAvailable(true);
-          p.setBilingualSubtitlesEnabled(bilingualEnabled);
           const t = extractor.getVideoTitle();
           if (t) p.setTitle(t);
           p.setTheme(isYouTubeDarkMode());
@@ -1542,6 +1556,7 @@ export async function initContentScript(
             const newTarget = config.findInjectTarget() || document.body;
             p.injectTrigger(newTarget);
             p.bindToPlayer(newTarget);
+            playerTranslationToggle.mount(newTarget);
           }
           if (bilingualEnabled) void activateBilingualOverlay();
         }, 800);

@@ -105,7 +105,8 @@ Dev hot-reload: `npm run dev`
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
 5. When the caption language differs from the output language, use **Translate Section** or **Translate All** inside the captions view
-6. Use **Bilingual Subtitles** to enable the global in-player overlay; the switch is remembered across tabs and browser restarts
+6. Use the translation button next to the native CC control to enable or disable bilingual captions for the current video; new videos start enabled
+7. Enable **Learning mode** in extension settings to show translations only while hovering over captions
 
 ## License
 

@@ -102,7 +102,7 @@ YouTube 字幕提取有三条路径，按优先级依次尝试：
 
 ### 字幕翻译
 
-- 字幕内部使用 `Transcript` / `TranscriptSegment` 保存语言、固定时间、原文、JSON3 逐词时间及原始 source ID 范围；本地先拆出单条 YouTube cue 内的句末，优先以逐词时间、缺失时按文本长度插值，再跨 cue 合并同一句的连续片段，AI 不参与断句或计时
+- 字幕内部使用 `Transcript` / `TranscriptSegment` 保存语言、固定时间、原文、JSON3 逐词时间及原始 source ID 范围；`semantic-segmentation.ts` 先合并完整上下文，由 SentenceX WASM、标点、停顿、禁断词及引号状态生成候选切点，再用动态规划全局选择语义边界；所选边界优先映射 JSON3 逐词时间，缺失时才局部插值，AI 不参与断句或计时
 - `transcript-translation.ts` 要求模型为每个固定 `cueId` 返回恰好一条 NDJSON 译文，禁止合并、拆分和返回时间戳；每行校验后立即渲染，并复用本地 cue 时间；播放器通过 `requestVideoFrameCallback` 的媒体时间逐帧同步
 - 播放器内的 `BilingualSubtitleOverlay` 与字幕阅读器共用 cue 级译文和缓存；从播放位置预取约 60 秒，剩余不足 15 秒时续取
 - API 网络错误在无输出时由底层指数退避重试；字幕流在部分输出后断开时会整批重启一次。耗尽后播放器字幕层提供当前窗口重试按钮，并清除页面级失败锁
@@ -133,6 +133,8 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 | `src/content/extractors/youtube.ts` | YouTube 字幕提取（ytInitialPlayerResponse → XML → 文本） |
 | `src/content/caption-main.ts` | document_start 注入 YouTube MAIN world 的 fetch/XHR 观察器 |
 | `src/content/extractors/caption-interceptor.ts` | 隔离世界中的字幕事件接收和有界内存缓存 |
+| `src/content/semantic-segmentation.ts` | 候选切点评分、动态规划选路与原始时间轴映射 |
+| `src/content/sentence-boundary-detector.ts` | SentenceX WASM 初始化、UTF-16 边界转换及 Intl 回退 |
 | `src/service/ai.ts` | AI 流式调用主入口：适配器分发、SSE 解析、重试、翻译回退 |
 | `src/service/ai/types.ts` | ProviderAdapter 接口定义 |
 | `src/service/ai/openai-compat.ts` | OpenAI 兼容格式适配器（DeepSeek/OpenAI/Kimi/Qwen/GLM/Grok） |
