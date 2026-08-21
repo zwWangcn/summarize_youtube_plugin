@@ -1,5 +1,5 @@
 /**
- * Popup 逻辑 — 管理多供应商 AI 模型和 API Key 设置。
+ * Popup 逻辑 — 管理分页设置、多供应商 AI 模型和 API Key。
  */
 
 import {
@@ -8,6 +8,7 @@ import {
   getSettings,
   setApiKey,
   setSettings,
+  type Settings,
 } from "../service/storage";
 import {
   PROVIDERS,
@@ -20,6 +21,11 @@ import {
 import type { ProviderInfo, ModelInfo } from "../service/model-registry";
 import { OUTPUT_LANGUAGES, getUiLocale, t } from "../utils/i18n";
 import { logI18nDebug } from "../utils/i18n-debug";
+import {
+  getAdjacentPopupTab,
+  isPopupTabId,
+  type PopupTabId,
+} from "./popup-tabs";
 
 // ── DOM refs ────────────────────────────────────────────────────────
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
@@ -28,11 +34,13 @@ const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSe
 const learningModeInput = document.getElementById("learningMode") as HTMLInputElement;
 const apiKeyInput = document.getElementById("apiKey") as HTMLInputElement;
 const toggleKeyBtn = document.getElementById("toggleKey") as HTMLButtonElement;
-const saveBtn = document.getElementById("saveBtn") as HTMLButtonElement;
+const saveAiBtn = document.getElementById("saveAiBtn") as HTMLButtonElement;
 const statusDiv = document.getElementById("status") as HTMLDivElement;
 const apiKeyLabel = document.getElementById("apiKeyLabel") as HTMLSpanElement;
 const apiKeyLink = document.getElementById("apiKeyLink") as HTMLAnchorElement;
 const clearKeysBtn = document.getElementById("clearKeysBtn") as HTMLButtonElement;
+const tabButtons = [...document.querySelectorAll<HTMLButtonElement>("[role='tab'][data-tab]")];
+const tabPanels = [...document.querySelectorAll<HTMLElement>("[role='tabpanel'][data-panel]")];
 
 // Model info card elements
 const infoParamSize = document.getElementById("infoParamSize") as HTMLSpanElement;
@@ -44,12 +52,13 @@ const infoDesc = document.getElementById("infoDesc") as HTMLSpanElement;
 let currentProvider: ProviderInfo = PROVIDERS[0];
 let currentModel: ModelInfo | null = null;
 let apiKeyLoadVersion = 0;
+let statusTimer: ReturnType<typeof setTimeout> | null = null;
 
 async function loadApiKeyForProvider(providerId: string): Promise<void> {
   const version = ++apiKeyLoadVersion;
   apiKeyInput.value = "";
   apiKeyInput.disabled = true;
-  saveBtn.disabled = true;
+  saveAiBtn.disabled = true;
   try {
     const key = await getApiKey(providerId);
     if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
@@ -64,7 +73,7 @@ async function loadApiKeyForProvider(providerId: string): Promise<void> {
   } finally {
     if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
       apiKeyInput.disabled = false;
-      saveBtn.disabled = false;
+      saveAiBtn.disabled = false;
     }
   }
 }
@@ -77,6 +86,9 @@ async function init(): Promise<void> {
   });
   document.querySelectorAll<HTMLElement>("[data-i18n-title]").forEach((element) => {
     element.title = t(element.dataset.i18nTitle!);
+  });
+  document.querySelectorAll<HTMLElement>("[data-i18n-aria-label]").forEach((element) => {
+    element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel!));
   });
 
   // Populate provider dropdown
@@ -117,6 +129,34 @@ async function init(): Promise<void> {
   updateApiKeyUI(currentProvider);
   // Load saved API key for this provider
   await loadApiKeyForProvider(currentProvider.id);
+}
+
+function activateTab(tabId: PopupTabId, focus: boolean = false): void {
+  for (const button of tabButtons) {
+    const selected = button.dataset.tab === tabId;
+    button.classList.toggle("is-active", selected);
+    button.setAttribute("aria-selected", String(selected));
+    button.tabIndex = selected ? 0 : -1;
+    if (selected && focus) button.focus();
+  }
+  for (const panel of tabPanels) {
+    const selected = panel.dataset.panel === tabId;
+    panel.classList.toggle("is-active", selected);
+    panel.hidden = !selected;
+  }
+}
+
+async function saveAutomaticSettings(
+  partial: Partial<Pick<Settings, "outputLanguage" | "learningModeEnabled">>,
+): Promise<void> {
+  try {
+    await setSettings(partial);
+    showStatus(t("settingsSaved"), "success");
+  } catch (err) {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] Automatic settings save failed:", detail);
+    showStatus(t("saveFailed"), "error");
+  }
 }
 
 // ── Populate model dropdown for a given provider ─────────────────────
@@ -163,6 +203,29 @@ function updateApiKeyUI(provider: ProviderInfo): void {
 
 // ── Events ───────────────────────────────────────────────────────────
 
+for (const button of tabButtons) {
+  button.addEventListener("click", () => {
+    if (isPopupTabId(button.dataset.tab)) activateTab(button.dataset.tab);
+  });
+  button.addEventListener("keydown", (event) => {
+    if (!isPopupTabId(button.dataset.tab)) return;
+    const next = getAdjacentPopupTab(button.dataset.tab, event.key);
+    if (!next) return;
+    event.preventDefault();
+    activateTab(next, true);
+  });
+}
+
+outputLanguageSelect.addEventListener("change", () => {
+  void saveAutomaticSettings({
+    outputLanguage: outputLanguageSelect.value as Settings["outputLanguage"],
+  });
+});
+
+learningModeInput.addEventListener("change", () => {
+  void saveAutomaticSettings({ learningModeEnabled: learningModeInput.checked });
+});
+
 // Provider changed → repopulate models
 providerSelect.addEventListener("change", () => {
   const pid = providerSelect.value;
@@ -196,8 +259,8 @@ toggleKeyBtn.addEventListener("click", () => {
   toggleKeyBtn.textContent = t(keyVisible ? "hideKey" : "showKey");
 });
 
-// Save
-saveBtn.addEventListener("click", async () => {
+// Save AI configuration and the selected provider's local API key.
+saveAiBtn.addEventListener("click", async () => {
   try {
     const pid = providerSelect.value;
     const mid = modelSelect.value;
@@ -212,8 +275,6 @@ saveBtn.addEventListener("click", async () => {
     await setSettings({
       provider: pid,
       model: mid,
-      outputLanguage: outputLanguageSelect.value as Awaited<ReturnType<typeof getSettings>>["outputLanguage"],
-      learningModeEnabled: learningModeInput.checked,
     });
     logI18nDebug("popup settings saved", {
       chromeUiLocale: getUiLocale(),
@@ -221,7 +282,7 @@ saveBtn.addEventListener("click", async () => {
       providerId: pid,
       modelId: mid,
     });
-    showStatus(t("settingsSaved"), "success");
+    showStatus(t("aiSettingsSaved"), "success");
   } catch (err) {
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
     console.debug("[vas] Settings save failed:", detail);
@@ -236,7 +297,7 @@ clearKeysBtn.addEventListener("click", async () => {
     await clearAllApiKeys();
     apiKeyInput.value = "";
     apiKeyInput.disabled = false;
-    saveBtn.disabled = false;
+    saveAiBtn.disabled = false;
     showStatus(t("allApiKeysCleared"), "success");
   } catch (err) {
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
@@ -244,16 +305,18 @@ clearKeysBtn.addEventListener("click", async () => {
     showStatus(t("clearApiKeysFailed"), "error");
   } finally {
     apiKeyInput.disabled = false;
-    saveBtn.disabled = false;
+    saveAiBtn.disabled = false;
   }
 });
 
 // ── Status helper ───────────────────────────────────────────────────
 function showStatus(message: string, type: "success" | "error"): void {
+  if (statusTimer) clearTimeout(statusTimer);
   statusDiv.textContent = message;
   statusDiv.className = `status ${type}`;
-  setTimeout(() => {
+  statusTimer = setTimeout(() => {
     statusDiv.className = "status";
+    statusTimer = null;
   }, 2500);
 }
 

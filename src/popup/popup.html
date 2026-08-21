@@ -9,109 +9,95 @@
 <body>
   <div class="container">
     <header class="header">
-      <img class="brand-icon" src="/assets/icons/icon48.png" width="40" height="40" alt="" />
-      <h1 data-i18n="extensionName">YouTube AI 总结与翻译</h1>
-      <p class="subtitle" data-i18n="popupSubtitle">一键总结视频，翻译字幕</p>
+      <img class="brand-icon" src="/assets/icons/icon48.png" width="38" height="38" alt="" />
+      <div class="brand-copy">
+        <h1 data-i18n="extensionName">YouTube AI 总结与翻译</h1>
+        <p class="subtitle" data-i18n="popupSubtitle">一键总结视频，翻译字幕</p>
+      </div>
     </header>
 
+    <nav class="settings-tabs" role="tablist" data-i18n-aria-label="settingsTabsAria">
+      <button id="tab-general" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-general" tabindex="0" data-tab="general" data-i18n="generalTab">通用</button>
+      <button id="tab-subtitles" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-subtitles" tabindex="-1" data-tab="subtitles" data-i18n="subtitlesTab">字幕</button>
+      <button id="tab-ai" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-ai" tabindex="-1" data-tab="ai" data-i18n="aiModelsTab">AI 模型</button>
+    </nav>
+
     <main class="main">
-      <!-- Provider selector -->
-      <section class="section">
-        <label class="label" for="provider" data-i18n="providerLabel">AI 供应商</label>
-        <select id="provider" class="input">
-        </select>
-      </section>
-
-      <!-- Model selector -->
-      <section class="section">
-        <label class="label" for="model" data-i18n="modelLabel">模型</label>
-        <select id="model" class="input">
-        </select>
-      </section>
-
-      <!-- Output language -->
-      <section class="section">
-        <label class="label" for="outputLanguage" data-i18n="outputLanguageLabel">总结与翻译语言</label>
-        <select id="outputLanguage" class="input"></select>
-        <p class="hint" data-i18n="outputLanguageHint">同时用于 AI 总结和字幕译文</p>
-      </section>
-
-      <section class="section setting-toggle-row">
-        <div>
-          <label class="label" for="learningMode" data-i18n="learningModeLabel">学习模式</label>
-          <p class="hint setting-toggle-hint" data-i18n="learningModeHint">只在鼠标悬停字幕时显示译文</p>
+      <section id="panel-general" class="tab-panel is-active" role="tabpanel" aria-labelledby="tab-general" data-panel="general">
+        <div class="page-intro">
+          <h2 data-i18n="generalSettingsTitle">通用设置</h2>
+          <p data-i18n="generalSettingsHint">选择 AI 总结和字幕翻译共同使用的目标语言。</p>
         </div>
-        <input id="learningMode" type="checkbox" class="setting-toggle" />
+        <div class="settings-card">
+          <section class="section">
+            <label class="label" for="outputLanguage" data-i18n="outputLanguageLabel">总结与翻译语言</label>
+            <select id="outputLanguage" class="input"></select>
+            <p class="hint" data-i18n="outputLanguageHint">同时用于 AI 总结和字幕译文</p>
+          </section>
+        </div>
+        <p class="autosave-note" data-i18n="autoSaveHint">更改后自动保存</p>
       </section>
 
-      <!-- Model info card -->
-      <section id="modelInfo" class="model-info">
-        <div class="info-row">
-          <span class="info-label" data-i18n="paramSizeLabel">参数等级</span>
-          <span id="infoParamSize" class="info-value">—</span>
+      <section id="panel-subtitles" class="tab-panel" role="tabpanel" aria-labelledby="tab-subtitles" data-panel="subtitles" hidden>
+        <div class="page-intro">
+          <h2 data-i18n="subtitleSettingsTitle">双语字幕</h2>
+          <p data-i18n="subtitleSettingsHint">控制播放器中双语字幕的显示方式。</p>
         </div>
-        <div class="info-row">
-          <span class="info-label" data-i18n="pricingLabel">输入 / 输出</span>
-          <span id="infoPricing" class="info-value">—</span>
+        <div class="settings-card">
+          <section class="section setting-toggle-row">
+            <div>
+              <label class="label" for="learningMode" data-i18n="learningModeLabel">学习模式</label>
+              <p class="hint setting-toggle-hint" data-i18n="learningModeHint">仅在鼠标悬停字幕时显示译文</p>
+            </div>
+            <input id="learningMode" type="checkbox" class="setting-toggle" />
+          </section>
         </div>
-        <div class="info-row">
-          <span class="info-label" data-i18n="contextWindowLabel">上下文窗口</span>
-          <span id="infoContext" class="info-value">—</span>
-        </div>
-        <div class="info-row">
-          <span class="info-label" data-i18n="descriptionLabel">简介</span>
-          <span id="infoDesc" class="info-value">—</span>
-        </div>
+        <p class="autosave-note" data-i18n="autoSaveHint">更改后自动保存</p>
       </section>
 
-      <!-- API Key -->
-      <section class="section">
-        <label class="label" for="apiKey">
-          <span id="apiKeyLabel">API Key</span>
-        </label>
-        <div class="input-row">
-          <input
-            type="password"
-            id="apiKey"
-            class="input"
-            placeholder="sk-..."
-            autocomplete="off"
-          />
-          <button id="toggleKey" class="btn-icon" title="显示/隐藏" data-i18n="showKey" data-i18n-title="toggleKeyTitle">显示</button>
+      <section id="panel-ai" class="tab-panel" role="tabpanel" aria-labelledby="tab-ai" data-panel="ai" hidden>
+        <div class="page-intro">
+          <h2 data-i18n="aiSettingsTitle">AI 模型</h2>
+          <p data-i18n="aiSettingsHint">选择模型并保存对应服务商的 API Key。</p>
         </div>
-        <p class="hint">
-          在
-          <a id="apiKeyLink" href="#" target="_blank" rel="noopener" data-i18n="getApiKey">获取 API Key</a>
-        </p>
+
+        <div class="settings-card">
+          <section class="section">
+            <label class="label" for="provider" data-i18n="providerLabel">AI 供应商</label>
+            <select id="provider" class="input"></select>
+          </section>
+          <section class="section">
+            <label class="label" for="model" data-i18n="modelLabel">模型</label>
+            <select id="model" class="input"></select>
+          </section>
+          <section id="modelInfo" class="model-info">
+            <div class="info-row"><span class="info-label" data-i18n="paramSizeLabel">参数等级</span><span id="infoParamSize" class="info-value">—</span></div>
+            <div class="info-row"><span class="info-label" data-i18n="pricingLabel">输入 / 输出</span><span id="infoPricing" class="info-value">—</span></div>
+            <div class="info-row"><span class="info-label" data-i18n="contextWindowLabel">上下文窗口</span><span id="infoContext" class="info-value">—</span></div>
+            <div class="info-row"><span class="info-label" data-i18n="descriptionLabel">简介</span><span id="infoDesc" class="info-value">—</span></div>
+          </section>
+          <section class="section api-key-section">
+            <label class="label" for="apiKey"><span id="apiKeyLabel">API Key</span></label>
+            <div class="input-row">
+              <input type="password" id="apiKey" class="input" placeholder="sk-..." autocomplete="off" />
+              <button id="toggleKey" class="btn-icon" title="显示/隐藏" data-i18n="showKey" data-i18n-title="toggleKeyTitle">显示</button>
+            </div>
+            <p class="hint"><span data-i18n="getApiKey">获取 API Key</span>：<a id="apiKeyLink" href="#" target="_blank" rel="noopener"></a></p>
+          </section>
+        </div>
+
+        <section class="privacy-notice">
+          <p data-i18n="dataDisclosure">执行总结或翻译时，视频字幕和 API Key 会直接发送给你选择的 AI 服务商；开发者不会接收这些数据。</p>
+          <a class="privacy-link" href="https://github.com/zwWangcn/summarize_youtube_plugin/blob/main/PRIVACY.md" target="_blank" rel="noopener" data-i18n="privacyPolicy">隐私政策</a>
+        </section>
+        <button id="saveAiBtn" class="btn-primary" data-i18n="saveAiSettings">保存 AI 配置</button>
+        <button id="clearKeysBtn" class="btn-secondary" data-i18n="clearAllApiKeys">删除本设备全部 API Key</button>
       </section>
-
-      <!-- Data disclosure -->
-      <section class="privacy-notice">
-        <p data-i18n="dataDisclosure">
-          执行总结或翻译时，视频字幕和 API Key 会直接发送给你选择的 AI 服务商；开发者不会接收这些数据。
-        </p>
-        <a
-          class="privacy-link"
-          href="https://github.com/zwWangcn/summarize_youtube_plugin/blob/main/PRIVACY.md"
-          target="_blank"
-          rel="noopener"
-          data-i18n="privacyPolicy"
-        >隐私政策</a>
-      </section>
-
-      <!-- Status -->
-      <div id="status" class="status"></div>
-
-      <!-- Save -->
-      <button id="saveBtn" class="btn-primary" data-i18n="saveSettings">保存设置</button>
-      <button id="clearKeysBtn" class="btn-secondary" data-i18n="clearAllApiKeys">删除本设备全部 API Key</button>
     </main>
 
-    <footer class="footer">
-      <p data-i18n="popupFooter">打开 YouTube 视频，在播放器中点击“AI 总结与翻译”即可使用</p>
-    </footer>
+    <div id="status" class="status" role="status" aria-live="polite"></div>
+    <footer class="footer"><p data-i18n="popupFooter">打开 YouTube 视频，在播放器中点击“AI 总结与翻译”即可使用</p></footer>
   </div>
-
   <script type="module" src="./popup.ts"></script>
 </body>
 </html>
