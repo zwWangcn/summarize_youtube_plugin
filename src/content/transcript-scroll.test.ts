@@ -1,5 +1,8 @@
 import { describe, expect, it } from "vitest";
-import { getTranscriptLazyLoadDirection } from "./transcript-scroll";
+import {
+  getTranscriptLazyLoadDirection,
+  getTranscriptTargetScrollTop,
+} from "./transcript-scroll";
 
 const baseState = {
   deltaY: 100,
@@ -51,5 +54,48 @@ describe("transcript wheel lazy loading", () => {
       ...baseState,
       deltaY: -100,
     })).toBeNull();
+  });
+});
+
+describe("transcript playback-position scrolling", () => {
+  it("converts viewport geometry into the container scroll coordinate space", () => {
+    expect(getTranscriptTargetScrollTop({
+      scrollTop: 120,
+      clientHeight: 400,
+      scrollHeight: 1_600,
+      containerTop: 180,
+      targetTop: 500,
+      targetHeight: 500,
+    })).toBe(428);
+  });
+
+  it("centers a short section so it remains the active scroll-spy section", () => {
+    expect(getTranscriptTargetScrollTop({
+      scrollTop: 0,
+      clientHeight: 500,
+      scrollHeight: 1_500,
+      containerTop: 200,
+      targetTop: 700,
+      targetHeight: 200,
+    })).toBe(350);
+  });
+
+  it("clamps the target position at both transcript boundaries", () => {
+    expect(getTranscriptTargetScrollTop({
+      scrollTop: 0,
+      clientHeight: 500,
+      scrollHeight: 1_500,
+      containerTop: 200,
+      targetTop: 210,
+      targetHeight: 100,
+    })).toBe(0);
+    expect(getTranscriptTargetScrollTop({
+      scrollTop: 900,
+      clientHeight: 500,
+      scrollHeight: 1_500,
+      containerTop: 200,
+      targetTop: 900,
+      targetHeight: 100,
+    })).toBe(1_000);
   });
 });

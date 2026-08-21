@@ -56,7 +56,10 @@ import {
   detectOutputLanguage,
   type OutputLanguageStatus,
 } from "../utils/output-language-detection";
-import { getTranscriptLazyLoadDirection } from "./transcript-scroll";
+import {
+  getTranscriptLazyLoadDirection,
+  getTranscriptTargetScrollTop,
+} from "./transcript-scroll";
 import { resolveBilingualEnabled } from "./bilingual-preference";
 
 // ---------------------------------------------------------------------------
@@ -1474,6 +1477,7 @@ export async function initContentScript(
 
     onTranscript: async (withTimestamps: boolean) => {
       const panel = getPanel();
+      const shouldSyncToPlayback = panel.getMode() !== "transcript";
       summaryTranslationAbort?.abort();
       summaryTranslationAbort = null;
       const stateVersion = transcriptStateVersion;
@@ -1485,30 +1489,47 @@ export async function initContentScript(
         const transcript = await ensureTranscript(panel, stateVersion);
         panel.setTitle(extractor.getVideoTitle());
         transcriptWithTimestamps = withTimestamps;
-        const isInitialOpen = !transcriptChunks.length;
-        if (isInitialOpen) {
+        if (!transcriptChunks.length) {
           transcriptChunks = buildTranslationChunks(transcript.segments);
+        }
+        if (shouldSyncToPlayback) {
           activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
           loadedChunkStart = Math.max(0, activeChunkId - 1);
           loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
-          if (!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)) {
-            await ensureTranslationCache();
-          }
+        }
+        if (!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)) {
+          await ensureTranslationCache(stateVersion);
         }
         panel.setMode("transcript");
         panel.setTranslationAvailable(
           !isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage),
         );
         panel.setTranslationActionsBusy(Boolean(translationTask));
-        renderTranscriptReader(panel, !isInitialOpen);
-        if (isInitialOpen) {
+        renderTranscriptReader(panel, !shouldSyncToPlayback);
+        if (shouldSyncToPlayback) {
+          const targetChunkId = activeChunkId;
           requestAnimationFrame(() => {
-            if (stateVersion !== transcriptStateVersion) return;
-            const active = panel.getContentElement().querySelector<HTMLElement>(
-              `[data-chunk-id="${activeChunkId}"]`,
+            if (
+              stateVersion !== transcriptStateVersion ||
+              currentPanel !== panel ||
+              panel.getMode() !== "transcript"
+            ) return;
+            const content = panel.getContentElement();
+            const active = content.querySelector<HTMLElement>(
+              `[data-chunk-id="${targetChunkId}"]`,
             );
             if (active) {
-              panel.getContentElement().scrollTop = Math.max(0, active.offsetTop - 12);
+              const contentRect = content.getBoundingClientRect();
+              const activeRect = active.getBoundingClientRect();
+              content.scrollTop = getTranscriptTargetScrollTop({
+                scrollTop: content.scrollTop,
+                clientHeight: content.clientHeight,
+                scrollHeight: content.scrollHeight,
+                containerTop: contentRect.top,
+                targetTop: activeRect.top,
+                targetHeight: activeRect.height,
+              });
+              transcriptScrollTop = content.scrollTop;
             }
           });
         }
