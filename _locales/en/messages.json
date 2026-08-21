@@ -32,7 +32,7 @@
   "learningModeHint": { "message": "Show translations only on hover; unavailable when Translation only is enabled" },
   "translationOnlyLabel": { "message": "Translation only" },
   "translationOnlyHint": { "message": "Hide source captions and keep translations visible" },
-  "bilingualDefaultLabel": { "message": "Enable for new videos" },
+  "bilingualDefaultLabel": { "message": "Enable player subtitles by default" },
   "bilingualDefaultHint": { "message": "You can still toggle each video from the player" },
   "paramSizeLabel": { "message": "Parameter class" },
   "pricingLabel": { "message": "Input / output" },
