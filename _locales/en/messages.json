@@ -29,7 +29,7 @@
   "outputLanguageLabel": { "message": "Summary and translation language" },
   "outputLanguageHint": { "message": "Used for both AI summaries and caption translations" },
   "learningModeLabel": { "message": "Learning mode" },
-  "learningModeHint": { "message": "Show translations only when hovering over captions" },
+  "learningModeHint": { "message": "Show translations only on hover; unavailable when Translation only is enabled" },
   "translationOnlyLabel": { "message": "Translation only" },
   "translationOnlyHint": { "message": "Hide source captions and keep translations visible" },
   "bilingualDefaultLabel": { "message": "Enable for new videos" },

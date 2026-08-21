@@ -29,7 +29,7 @@
   "outputLanguageLabel": { "message": "要約・翻訳の言語" },
   "outputLanguageHint": { "message": "AI 要約と字幕翻訳の両方に使用されます" },
   "learningModeLabel": { "message": "学習モード" },
-  "learningModeHint": { "message": "字幕にカーソルを重ねたときだけ翻訳を表示" },
+  "learningModeHint": { "message": "字幕にカーソルを重ねたときだけ翻訳を表示。「翻訳のみ表示」が有効な場合は使用できません" },
   "translationOnlyLabel": { "message": "翻訳のみ表示" },
   "translationOnlyHint": { "message": "原文を隠して翻訳を常に表示します" },
   "bilingualDefaultLabel": { "message": "新しい動画で自動的に有効化" },

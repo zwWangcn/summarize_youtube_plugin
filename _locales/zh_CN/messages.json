@@ -29,7 +29,7 @@
   "outputLanguageLabel": { "message": "总结与翻译语言" },
   "outputLanguageHint": { "message": "同时用于 AI 总结和字幕译文" },
   "learningModeLabel": { "message": "学习模式" },
-  "learningModeHint": { "message": "仅在鼠标悬停字幕时显示译文" },
+  "learningModeHint": { "message": "仅在鼠标悬停字幕时显示译文；开启“仅显示译文”时不可用" },
   "translationOnlyLabel": { "message": "仅显示译文" },
   "translationOnlyHint": { "message": "隐藏原文并持续显示译文" },
   "bilingualDefaultLabel": { "message": "新视频默认开启" },
