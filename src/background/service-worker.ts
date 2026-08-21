@@ -8,9 +8,10 @@
  */
 
 import { streamAIText } from "../service/ai";
-import { getSettings, hasAnyApiKey } from "../service/storage";
+import { getSettings } from "../service/storage";
+import { getActiveAISetupStatus } from "../service/ai-setup";
 import { clearExpiredCache } from "../service/summary-cache";
-import { activateUiLanguage, isUiLanguage } from "../utils/i18n";
+import { activateUiLanguage, isUiLanguage, t } from "../utils/i18n";
 import {
   AI_STREAM_PORT,
   type AIStreamEvent,
@@ -27,6 +28,7 @@ function prepareUiLanguage(): Promise<void> {
 }
 
 let uiLanguageReady = prepareUiLanguage();
+let setupBadgeVersion = 0;
 
 async function waitForUiLanguageReady(): Promise<void> {
   while (true) {
@@ -36,13 +38,38 @@ async function waitForUiLanguageReady(): Promise<void> {
   }
 }
 
-chrome.storage.onChanged.addListener((changes, areaName) => {
-  if (areaName !== "sync" || !isUiLanguage(changes.uiLanguage?.newValue)) return;
-  uiLanguageReady = activateUiLanguage(changes.uiLanguage.newValue)
-    .then(() => undefined)
-    .catch((error: unknown) => {
-      console.debug("[vas] Background UI language change failed:", error);
+async function refreshAISetupBadge(): Promise<void> {
+  const version = ++setupBadgeVersion;
+  try {
+    await waitForUiLanguageReady();
+    const status = await getActiveAISetupStatus();
+    if (version !== setupBadgeVersion) return;
+    await chrome.action.setBadgeText({ text: status.hasKey ? "" : "!" });
+    if (!status.hasKey) {
+      await chrome.action.setBadgeBackgroundColor({ color: "#dc2626" });
+    }
+    await chrome.action.setTitle({
+      title: status.hasKey
+        ? t("extensionName")
+        : t("actionSetupRequired", status.providerName),
     });
+  } catch (error) {
+    console.debug("[vas] AI setup badge refresh failed:", error);
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName === "sync" && isUiLanguage(changes.uiLanguage?.newValue)) {
+    uiLanguageReady = activateUiLanguage(changes.uiLanguage.newValue)
+      .then(() => undefined)
+      .catch((error: unknown) => {
+        console.debug("[vas] Background UI language change failed:", error);
+      });
+  }
+  const setupChanged = areaName === "local"
+    ? Object.keys(changes).some((key) => key.startsWith("vas-api-key:"))
+    : areaName === "sync" && Boolean(changes.provider || changes.model || changes.uiLanguage);
+  if (setupChanged) void refreshAISetupBadge();
 });
 
 // ---------------------------------------------------------------------------
@@ -55,6 +82,7 @@ chrome.runtime.onInstalled.addListener((details) => {
   } else if (details.reason === "update") {
     console.log("[vas] Extension updated to", chrome.runtime.getManifest().version);
   }
+  void refreshAISetupBadge();
 });
 
 // ---------------------------------------------------------------------------
@@ -69,10 +97,9 @@ chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
         sendResponse({ hasKey: false });
         break;
       }
-      // Let popup/content know if any API key is configured.
-      hasAnyApiKey()
-        .then((hasKey) => sendResponse({ hasKey }))
-        .catch(() => sendResponse({ hasKey: false }));
+      getActiveAISetupStatus()
+        .then((status) => sendResponse(status))
+        .catch(() => sendResponse({ providerId: "", providerName: "", hasKey: false }));
       return true; // keep channel open for async response
     }
 
@@ -170,6 +197,7 @@ chrome.runtime.onConnect.addListener((port) => {
 // Prevent service worker from being terminated during long operations
 // (not strictly needed but good practice)
 console.log("[vas] Service worker ready");
+void refreshAISetupBadge();
 void clearExpiredCache().catch((error: unknown) => {
   console.debug("[vas] Summary cache cleanup failed:", error);
 });

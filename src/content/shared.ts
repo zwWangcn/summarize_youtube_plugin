@@ -64,6 +64,8 @@ import {
   getTranscriptTargetScrollTop,
 } from "./transcript-scroll";
 import { resolveBilingualEnabled } from "./bilingual-preference";
+import type { AISetupStatus } from "../service/ai-setup";
+import { resolveAISelection } from "../service/model-registry";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,6 +106,22 @@ interface YouTubePlayer {
 }
 
 const SUMMARY_SOURCE = "youtube";
+
+async function requestAISetupStatus(fallback: AISetupStatus): Promise<AISetupStatus> {
+  try {
+    const response = await chrome.runtime.sendMessage({ type: "GET_API_KEY_STATUS" }) as Partial<AISetupStatus>;
+    if (
+      typeof response?.providerId === "string" &&
+      typeof response.providerName === "string" &&
+      typeof response.hasKey === "boolean"
+    ) {
+      return response as AISetupStatus;
+    }
+  } catch (error) {
+    console.debug("[vas] AI setup status request failed:", error);
+  }
+  return fallback;
+}
 
 // ---------------------------------------------------------------------------
 // Injection targets
@@ -256,6 +274,12 @@ export async function initContentScript(
   if (document.getElementById("vas-root")) return;
 
   const initialSettings = await getSettings();
+  const initialSelection = resolveAISelection(initialSettings.provider, initialSettings.model);
+  let aiSetupStatus = await requestAISetupStatus({
+    providerId: initialSelection.provider.id,
+    providerName: initialSelection.provider.name,
+    hasKey: false,
+  });
   try {
     await activateUiLanguage(initialSettings.uiLanguage);
   } catch (error) {
@@ -314,6 +338,37 @@ export async function initContentScript(
     setBilingualEnabled(enabled);
   });
 
+  function renderAISetupAvailability(): void {
+    currentPanel?.setAIAvailable(aiSetupStatus.hasKey, aiSetupStatus.providerName);
+    playerTranslationToggle.setAvailable(aiSetupStatus.hasKey);
+  }
+
+  async function refreshAISetupAvailability(): Promise<void> {
+    const previous = aiSetupStatus;
+    aiSetupStatus = await requestAISetupStatus({ ...previous, hasKey: false });
+    const providerChanged = previous.providerId !== aiSetupStatus.providerId;
+    renderAISetupAvailability();
+    if (!aiSetupStatus.hasKey) {
+      if (currentPanel?.getMode() === "loading" || currentPanel?.getMode() === "error") {
+        currentPanel.showSetupRequired();
+      }
+      summaryAbort?.abort();
+      summaryTranslationAbort?.abort();
+      translationAbort?.abort();
+      translationJobs = [];
+      autoTranslationErrors = {};
+      autoTranslationBlockedMessage = "";
+      destroyBilingualOverlay();
+      return;
+    }
+    if (providerChanged) destroyBilingualOverlay();
+    if ((!previous.hasKey || providerChanged) && bilingualEnabled && extractor.isOnVideoPage()) {
+      autoTranslationErrors = {};
+      autoTranslationBlockedMessage = "";
+      void activateBilingualOverlay();
+    }
+  }
+
   type TranslationJobKind = "overlay" | "section" | "all";
   interface TranslationJob {
     kind: TranslationJobKind;
@@ -347,7 +402,7 @@ export async function initContentScript(
     playerTranslationToggle.setEnabled(enabled);
     autoTranslationErrors = {};
     autoTranslationBlockedMessage = "";
-    if (enabled && extractor.isOnVideoPage()) {
+    if (enabled && aiSetupStatus.hasKey && extractor.isOnVideoPage()) {
       void activateBilingualOverlay();
       return;
     }
@@ -395,11 +450,7 @@ export async function initContentScript(
   chrome.storage.onChanged.addListener((changes, areaName) => {
     if (areaName === "local") {
       const apiKeyChanged = Object.keys(changes).some((key) => key.startsWith("vas-api-key:"));
-      if (apiKeyChanged && bilingualEnabled && autoTranslationBlockedMessage) {
-        autoTranslationErrors = {};
-        autoTranslationBlockedMessage = "";
-        setTimeout(() => syncBilingualOverlay(), 0);
-      }
+      if (apiKeyChanged) void refreshAISetupAvailability();
       return;
     }
     if (areaName !== "sync") return;
@@ -432,7 +483,7 @@ export async function initContentScript(
       clearTranscriptState();
       currentPanel?.reset();
       currentPanel?.setTranslationAvailable(true);
-      if (bilingualEnabled && extractor.isOnVideoPage()) {
+      if (bilingualEnabled && aiSetupStatus.hasKey && extractor.isOnVideoPage()) {
         void activateBilingualOverlay();
       }
     }
@@ -477,9 +528,7 @@ export async function initContentScript(
       translationIdentityKey = "";
       autoTranslationErrors = {};
       autoTranslationBlockedMessage = "";
-      if (bilingualEnabled && transcriptData) {
-        void ensureTranslationCache().then(() => syncBilingualOverlay()).catch(() => {});
-      }
+      void refreshAISetupAvailability();
     }
   });
 
@@ -736,13 +785,15 @@ export async function initContentScript(
     const title = extractor.getVideoTitle();
     if (title) panel.setTitle(title);
     panel.setTheme(isYouTubeDarkMode());
+    panel.setAIAvailable(aiSetupStatus.hasKey, aiSetupStatus.providerName);
     panel.injectTrigger(target);
     panel.bindToPlayer(target);
     panel.injectPanel(document.body);
     playerTranslationToggle.mount(target);
     playerTranslationToggle.setEnabled(bilingualEnabled);
+    playerTranslationToggle.setAvailable(aiSetupStatus.hasKey);
     void panel.initPanelWidth();
-    if (bilingualEnabled) void activateBilingualOverlay(target);
+    if (bilingualEnabled && aiSetupStatus.hasKey) void activateBilingualOverlay(target);
     return panel;
   }
 
@@ -1017,6 +1068,10 @@ export async function initContentScript(
     forceRefresh: boolean,
     isFullTranslation: boolean,
   ): void {
+    if (!aiSetupStatus.hasKey) {
+      panel.setAIAvailable(false, aiSetupStatus.providerName);
+      return;
+    }
     if (!transcriptData) return;
     if (!isFullTranslation) {
       transcriptView = "translation";
@@ -1118,7 +1173,7 @@ export async function initContentScript(
   }
 
   async function activateBilingualOverlay(preferredPlayer?: HTMLElement): Promise<void> {
-    if (!bilingualEnabled || !extractor.isOnVideoPage()) return;
+    if (!bilingualEnabled || !aiSetupStatus.hasKey || !extractor.isOnVideoPage()) return;
     const player = preferredPlayer?.matches("#movie_player, #player-container, #player")
       ? preferredPlayer
       : config.findInjectTarget();
@@ -1183,6 +1238,10 @@ export async function initContentScript(
   const callbacks = {
     onSummarize: async () => {
       const panel = getPanel();
+      if (!aiSetupStatus.hasKey) {
+        panel.setAIAvailable(false, aiSetupStatus.providerName);
+        return;
+      }
       const requestedLanguage = outputLanguage;
       const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       summaryTranslationAbort?.abort();
@@ -1397,6 +1456,10 @@ export async function initContentScript(
       if (!sourceSummary?.text.trim() || summaryTranslationAbort) return;
 
       const panel = getPanel();
+      if (!aiSetupStatus.hasKey) {
+        panel.setAIAvailable(false, aiSetupStatus.providerName);
+        return;
+      }
       const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const controller = new AbortController();
       summaryTranslationAbort = controller;
@@ -1667,7 +1730,9 @@ export async function initContentScript(
         console.log(`[vas] UI missing after ${delay}ms (root=${!!vasRoot}, trigger=${!!triggerInDom}), re-injecting...`);
         injectOnVideoPage();
       }
-      if (vasRoot && bilingualEnabled && !overlayInDom) void activateBilingualOverlay();
+      if (vasRoot && bilingualEnabled && aiSetupStatus.hasKey && !overlayInDom) {
+        void activateBilingualOverlay();
+      }
     }, delay);
   });
 
@@ -1700,7 +1765,7 @@ export async function initContentScript(
             p.bindToPlayer(newTarget);
             playerTranslationToggle.mount(newTarget);
           }
-          if (bilingualEnabled) void activateBilingualOverlay();
+          if (bilingualEnabled && aiSetupStatus.hasKey) void activateBilingualOverlay();
         }, 800);
       }
     } else {

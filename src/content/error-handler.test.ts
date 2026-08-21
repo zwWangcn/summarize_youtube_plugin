@@ -1,5 +1,5 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
-import { AIServiceError } from "../service/ai";
+import { AIServiceError, NoApiKeyError } from "../service/ai";
 import { handleError, type ErrorPresenter } from "./error-handler";
 
 describe("handleError", () => {
@@ -48,5 +48,16 @@ describe("handleError", () => {
     expect(debug).toHaveBeenCalledWith("[vas] AI error:", cause.message);
     expect(warn).not.toHaveBeenCalled();
     expect(error).not.toHaveBeenCalled();
+  });
+
+  it("turns a missing key race into the setup state", () => {
+    const showError = vi.fn();
+    const showSetupRequired = vi.fn();
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+
+    handleError(new NoApiKeyError("DeepSeek"), { showError, showSetupRequired });
+
+    expect(showSetupRequired).toHaveBeenCalledOnce();
+    expect(showError).not.toHaveBeenCalled();
   });
 });

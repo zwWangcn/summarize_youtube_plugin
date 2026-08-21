@@ -182,4 +182,20 @@ describe("PlayerTranslationToggle", () => {
     expect(button.getAttribute("aria-label")).toBe("二か国語字幕を無効にする");
     expect(button.title).toBe("二か国語字幕を無効にする");
   });
+
+  it("blocks translation interaction until an API key is configured", () => {
+    const { player, controls } = createPlayer();
+    const onChange = vi.fn();
+    const toggle = new PlayerTranslationToggle(onChange);
+    toggle.mount(player as unknown as HTMLElement);
+    toggle.setAvailable(false);
+
+    const button = controls.children[1];
+    expect(button.getAttribute("aria-disabled")).toBe("true");
+    expect(button.getAttribute("aria-label")).toBe("bilingualSetupRequired");
+    expect(button.innerHTML).toContain('data-icon-variant="translation-off"');
+    expect(button.style.opacity).toBe("0.45");
+    button.click();
+    expect(onChange).not.toHaveBeenCalled();
+  });
 });

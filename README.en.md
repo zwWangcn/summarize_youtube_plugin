@@ -4,6 +4,20 @@
 
 An AI summary and caption-translation companion for YouTube. Stream structured summaries, read or translate full captions, and watch with synchronized bilingual subtitles using 8 AI providers and 20+ models.
 
+## Preview
+
+![AI summaries, bilingual subtitles, multiple AI models, and multilingual output](assets/store-listing/en/promo-marquee-1400x560-v2.png)
+
+<p align="center">
+  <img src="assets/store-listing/en/01-ai-summary-1280x800.png" width="49%" alt="Structured AI video summaries" />
+  <img src="assets/store-listing/en/03-bilingual-subtitles-1280x800.png" width="49%" alt="Synchronized bilingual subtitles" />
+</p>
+
+<p align="center">
+  <img src="assets/store-listing/en/04-multilanguage-1280x800.png" width="49%" alt="Multilingual interface and output" />
+  <img src="assets/store-listing/en/05-multimodel-1280x800.png" width="49%" alt="Multiple AI providers and models" />
+</p>
+
 ## Features
 
 - **Free model switching** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok, 20+ models, one-click switch in the popup
@@ -99,6 +113,10 @@ Dev hot-reload: `npm run dev`
    - [Zhipu GLM](https://open.bigmodel.cn/usercenter/apikeys)
    - [xAI Grok](https://console.x.ai)
 2. Click the extension icon → choose the popup UI and output languages → pick a provider and model → enter the API key → save
+
+When the active provider has no key, the popup opens the **AI models** tab and guides you through choosing a provider, getting a key, and pasting it. Provider/model choices save automatically; the API key still requires explicit confirmation. The extension only checks that the key is non-empty and does not make a network request just to validate it.
+
+API keys stay on the current device and are not synced by Chrome. Raw captions remain available without a key, while AI summaries, translation, and in-player bilingual translation stay disabled until setup is complete.
 
 ### Summarize and Translate a Video
 

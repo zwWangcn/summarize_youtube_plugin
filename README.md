@@ -4,6 +4,20 @@
 
 一款用于 YouTube 的 Chrome 扩展。它可以使用你自己的 AI API Key 总结视频内容、阅读和翻译字幕，并在播放器中显示同步双语字幕。
 
+## 功能预览
+
+![AI 总结、双语字幕、多模型和多语言功能总览](assets/store-listing/promo-marquee-1400x560.png)
+
+<p align="center">
+  <img src="assets/store-listing/01-ai-summary-1280x800.png" width="49%" alt="AI 视频结构化总结" />
+  <img src="assets/store-listing/03-bilingual-subtitles-1280x800.png" width="49%" alt="播放器同步双语字幕" />
+</p>
+
+<p align="center">
+  <img src="assets/store-listing/04-multilanguage-1280x800.png" width="49%" alt="多语言界面和输出" />
+  <img src="assets/store-listing/05-multimodel-1280x800.png" width="49%" alt="多家 AI 服务商和模型" />
+</p>
+
 ## 主要功能
 
 ### AI 视频总结
@@ -79,6 +93,10 @@ npm run build
 5. 填入对应的 API Key，然后保存
 
 API Key 与服务商一一对应。切换服务商后，需要为新服务商配置相应的 Key。
+
+首次尚未配置当前服务商的 Key 时，扩展弹窗会自动进入“AI 模型”页，并按“选择服务商 → 获取 Key → 粘贴并保存”的步骤引导。服务商和模型会自动保存，API Key 仍需手动确认保存；扩展只检查 Key 是否为空，不会为了验证 Key 主动发起 API 请求。
+
+API Key 仅保存在当前设备，不会通过 Chrome 同步。未配置 Key 时仍可查看和复制字幕原文，但 AI 总结、翻译和播放器双语翻译会保持停用。
 
 ## 使用方法
 

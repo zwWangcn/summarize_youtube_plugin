@@ -42,6 +42,11 @@ import {
   isPopupTabId,
   type PopupTabId,
 } from "./popup-tabs";
+import {
+  getApiKeyUiState,
+  getInitialPopupTab,
+  normalizeRequiredApiKey,
+} from "./popup-setup";
 
 // ── DOM refs ────────────────────────────────────────────────────────
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
@@ -58,6 +63,11 @@ const saveAiBtn = document.getElementById("saveAiBtn") as HTMLButtonElement;
 const statusDiv = document.getElementById("status") as HTMLDivElement;
 const apiKeyLabel = document.getElementById("apiKeyLabel") as HTMLSpanElement;
 const apiKeyLink = document.getElementById("apiKeyLink") as HTMLAnchorElement;
+const apiKeyState = document.getElementById("apiKeyState") as HTMLSpanElement;
+const apiKeyError = document.getElementById("apiKeyError") as HTMLParagraphElement;
+const setupGuide = document.getElementById("setupGuide") as HTMLElement;
+const setupComplete = document.getElementById("setupComplete") as HTMLElement;
+const aiTabButton = document.getElementById("tab-ai") as HTMLButtonElement;
 const clearKeysBtn = document.getElementById("clearKeysBtn") as HTMLButtonElement;
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>("[role='tab'][data-tab]")];
 const tabPanels = [...document.querySelectorAll<HTMLElement>("[role='tabpanel'][data-panel]")];
@@ -86,6 +96,11 @@ const infoDesc = document.getElementById("infoDesc") as HTMLSpanElement;
 let currentProvider: ProviderInfo = PROVIDERS[0];
 let currentModel: ModelInfo | null = null;
 let apiKeyLoadVersion = 0;
+let aiSelectionSaveVersion = 0;
+let savedApiKey = "";
+let setupJustCompleted = false;
+let persistedProviderId = PROVIDERS[0].id;
+let persistedModelId = PROVIDERS[0].models[0].id;
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
 let subtitleStyleSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let subtitleStyle: SubtitleStyleSettings = { ...DEFAULT_SUBTITLE_STYLE };
@@ -94,17 +109,25 @@ let t: PopupTranslator = chromeT;
 
 async function loadApiKeyForProvider(providerId: string): Promise<void> {
   const version = ++apiKeyLoadVersion;
+  savedApiKey = "";
+  setupJustCompleted = false;
   apiKeyInput.value = "";
+  clearApiKeyError();
+  updateSetupUi();
   apiKeyInput.disabled = true;
   saveAiBtn.disabled = true;
   try {
     const key = await getApiKey(providerId);
     if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
+      savedApiKey = key;
       apiKeyInput.value = key;
+      updateSetupUi();
     }
   } catch (err) {
     if (version === apiKeyLoadVersion && providerSelect.value === providerId) {
       apiKeyInput.value = "";
+      savedApiKey = "";
+      updateSetupUi();
       const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
       console.debug("[vas] API key load failed:", detail);
     }
@@ -154,6 +177,8 @@ async function init(): Promise<void> {
   const selection = resolveAISelection(settings.provider, settings.model);
   const savedProvider = selection.provider.id;
   const savedModel = selection.model.id;
+  persistedProviderId = savedProvider;
+  persistedModelId = savedModel;
   outputLanguageSelect.value = settings.outputLanguage;
   learningModeInput.checked = settings.learningModeEnabled;
   bilingualDefaultInput.checked = settings.bilingualSubtitlesDefaultEnabled;
@@ -179,6 +204,7 @@ async function init(): Promise<void> {
   updateApiKeyUI(currentProvider);
   // Load saved API key for this provider
   await loadApiKeyForProvider(currentProvider.id);
+  activateTab(getInitialPopupTab(Boolean(savedApiKey)));
 }
 
 function renderLocalizedUi(): void {
@@ -193,6 +219,8 @@ function renderLocalizedUi(): void {
     element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel!));
   });
   updateModelInfo();
+  updateApiKeyUI(currentProvider);
+  updateSetupUi();
   toggleKeyBtn.textContent = t(keyVisible ? "hideKey" : "showKey");
 }
 
@@ -319,13 +347,74 @@ function updateModelInfo(): void {
   infoDesc.textContent = t(currentModel.descriptionKey);
 }
 
+function clearApiKeyError(): void {
+  apiKeyError.textContent = "";
+  apiKeyInput.removeAttribute("aria-invalid");
+}
+
+function showApiKeyRequiredError(): void {
+  apiKeyError.textContent = t("apiKeyRequiredInline");
+  apiKeyInput.setAttribute("aria-invalid", "true");
+  apiKeyInput.focus();
+}
+
+function updateSetupUi(): void {
+  const state = getApiKeyUiState(savedApiKey, apiKeyInput.value);
+  const hasSavedKey = Boolean(savedApiKey);
+  apiKeyState.className = `api-key-state is-${state}`;
+  apiKeyState.textContent = t(
+    state === "saved"
+      ? "apiKeyStateSaved"
+      : state === "modified"
+        ? "apiKeyStateModified"
+        : "apiKeyStateMissing",
+  );
+  setupGuide.hidden = hasSavedKey;
+  setupComplete.hidden = !(setupJustCompleted && state === "saved");
+  aiTabButton.classList.toggle("needs-setup", !hasSavedKey);
+  if (hasSavedKey) aiTabButton.removeAttribute("aria-label");
+  else aiTabButton.setAttribute("aria-label", t("aiTabNeedsSetup"));
+  saveAiBtn.textContent = t(hasSavedKey ? "updateApiKey" : "saveApiKey");
+}
+
+function restorePersistedAISelection(): void {
+  const selection = resolveAISelection(persistedProviderId, persistedModelId);
+  currentProvider = selection.provider;
+  currentModel = selection.model;
+  providerSelect.value = currentProvider.id;
+  populateModels(currentProvider.id);
+  modelSelect.value = currentModel.id;
+  updateModelInfo();
+  updateApiKeyUI(currentProvider);
+  void loadApiKeyForProvider(currentProvider.id);
+}
+
+async function persistAISelection(providerId: string, modelId: string): Promise<void> {
+  const version = ++aiSelectionSaveVersion;
+  try {
+    await setSettings({ provider: providerId, model: modelId });
+    if (
+      version === aiSelectionSaveVersion &&
+      providerSelect.value === providerId &&
+      modelSelect.value === modelId
+    ) {
+      persistedProviderId = providerId;
+      persistedModelId = modelId;
+    }
+  } catch (err) {
+    if (version !== aiSelectionSaveVersion) return;
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] AI selection save failed:", detail);
+    restorePersistedAISelection();
+    showStatus(t("saveFailed"), "error");
+  }
+}
+
 // ── Update API Key UI for a given provider ───────────────────────────
 function updateApiKeyUI(provider: ProviderInfo): void {
   apiKeyLabel.textContent = `${provider.name} API Key`;
   apiKeyLink.href = provider.docsUrl;
-  apiKeyLink.textContent = provider.docsUrl.length > 40
-    ? provider.docsUrl.slice(0, 40) + "…"
-    : provider.docsUrl;
+  apiKeyLink.textContent = t("openProviderApiKeyPage", provider.name);
   apiKeyInput.placeholder = provider.id === "anthropic"
     ? "sk-ant-..."
     : provider.id === "gemini"
@@ -418,7 +507,9 @@ providerSelect.addEventListener("change", () => {
   updateModelInfo();
   updateApiKeyUI(currentProvider);
 
-  // Reload saved API key for new provider
+  // Provider/model choices are not secret and save immediately so opening the
+  // external key console cannot lose the user's selection when the popup closes.
+  if (firstModel) void persistAISelection(pid, firstModel.id);
   void loadApiKeyForProvider(pid);
 });
 
@@ -426,6 +517,13 @@ providerSelect.addEventListener("change", () => {
 modelSelect.addEventListener("change", () => {
   currentModel = getModelForProvider(providerSelect.value, modelSelect.value) ?? null;
   updateModelInfo();
+  if (currentModel) void persistAISelection(providerSelect.value, currentModel.id);
+});
+
+apiKeyInput.addEventListener("input", () => {
+  clearApiKeyError();
+  setupJustCompleted = false;
+  updateSetupUi();
 });
 
 // Toggle key visibility
@@ -438,20 +536,33 @@ toggleKeyBtn.addEventListener("click", () => {
 
 // Save AI configuration and the selected provider's local API key.
 saveAiBtn.addEventListener("click", async () => {
+  const key = normalizeRequiredApiKey(apiKeyInput.value);
+  if (!key) {
+    showApiKeyRequiredError();
+    updateSetupUi();
+    return;
+  }
   try {
     const pid = providerSelect.value;
     const mid = modelSelect.value;
-    const key = apiKeyInput.value.trim();
 
     if (!getModelForProvider(pid, mid)) {
       throw new Error(`Invalid provider/model selection: ${pid}/${mid}`);
     }
 
-    await setApiKey(pid, key);
+    saveAiBtn.disabled = true;
     await setSettings({
       provider: pid,
       model: mid,
     });
+    await setApiKey(pid, key);
+    persistedProviderId = pid;
+    persistedModelId = mid;
+    savedApiKey = key;
+    apiKeyInput.value = key;
+    setupJustCompleted = true;
+    clearApiKeyError();
+    updateSetupUi();
     logI18nDebug("popup settings saved", {
       chromeUiLocale: getUiLocale(),
       uiLanguage: activeUiLanguage,
@@ -459,11 +570,13 @@ saveAiBtn.addEventListener("click", async () => {
       providerId: pid,
       modelId: mid,
     });
-    showStatus(t("aiSettingsSaved"), "success");
+    showStatus(t("apiKeySaved"), "success");
   } catch (err) {
     const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
     console.debug("[vas] Settings save failed:", detail);
     showStatus(t("saveFailed"), "error");
+  } finally {
+    saveAiBtn.disabled = false;
   }
 });
 
@@ -473,6 +586,10 @@ clearKeysBtn.addEventListener("click", async () => {
     apiKeyLoadVersion += 1;
     await clearAllApiKeys();
     apiKeyInput.value = "";
+    savedApiKey = "";
+    setupJustCompleted = false;
+    clearApiKeyError();
+    updateSetupUi();
     apiKeyInput.disabled = false;
     saveAiBtn.disabled = false;
     showStatus(t("allApiKeysCleared"), "success");

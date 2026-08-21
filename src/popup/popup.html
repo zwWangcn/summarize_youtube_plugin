@@ -19,7 +19,9 @@
     <nav class="settings-tabs" role="tablist" data-i18n-aria-label="settingsTabsAria">
       <button id="tab-general" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-general" tabindex="0" data-tab="general" data-i18n="generalTab">通用</button>
       <button id="tab-subtitles" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-subtitles" tabindex="-1" data-tab="subtitles" data-i18n="subtitlesTab">字幕</button>
-      <button id="tab-ai" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-ai" tabindex="-1" data-tab="ai" data-i18n="aiModelsTab">AI 模型</button>
+      <button id="tab-ai" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-ai" tabindex="-1" data-tab="ai">
+        <span data-i18n="aiModelsTab">AI 模型</span><span id="aiTabBadge" class="tab-status-dot" aria-hidden="true"></span>
+      </button>
     </nav>
 
     <main class="main">
@@ -133,35 +135,60 @@
           <p data-i18n="aiSettingsHint">选择模型并保存对应服务商的 API Key。</p>
         </div>
 
+        <section id="setupGuide" class="setup-guide" aria-labelledby="setupGuideTitle">
+          <div class="setup-guide-heading">
+            <span class="setup-guide-kicker" data-i18n="setupRequiredBadge">待配置</span>
+            <h3 id="setupGuideTitle" data-i18n="setupGuideTitle">完成 3 步即可开始使用</h3>
+          </div>
+          <ol class="setup-steps">
+            <li data-i18n="setupStepChoose">选择 AI 服务商和模型</li>
+            <li data-i18n="setupStepGetKey">前往服务商控制台创建 API Key</li>
+            <li data-i18n="setupStepPaste">粘贴 Key 并保存</li>
+          </ol>
+        </section>
+
         <div class="settings-card">
-          <section class="section">
-            <label class="label" for="provider" data-i18n="providerLabel">AI 供应商</label>
-            <select id="provider" class="input"></select>
+          <div class="ai-selection-grid">
+            <section class="section">
+              <label class="label" for="provider" data-i18n="providerLabel">AI 供应商</label>
+              <select id="provider" class="input"></select>
+            </section>
+            <section class="section">
+              <label class="label" for="model" data-i18n="modelLabel">模型</label>
+              <select id="model" class="input"></select>
+            </section>
+          </div>
+          <section class="section api-key-section">
+            <div class="api-key-heading">
+              <label class="label" for="apiKey"><span id="apiKeyLabel">API Key</span></label>
+              <span id="apiKeyState" class="api-key-state"></span>
+            </div>
+            <a id="apiKeyLink" class="get-key-link" href="#" target="_blank" rel="noopener"></a>
+            <div class="input-row">
+              <input type="password" id="apiKey" class="input" placeholder="sk-..." autocomplete="off" autocapitalize="off" spellcheck="false" required aria-describedby="apiKeyStorageHint apiKeyError" />
+              <button id="toggleKey" type="button" class="btn-icon" title="显示/隐藏" data-i18n="showKey" data-i18n-title="toggleKeyTitle">显示</button>
+            </div>
+            <p id="apiKeyError" class="field-error" role="alert"></p>
+            <p id="apiKeyStorageHint" class="hint" data-i18n="apiKeyStorageHint">Key 仅保存在此设备，不会通过 Chrome 同步。</p>
+            <p class="hint" data-i18n="apiUsageBillingHint">只需配置一家服务商；API 用量及费用由对应服务商收取。</p>
           </section>
-          <section class="section">
-            <label class="label" for="model" data-i18n="modelLabel">模型</label>
-            <select id="model" class="input"></select>
-          </section>
+          <button id="saveAiBtn" type="button" class="btn-primary" data-i18n="saveApiKey">保存 API Key</button>
           <section id="modelInfo" class="model-info">
             <div class="info-row"><span class="info-label" data-i18n="paramSizeLabel">参数等级</span><span id="infoParamSize" class="info-value">—</span></div>
             <div class="info-row"><span class="info-label" data-i18n="contextWindowLabel">上下文窗口</span><span id="infoContext" class="info-value">—</span></div>
             <div class="info-row"><span class="info-label" data-i18n="descriptionLabel">简介</span><span id="infoDesc" class="info-value">—</span></div>
           </section>
-          <section class="section api-key-section">
-            <label class="label" for="apiKey"><span id="apiKeyLabel">API Key</span></label>
-            <div class="input-row">
-              <input type="password" id="apiKey" class="input" placeholder="sk-..." autocomplete="off" />
-              <button id="toggleKey" class="btn-icon" title="显示/隐藏" data-i18n="showKey" data-i18n-title="toggleKeyTitle">显示</button>
-            </div>
-            <p class="hint"><span data-i18n="getApiKey">获取 API Key</span>：<a id="apiKeyLink" href="#" target="_blank" rel="noopener"></a></p>
-          </section>
         </div>
+
+        <section id="setupComplete" class="setup-complete" hidden>
+          <strong data-i18n="setupCompleteTitle">配置完成</strong>
+          <span data-i18n="setupCompleteHint">现在可以打开带字幕的 YouTube 视频进行总结或翻译。</span>
+        </section>
 
         <section class="privacy-notice">
           <p data-i18n="dataDisclosure">执行总结或翻译时，视频字幕和 API Key 会直接发送给你选择的 AI 服务商；开发者不会接收这些数据。</p>
           <a class="privacy-link" href="https://zwwangcn.github.io/summarize_youtube_plugin/privacy/" target="_blank" rel="noopener" data-i18n="privacyPolicy">隐私政策</a>
         </section>
-        <button id="saveAiBtn" class="btn-primary" data-i18n="saveAiSettings">保存 AI 配置</button>
         <button id="clearKeysBtn" class="btn-secondary" data-i18n="clearAllApiKeys">删除本设备全部 API Key</button>
       </section>
     </main>

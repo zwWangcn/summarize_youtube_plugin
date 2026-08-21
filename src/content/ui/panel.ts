@@ -57,6 +57,7 @@ export class Panel {
   private loadingEl: HTMLElement;
   private elapsedEl: HTMLElement;
   private errorEl: HTMLElement;
+  private setupNoticeEl: HTMLElement;
   private warningEl: HTMLElement;
   private titleEl: HTMLElement;
   private summarizeBtn: HTMLButtonElement;
@@ -75,6 +76,9 @@ export class Panel {
   private callbacks: PanelCallbacks;
   private mode: PanelMode = "idle";
   private translationAvailable = true;
+  private aiAvailable = true;
+  private aiProviderName = "AI";
+  private translationActionsBusy = false;
   private summaryTranslationVisible = false;
   private summaryTranslationBusy = false;
   private summaryTranslationAttention = false;
@@ -134,6 +138,7 @@ export class Panel {
     this.loadingEl = this.panel.querySelector(".vas-loading")!;
     this.elapsedEl = this.panel.querySelector(".vas-elapsed")!;
     this.errorEl = this.panel.querySelector(".vas-error")!;
+    this.setupNoticeEl = this.panel.querySelector(".vas-setup-notice")!;
     this.warningEl = this.panel.querySelector(".vas-warning")!;
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
     this.summaryTranslateBtn = this.panel.querySelector(".vas-btn-summary-translate")!;
@@ -288,6 +293,7 @@ export class Panel {
         </label>
         <button class="vas-btn vas-btn-copy" title="${t("copy")}" style="display:none">${t("copy")}</button>
       </div>
+      <div class="vas-setup-notice" role="status" style="display:none"></div>
       <div class="vas-transcript-tools" style="display:none">
         <div class="vas-view-switch" role="group" aria-label="${t("captionLanguageAria")}">
           <button class="vas-view-option vas-view-source vas-active">${t("sourceView")}</button>
@@ -592,6 +598,7 @@ export class Panel {
     if (languageSwitch) languageSwitch.setAttribute("aria-label", t("captionLanguageAria"));
     if (timestampText) timestampText.textContent = t("timestamp");
     if (thinkingText) thinkingText.textContent = t("aiThinking");
+    this.renderAIAvailability();
 
     this.summarizeBtn.textContent = t(this.isCachedView ? "summarizeAgain" : "aiSummary");
     this.transcriptBtn.textContent = t("rawTranscript");
@@ -625,6 +632,11 @@ export class Panel {
     this.errorEl.style.display = "block";
   }
 
+  showSetupRequired(): void {
+    this.setMode("idle");
+    this.setAIAvailable(false, this.aiProviderName);
+  }
+
   showWarning(message: string): void {
     this.warningEl.textContent = message;
     this.warningEl.style.display = "block";
@@ -633,9 +645,22 @@ export class Panel {
   // ---- Buttons ----
 
   setButtonsDisabled(disabled: boolean): void {
-    this.summarizeBtn.disabled = disabled;
+    this.summarizeBtn.disabled = disabled || !this.aiAvailable;
     this.transcriptBtn.disabled = disabled;
-    this.summaryTranslateBtn.disabled = disabled || this.summaryTranslationBusy;
+    this.summaryTranslateBtn.disabled = disabled || this.summaryTranslationBusy || !this.aiAvailable;
+  }
+
+  setAIAvailable(available: boolean, providerName: string = this.aiProviderName): void {
+    this.aiAvailable = available;
+    this.aiProviderName = providerName || "AI";
+    this.renderAIAvailability();
+    this.setButtonsDisabled(this.mode === "loading");
+    this.setTranslationActionsBusy(this.translationActionsBusy);
+  }
+
+  private renderAIAvailability(): void {
+    this.setupNoticeEl.textContent = t("aiSetupRequiredPanel", this.aiProviderName);
+    this.setupNoticeEl.style.display = this.aiAvailable ? "none" : "block";
   }
 
   showSummaryTranslationAction(targetLanguage: string): void {
@@ -643,7 +668,7 @@ export class Panel {
     this.summaryTranslationVisible = true;
     this.summaryTranslateBtn.textContent = t("translateSummaryTo", targetLanguage);
     this.summaryTranslateBtn.style.display = this.mode === "summary" ? "inline-flex" : "none";
-    this.summaryTranslateBtn.disabled = this.summaryTranslationBusy;
+    this.summaryTranslateBtn.disabled = this.summaryTranslationBusy || !this.aiAvailable;
   }
 
   hideSummaryTranslationAction(): void {
@@ -653,7 +678,7 @@ export class Panel {
     this.summaryTranslationTarget = "";
     this.summaryTranslateBtn.style.display = "none";
     this.summaryTranslateBtn.classList.remove("vas-language-mismatch");
-    this.summaryTranslateBtn.disabled = false;
+    this.summaryTranslateBtn.disabled = !this.aiAvailable;
   }
 
   setSummaryTranslationAttention(attention: boolean): void {
@@ -668,7 +693,7 @@ export class Panel {
 
   setSummaryTranslationBusy(busy: boolean): void {
     this.summaryTranslationBusy = busy;
-    this.summaryTranslateBtn.disabled = busy;
+    this.summaryTranslateBtn.disabled = busy || !this.aiAvailable;
     this.summaryTranslateBtn.textContent = busy
       ? t("translatingSummaryTo", this.summaryTranslationTarget)
       : t("translateSummaryTo", this.summaryTranslationTarget);
@@ -701,8 +726,9 @@ export class Panel {
   }
 
   setTranslationActionsBusy(busy: boolean): void {
-    this.translateCurrentBtn.disabled = busy;
-    this.translateAllBtn.disabled = busy;
+    this.translationActionsBusy = busy;
+    this.translateCurrentBtn.disabled = busy || !this.aiAvailable;
+    this.translateAllBtn.disabled = busy || !this.aiAvailable;
   }
 
   setTranslationProgress(text: string): void {

@@ -9,6 +9,7 @@ import { t } from "../utils/i18n";
 
 export interface ErrorPresenter {
   showError(message: string): void;
+  showSetupRequired?(): void;
 }
 
 /**
@@ -21,10 +22,12 @@ export function handleError(err: unknown, panel: ErrorPresenter): void {
   if (err instanceof UserError) {
     panel.showError(err.message);
     console.debug(`[vas] ${err.code}:`, err.detail ?? err.message);
+  } else if (err instanceof NoApiKeyError && panel.showSetupRequired) {
+    panel.showSetupRequired();
+    console.debug("[vas] AI setup required:", err.message);
   } else if (
     err instanceof AIServiceError ||
     err instanceof ContentFilteredError ||
-    err instanceof NoApiKeyError ||
     err instanceof TranslationFormatError
   ) {
     panel.showError(err.message);

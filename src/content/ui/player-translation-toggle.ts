@@ -7,6 +7,7 @@ export class PlayerTranslationToggle {
   private player: HTMLElement | null = null;
   private observer: MutationObserver | null = null;
   private enabled = true;
+  private available = true;
 
   constructor(private readonly onChange: (enabled: boolean) => void) {}
 
@@ -22,6 +23,11 @@ export class PlayerTranslationToggle {
 
   setEnabled(enabled: boolean): void {
     this.enabled = enabled;
+    this.updateButton();
+  }
+
+  setAvailable(available: boolean): void {
+    this.available = available;
     this.updateButton();
   }
 
@@ -57,7 +63,9 @@ export class PlayerTranslationToggle {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ytp-button vas-player-translation-toggle";
-    button.addEventListener("click", () => this.onChange(!this.enabled));
+    button.addEventListener("click", () => {
+      if (this.available) this.onChange(!this.enabled);
+    });
     if (subtitles) subtitles.insertAdjacentElement("afterend", button);
     else controls.prepend(button);
     this.button = button;
@@ -66,10 +74,22 @@ export class PlayerTranslationToggle {
 
   private updateButton(): void {
     if (!this.button) return;
+    this.button.disabled = !this.available;
+    this.button.setAttribute("aria-disabled", String(!this.available));
     this.button.setAttribute("aria-pressed", String(this.enabled));
-    this.button.setAttribute("aria-label", t(this.enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles"));
-    this.button.title = t(this.enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles");
-    const variant = this.enabled ? "translation-on" : "translation-off";
+    const label = this.available
+      ? t(this.enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles")
+      : t("bilingualSetupRequired");
+    this.button.setAttribute("aria-label", label);
+    this.button.title = label;
+    if (this.available) {
+      if (this.button.style.opacity) this.button.style.opacity = "";
+      if (this.button.style.cursor) this.button.style.cursor = "";
+    } else {
+      this.button.style.opacity = "0.45";
+      this.button.style.cursor = "not-allowed";
+    }
+    const variant = this.available && this.enabled ? "translation-on" : "translation-off";
     if (!this.button.innerHTML.includes(`data-icon-variant="${variant}"`)) {
       this.button.innerHTML = `<div class="ytp-subtitles-button-icon vas-player-translation-toggle-icon">${translationToggleIconMarkup(24, "", variant)}</div>`;
     }
