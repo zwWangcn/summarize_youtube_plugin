@@ -173,9 +173,9 @@ export class Panel {
       display: "inline-flex",
       alignItems: "center",
       justifyContent: "center",
-      gap: "7px",
+      width: "36px",
       height: "36px",
-      padding: "0 14px",
+      padding: "0",
       border: "1px solid rgba(255,255,255,0.15)",
       borderRadius: "8px",
       background: "rgba(0, 0, 0, 0.65)",
@@ -190,7 +190,10 @@ export class Panel {
       transition: "opacity 0.3s ease, background 0.2s",
     });
 
-    btn.innerHTML = `${bilingualSubtitlesIconMarkup(16, "vas-trigger-icon")}<span>${t("openAiTools")}</span>`;
+    const accessibleLabel = t("openAiTools");
+    btn.setAttribute("aria-label", accessibleLabel);
+    btn.title = accessibleLabel;
+    btn.innerHTML = bilingualSubtitlesIconMarkup(16, "vas-trigger-icon");
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "rgba(0, 0, 0, 0.8)";
     });
