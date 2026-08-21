@@ -26,6 +26,8 @@ export interface Settings {
   learningModeEnabled: boolean;
   /** 隐藏原文并持续显示译文；启用时学习模式暂不生效。 */
   translationOnlyEnabled: boolean;
+  /** 新视频是否默认启用播放器双语字幕。 */
+  bilingualSubtitlesDefaultEnabled: boolean;
   /** 播放器双语字幕的同步样式设置。 */
   subtitleStyle: SubtitleStyleSettings;
 }
@@ -35,6 +37,7 @@ const DEFAULTS: Omit<Settings, "outputLanguage"> = {
   model: "deepseek-v4-flash",
   learningModeEnabled: false,
   translationOnlyEnabled: false,
+  bilingualSubtitlesDefaultEnabled: true,
   subtitleStyle: DEFAULT_SUBTITLE_STYLE,
 };
 

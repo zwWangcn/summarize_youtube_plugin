@@ -57,6 +57,7 @@ import {
   type OutputLanguageStatus,
 } from "../utils/output-language-detection";
 import { getTranscriptLazyLoadDirection } from "./transcript-scroll";
+import { resolveBilingualEnabled } from "./bilingual-preference";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -272,10 +273,10 @@ export async function initContentScript(
   let translationProgressText = "";
   let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
-  // Translation is intentionally scoped to a single content-script lifetime and video.
-  // Unseen videos start enabled; revisiting in the same tab restores the user's choice.
+  // Per-video choices live for this content-script lifetime and override the synced default.
   const bilingualStateByVideo = new Map<string, boolean>();
-  let bilingualEnabled = true;
+  let bilingualDefaultEnabled = initialSettings.bilingualSubtitlesDefaultEnabled;
+  let bilingualEnabled = bilingualDefaultEnabled;
   let learningModeEnabled = initialSettings.learningModeEnabled;
   let translationOnlyEnabled = initialSettings.translationOnlyEnabled;
   let subtitleStyle = initialSettings.subtitleStyle;
@@ -317,9 +318,9 @@ export async function initContentScript(
     bilingualOverlay = null;
   }
 
-  function setBilingualEnabled(enabled: boolean): void {
+  function setBilingualEnabled(enabled: boolean, rememberForVideo: boolean = true): void {
     const videoId = extractor.getVideoId();
-    if (videoId) bilingualStateByVideo.set(videoId, enabled);
+    if (rememberForVideo && videoId) bilingualStateByVideo.set(videoId, enabled);
     bilingualEnabled = enabled;
     playerTranslationToggle.setEnabled(enabled);
     autoTranslationErrors = {};
@@ -335,7 +336,10 @@ export async function initContentScript(
 
   function restoreBilingualEnabledForCurrentVideo(): void {
     const videoId = extractor.getVideoId();
-    bilingualEnabled = videoId ? (bilingualStateByVideo.get(videoId) ?? true) : true;
+    bilingualEnabled = resolveBilingualEnabled(
+      bilingualDefaultEnabled,
+      videoId ? bilingualStateByVideo.get(videoId) : undefined,
+    );
     playerTranslationToggle.setEnabled(bilingualEnabled);
   }
 
@@ -405,6 +409,18 @@ export async function initContentScript(
     ) {
       translationOnlyEnabled = nextTranslationOnly;
       bilingualOverlay?.setTranslationOnly(translationOnlyEnabled);
+    }
+
+    const nextBilingualDefault = changes.bilingualSubtitlesDefaultEnabled?.newValue;
+    if (
+      typeof nextBilingualDefault === "boolean" &&
+      nextBilingualDefault !== bilingualDefaultEnabled
+    ) {
+      bilingualDefaultEnabled = nextBilingualDefault;
+      const videoId = extractor.getVideoId();
+      if (!videoId || !bilingualStateByVideo.has(videoId)) {
+        setBilingualEnabled(bilingualDefaultEnabled, false);
+      }
     }
 
     if (changes.subtitleStyle) {

@@ -33,6 +33,8 @@
   "learningModeHint": { "message": "字幕にカーソルを重ねたときだけ翻訳を表示" },
   "translationOnlyLabel": { "message": "翻訳のみ表示" },
   "translationOnlyHint": { "message": "原文を隠して翻訳を常に表示します" },
+  "bilingualDefaultLabel": { "message": "新しい動画で自動的に有効化" },
+  "bilingualDefaultHint": { "message": "プレーヤーで動画ごとに一時変更できます" },
   "paramSizeLabel": { "message": "パラメータ規模" },
   "pricingLabel": { "message": "入力／出力" },
   "contextWindowLabel": { "message": "コンテキストウィンドウ" },

@@ -33,6 +33,8 @@
   "learningModeHint": { "message": "僅在滑鼠懸停字幕時顯示譯文" },
   "translationOnlyLabel": { "message": "僅顯示譯文" },
   "translationOnlyHint": { "message": "隱藏原文並持續顯示譯文" },
+  "bilingualDefaultLabel": { "message": "新影片預設開啟" },
+  "bilingualDefaultHint": { "message": "仍可在播放器中暫時開啟或關閉" },
   "paramSizeLabel": { "message": "參數等級" },
   "pricingLabel": { "message": "輸入／輸出" },
   "contextWindowLabel": { "message": "上下文視窗" },

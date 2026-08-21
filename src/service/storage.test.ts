@@ -88,6 +88,14 @@ describe("settings and API key storage", () => {
     expect(syncStore.translationOnlyEnabled).toBe(true);
   });
 
+  it("defaults and persists the bilingual subtitles default", async () => {
+    const { getSettings, setSettings } = await import("./storage");
+    expect((await getSettings()).bilingualSubtitlesDefaultEnabled).toBe(true);
+    await setSettings({ bilingualSubtitlesDefaultEnabled: false });
+    expect((await getSettings()).bilingualSubtitlesDefaultEnabled).toBe(false);
+    expect(syncStore.bilingualSubtitlesDefaultEnabled).toBe(false);
+  });
+
   it("provides classic subtitle styling without writing defaults for existing users", async () => {
     const { getSettings } = await import("./storage");
     expect((await getSettings()).subtitleStyle).toEqual({

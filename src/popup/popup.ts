@@ -38,6 +38,7 @@ const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
 const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSelectElement;
 const learningModeInput = document.getElementById("learningMode") as HTMLInputElement;
+const bilingualDefaultInput = document.getElementById("bilingualDefault") as HTMLInputElement;
 const translationOnlyInput = document.getElementById("translationOnly") as HTMLInputElement;
 const learningModeRow = document.getElementById("learningModeRow") as HTMLElement;
 const apiKeyInput = document.getElementById("apiKey") as HTMLInputElement;
@@ -139,6 +140,7 @@ async function init(): Promise<void> {
   const savedModel = selection.model.id;
   outputLanguageSelect.value = settings.outputLanguage;
   learningModeInput.checked = settings.learningModeEnabled;
+  bilingualDefaultInput.checked = settings.bilingualSubtitlesDefaultEnabled;
   translationOnlyInput.checked = settings.translationOnlyEnabled;
   updateSubtitleModeAvailability();
   subtitleStyle = settings.subtitleStyle;
@@ -180,7 +182,10 @@ function activateTab(tabId: PopupTabId, focus: boolean = false): void {
 async function saveAutomaticSettings(
   partial: Partial<Pick<
     Settings,
-    "outputLanguage" | "learningModeEnabled" | "translationOnlyEnabled"
+    | "outputLanguage"
+    | "learningModeEnabled"
+    | "translationOnlyEnabled"
+    | "bilingualSubtitlesDefaultEnabled"
   >>,
 ): Promise<void> {
   try {
@@ -326,6 +331,12 @@ outputLanguageSelect.addEventListener("change", () => {
 
 learningModeInput.addEventListener("change", () => {
   void saveAutomaticSettings({ learningModeEnabled: learningModeInput.checked });
+});
+
+bilingualDefaultInput.addEventListener("change", () => {
+  void saveAutomaticSettings({
+    bilingualSubtitlesDefaultEnabled: bilingualDefaultInput.checked,
+  });
 });
 
 translationOnlyInput.addEventListener("change", () => {

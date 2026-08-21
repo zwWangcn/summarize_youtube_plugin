@@ -33,6 +33,8 @@
   "learningModeHint": { "message": "Show translations only when hovering over captions" },
   "translationOnlyLabel": { "message": "Translation only" },
   "translationOnlyHint": { "message": "Hide source captions and keep translations visible" },
+  "bilingualDefaultLabel": { "message": "Enable for new videos" },
+  "bilingualDefaultHint": { "message": "You can still toggle each video from the player" },
   "paramSizeLabel": { "message": "Parameter class" },
   "pricingLabel": { "message": "Input / output" },
   "contextWindowLabel": { "message": "Context window" },
