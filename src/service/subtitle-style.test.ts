@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SUBTITLE_STYLE,
   SUBTITLE_STYLE_PRESETS,
+  getSubtitleTypographyCssValues,
   normalizeSubtitleStyle,
 } from "./subtitle-style";
 
@@ -68,6 +69,21 @@ describe("subtitle style settings", () => {
       sourceColor: SUBTITLE_STYLE_PRESETS.minimal.sourceColor,
       translationColor: "#00FF00",
       backgroundColor: SUBTITLE_STYLE_PRESETS.minimal.backgroundColor,
+    });
+  });
+
+  it("converts typography settings into responsive CSS values", () => {
+    expect(getSubtitleTypographyCssValues({
+      preset: "custom",
+      sourceFontScale: 80,
+      translationFontScale: 125,
+      sourceColor: "#abcdef",
+      translationColor: "#123456",
+    })).toEqual({
+      sourceFontSize: "clamp(12px, 1.32vw, 19.2px)",
+      translationFontSize: "clamp(21.25px, 2.375vw, 35px)",
+      sourceColor: "#ABCDEF",
+      translationColor: "#123456",
     });
   });
 });

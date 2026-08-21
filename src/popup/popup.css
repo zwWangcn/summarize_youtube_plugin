@@ -257,6 +257,133 @@ select {
   cursor: pointer;
 }
 
+.subtitle-preview {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 132px;
+  margin: 12px 0;
+  padding: 28px 16px 16px;
+  overflow: hidden;
+  border: 1px solid var(--vas-border-subtle);
+  border-radius: 16px;
+  background:
+    linear-gradient(180deg, rgba(15, 23, 42, 0.18), rgba(0, 0, 0, 0.38)),
+    radial-gradient(circle at 70% 25%, rgba(129, 140, 248, 0.18), transparent 42%);
+  -webkit-backdrop-filter: blur(18px);
+  backdrop-filter: blur(18px);
+}
+
+.preview-label {
+  position: absolute;
+  top: 9px;
+  left: 11px;
+  color: var(--vas-text-muted);
+  font-size: 10px;
+  letter-spacing: 0.04em;
+}
+
+.preview-caption-card {
+  max-width: 100%;
+  padding: 7px 13px 8px;
+  border-radius: 7px;
+  color: #fff;
+  background: rgba(8, 8, 8, 0.76);
+  box-shadow: 0 2px 12px rgba(0, 0, 0, 0.22);
+  text-align: center;
+  text-shadow: 0 1px 2px rgba(0, 0, 0, 0.95);
+}
+
+.preview-source,
+.preview-translation {
+  overflow-wrap: anywhere;
+  line-height: 1.32;
+}
+
+.preview-source {
+  color: #dbdbdb;
+  font-size: 13px;
+}
+
+.preview-translation {
+  margin-top: 4px;
+  color: #fff;
+  font-size: 15px;
+  font-weight: 600;
+}
+
+.typography-card {
+  display: grid;
+  gap: 16px;
+}
+
+.style-group + .style-group {
+  padding-top: 15px;
+  border-top: 1px solid var(--vas-border-subtle);
+}
+
+.style-group h3 {
+  margin-bottom: 10px;
+  color: var(--vas-text-primary);
+  font-size: 12px;
+  font-weight: 620;
+}
+
+.range-heading,
+.color-row {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  color: var(--vas-text-secondary);
+  font-size: 11px;
+}
+
+.range-heading output {
+  min-width: 38px;
+  color: var(--vas-accent);
+  font-variant-numeric: tabular-nums;
+  text-align: right;
+}
+
+.range-input {
+  width: 100%;
+  height: 20px;
+  margin: 3px 0 8px;
+  accent-color: var(--vas-accent-strong);
+  cursor: pointer;
+}
+
+.range-input:focus-visible,
+.color-control input:focus-visible {
+  outline: 2px solid var(--vas-border-focus);
+  outline-offset: 2px;
+}
+
+.color-row {
+  cursor: pointer;
+}
+
+.color-control {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  color: var(--vas-text-muted);
+  font-family: "SF Mono", "Cascadia Code", "Fira Code", monospace;
+  font-size: 10px;
+}
+
+.color-control input {
+  width: 30px;
+  height: 24px;
+  padding: 2px;
+  border: 1px solid var(--vas-border);
+  border-radius: 7px;
+  background: var(--vas-bg-input);
+  cursor: pointer;
+}
+
 .input-row {
   display: flex;
   gap: 8px;

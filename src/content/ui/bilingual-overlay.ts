@@ -1,3 +1,8 @@
+import {
+  getSubtitleTypographyCssValues,
+  type SubtitleStyleSettings,
+} from "../../service/subtitle-style";
+
 export interface BilingualOverlayCue {
   sourceText: string;
   translationText?: string;
@@ -54,7 +59,13 @@ export class BilingualSubtitleOverlay {
 
     const style = document.createElement("style");
     style.textContent = `
-      :host { font-family: Roboto, Arial, sans-serif; }
+      :host {
+        --vas-source-font-size: clamp(15px, 1.65vw, 24px);
+        --vas-translation-font-size: clamp(17px, 1.9vw, 28px);
+        --vas-source-color: #dbdbdb;
+        --vas-translation-color: #fff;
+        font-family: Roboto, Arial, sans-serif;
+      }
       .wrap {
         position: absolute;
         left: 50%;
@@ -81,15 +92,15 @@ export class BilingualSubtitleOverlay {
         overflow-wrap: anywhere;
       }
       .source {
-        color: rgba(255, 255, 255, .86);
-        font-size: clamp(15px, 1.65vw, 24px);
+        color: var(--vas-source-color);
+        font-size: var(--vas-source-font-size);
         line-height: 1.32;
         white-space: pre-wrap;
       }
       .translation {
         margin-top: 4px;
-        color: #fff;
-        font-size: clamp(17px, 1.9vw, 28px);
+        color: var(--vas-translation-color);
+        font-size: var(--vas-translation-font-size);
         font-weight: 600;
         line-height: 1.32;
         white-space: pre-wrap;
@@ -163,6 +174,14 @@ export class BilingualSubtitleOverlay {
     this.learningMode = enabled;
     this.renderedCue = null;
     if (!this.selectionFrozen) this.renderPendingCue();
+  }
+
+  setStyle(settings: SubtitleStyleSettings): void {
+    const values = getSubtitleTypographyCssValues(settings);
+    this.host.style.setProperty("--vas-source-font-size", values.sourceFontSize);
+    this.host.style.setProperty("--vas-translation-font-size", values.translationFontSize);
+    this.host.style.setProperty("--vas-source-color", values.sourceColor);
+    this.host.style.setProperty("--vas-translation-color", values.translationColor);
   }
 
   setCue(cue: BilingualOverlayCue | null): void {

@@ -43,6 +43,7 @@ import {
 import { handleError } from "./error-handler";
 import { runSummaryCacheOperation } from "./summary-cache-operation";
 import { getSettings } from "../service/storage";
+import { normalizeSubtitleStyle } from "../service/subtitle-style";
 import {
   getOutputLanguageInfo,
   getUiLocale,
@@ -276,6 +277,7 @@ export async function initContentScript(
   const bilingualStateByVideo = new Map<string, boolean>();
   let bilingualEnabled = true;
   let learningModeEnabled = initialSettings.learningModeEnabled;
+  let subtitleStyle = initialSettings.subtitleStyle;
   let bilingualOverlay: BilingualSubtitleOverlay | null = null;
   let bilingualVideo: HTMLVideoElement | null = null;
   let bilingualSyncHandler: (() => void) | null = null;
@@ -393,6 +395,11 @@ export async function initContentScript(
     if (typeof nextLearningMode === "boolean" && nextLearningMode !== learningModeEnabled) {
       learningModeEnabled = nextLearningMode;
       bilingualOverlay?.setLearningMode(learningModeEnabled);
+    }
+
+    if (changes.subtitleStyle) {
+      subtitleStyle = normalizeSubtitleStyle(changes.subtitleStyle.newValue);
+      bilingualOverlay?.setStyle(subtitleStyle);
     }
 
     if (changes.provider || changes.model) {
@@ -1049,6 +1056,7 @@ export async function initContentScript(
     });
     bilingualOverlay = overlay;
     overlay.setLearningMode(learningModeEnabled);
+    overlay.setStyle(subtitleStyle);
     playerTranslationToggle.mount(player);
     playerTranslationToggle.setEnabled(bilingualEnabled);
     overlay.setCue({ sourceText: t("fetchingTranscript") });

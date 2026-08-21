@@ -52,6 +52,42 @@
             <input id="learningMode" type="checkbox" class="setting-toggle" />
           </section>
         </div>
+
+        <section class="subtitle-preview" data-i18n-aria-label="subtitlePreviewAria">
+          <span class="preview-label" data-i18n="subtitlePreviewLabel">实时预览</span>
+          <div class="preview-caption-card">
+            <p id="sourcePreview" class="preview-source" data-i18n="subtitlePreviewSource">Every idea starts with a question.</p>
+            <p id="translationPreview" class="preview-translation" data-i18n="subtitlePreviewTranslation">每个想法都始于一个问题。</p>
+          </div>
+        </section>
+
+        <div class="settings-card typography-card">
+          <section class="style-group" aria-labelledby="sourceStyleTitle">
+            <h3 id="sourceStyleTitle" data-i18n="sourceSubtitleStyle">原文样式</h3>
+            <div class="range-heading">
+              <label for="sourceFontScale" data-i18n="fontSizeLabel">字号</label>
+              <output id="sourceFontScaleValue" for="sourceFontScale">100%</output>
+            </div>
+            <input id="sourceFontScale" class="range-input" type="range" min="75" max="150" step="5" value="100" />
+            <label class="color-row" for="sourceColor">
+              <span data-i18n="textColorLabel">文字颜色</span>
+              <span class="color-control"><input id="sourceColor" type="color" value="#dbdbdb" /><span id="sourceColorValue">#DBDBDB</span></span>
+            </label>
+          </section>
+
+          <section class="style-group" aria-labelledby="translationStyleTitle">
+            <h3 id="translationStyleTitle" data-i18n="translationSubtitleStyle">译文样式</h3>
+            <div class="range-heading">
+              <label for="translationFontScale" data-i18n="fontSizeLabel">字号</label>
+              <output id="translationFontScaleValue" for="translationFontScale">100%</output>
+            </div>
+            <input id="translationFontScale" class="range-input" type="range" min="75" max="150" step="5" value="100" />
+            <label class="color-row" for="translationColor">
+              <span data-i18n="textColorLabel">文字颜色</span>
+              <span class="color-control"><input id="translationColor" type="color" value="#ffffff" /><span id="translationColorValue">#FFFFFF</span></span>
+            </label>
+          </section>
+        </div>
         <p class="autosave-note" data-i18n="autoSaveHint">更改后自动保存</p>
       </section>
 

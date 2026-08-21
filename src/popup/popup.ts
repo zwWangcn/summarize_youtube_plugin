@@ -22,6 +22,11 @@ import type { ProviderInfo, ModelInfo } from "../service/model-registry";
 import { OUTPUT_LANGUAGES, getUiLocale, t } from "../utils/i18n";
 import { logI18nDebug } from "../utils/i18n-debug";
 import {
+  DEFAULT_SUBTITLE_STYLE,
+  normalizeSubtitleStyle,
+  type SubtitleStyleSettings,
+} from "../service/subtitle-style";
+import {
   getAdjacentPopupTab,
   isPopupTabId,
   type PopupTabId,
@@ -41,6 +46,16 @@ const apiKeyLink = document.getElementById("apiKeyLink") as HTMLAnchorElement;
 const clearKeysBtn = document.getElementById("clearKeysBtn") as HTMLButtonElement;
 const tabButtons = [...document.querySelectorAll<HTMLButtonElement>("[role='tab'][data-tab]")];
 const tabPanels = [...document.querySelectorAll<HTMLElement>("[role='tabpanel'][data-panel]")];
+const sourceFontScaleInput = document.getElementById("sourceFontScale") as HTMLInputElement;
+const translationFontScaleInput = document.getElementById("translationFontScale") as HTMLInputElement;
+const sourceColorInput = document.getElementById("sourceColor") as HTMLInputElement;
+const translationColorInput = document.getElementById("translationColor") as HTMLInputElement;
+const sourceFontScaleValue = document.getElementById("sourceFontScaleValue") as HTMLOutputElement;
+const translationFontScaleValue = document.getElementById("translationFontScaleValue") as HTMLOutputElement;
+const sourceColorValue = document.getElementById("sourceColorValue") as HTMLSpanElement;
+const translationColorValue = document.getElementById("translationColorValue") as HTMLSpanElement;
+const sourcePreview = document.getElementById("sourcePreview") as HTMLParagraphElement;
+const translationPreview = document.getElementById("translationPreview") as HTMLParagraphElement;
 
 // Model info card elements
 const infoParamSize = document.getElementById("infoParamSize") as HTMLSpanElement;
@@ -53,6 +68,8 @@ let currentProvider: ProviderInfo = PROVIDERS[0];
 let currentModel: ModelInfo | null = null;
 let apiKeyLoadVersion = 0;
 let statusTimer: ReturnType<typeof setTimeout> | null = null;
+let subtitleStyleSaveTimer: ReturnType<typeof setTimeout> | null = null;
+let subtitleStyle: SubtitleStyleSettings = { ...DEFAULT_SUBTITLE_STYLE };
 
 async function loadApiKeyForProvider(providerId: string): Promise<void> {
   const version = ++apiKeyLoadVersion;
@@ -112,6 +129,8 @@ async function init(): Promise<void> {
   const savedModel = selection.model.id;
   outputLanguageSelect.value = settings.outputLanguage;
   learningModeInput.checked = settings.learningModeEnabled;
+  subtitleStyle = settings.subtitleStyle;
+  renderSubtitleTypography();
   logI18nDebug("popup settings loaded", {
     chromeUiLocale: getUiLocale(),
     outputLanguage: settings.outputLanguage,
@@ -157,6 +176,53 @@ async function saveAutomaticSettings(
     console.debug("[vas] Automatic settings save failed:", detail);
     showStatus(t("saveFailed"), "error");
   }
+}
+
+function renderSubtitleTypography(): void {
+  sourceFontScaleInput.value = String(subtitleStyle.sourceFontScale);
+  translationFontScaleInput.value = String(subtitleStyle.translationFontScale);
+  sourceColorInput.value = subtitleStyle.sourceColor;
+  translationColorInput.value = subtitleStyle.translationColor;
+  sourceFontScaleValue.value = `${subtitleStyle.sourceFontScale}%`;
+  translationFontScaleValue.value = `${subtitleStyle.translationFontScale}%`;
+  sourceColorValue.textContent = subtitleStyle.sourceColor;
+  translationColorValue.textContent = subtitleStyle.translationColor;
+  sourcePreview.style.fontSize = `${13 * subtitleStyle.sourceFontScale / 100}px`;
+  translationPreview.style.fontSize = `${15 * subtitleStyle.translationFontScale / 100}px`;
+  sourcePreview.style.color = subtitleStyle.sourceColor;
+  translationPreview.style.color = subtitleStyle.translationColor;
+}
+
+async function saveSubtitleStyle(): Promise<void> {
+  if (subtitleStyleSaveTimer) {
+    clearTimeout(subtitleStyleSaveTimer);
+    subtitleStyleSaveTimer = null;
+  }
+  try {
+    await setSettings({ subtitleStyle: { ...subtitleStyle } });
+    showStatus(t("settingsSaved"), "success");
+  } catch (err) {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] Subtitle style save failed:", detail);
+    showStatus(t("saveFailed"), "error");
+  }
+}
+
+function updateSubtitleTypography(): void {
+  subtitleStyle = normalizeSubtitleStyle({
+    ...subtitleStyle,
+    preset: "custom",
+    sourceFontScale: Number(sourceFontScaleInput.value),
+    translationFontScale: Number(translationFontScaleInput.value),
+    sourceColor: sourceColorInput.value,
+    translationColor: translationColorInput.value,
+  });
+  renderSubtitleTypography();
+  if (subtitleStyleSaveTimer) clearTimeout(subtitleStyleSaveTimer);
+  subtitleStyleSaveTimer = setTimeout(() => {
+    subtitleStyleSaveTimer = null;
+    void saveSubtitleStyle();
+  }, 300);
 }
 
 // ── Populate model dropdown for a given provider ─────────────────────
@@ -225,6 +291,16 @@ outputLanguageSelect.addEventListener("change", () => {
 learningModeInput.addEventListener("change", () => {
   void saveAutomaticSettings({ learningModeEnabled: learningModeInput.checked });
 });
+
+for (const input of [
+  sourceFontScaleInput,
+  translationFontScaleInput,
+  sourceColorInput,
+  translationColorInput,
+]) {
+  input.addEventListener("input", updateSubtitleTypography);
+  input.addEventListener("change", () => void saveSubtitleStyle());
+}
 
 // Provider changed → repopulate models
 providerSelect.addEventListener("change", () => {

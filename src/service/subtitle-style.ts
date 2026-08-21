@@ -53,6 +53,13 @@ export const DEFAULT_SUBTITLE_STYLE: SubtitleStyleSettings = {
   ...SUBTITLE_STYLE_PRESETS.classic,
 };
 
+export interface SubtitleTypographyCssValues {
+  sourceFontSize: string;
+  translationFontSize: string;
+  sourceColor: string;
+  translationColor: string;
+}
+
 const HEX_COLOR_PATTERN = /^#[0-9A-F]{6}$/i;
 
 function isRecord(value: unknown): value is Record<string, unknown> {
@@ -116,5 +123,24 @@ export function normalizeSubtitleStyle(value: unknown): SubtitleStyleSettings {
       8,
       35,
     ),
+  };
+}
+
+function responsiveFontSize(scale: number, minPx: number, fluidVw: number, maxPx: number): string {
+  const factor = scale / 100;
+  const scaled = (value: number) => Number((value * factor).toFixed(4));
+  return `clamp(${scaled(minPx)}px, ${scaled(fluidVw)}vw, ${scaled(maxPx)}px)`;
+}
+
+/** Convert persisted typography values into safe Shadow DOM CSS values. */
+export function getSubtitleTypographyCssValues(
+  value: unknown,
+): SubtitleTypographyCssValues {
+  const style = normalizeSubtitleStyle(value);
+  return {
+    sourceFontSize: responsiveFontSize(style.sourceFontScale, 15, 1.65, 24),
+    translationFontSize: responsiveFontSize(style.translationFontScale, 17, 1.9, 28),
+    sourceColor: style.sourceColor,
+    translationColor: style.translationColor,
   };
 }
