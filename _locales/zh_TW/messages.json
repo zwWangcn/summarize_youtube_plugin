@@ -27,7 +27,7 @@
   "providerLabel": { "message": "AI 供應商" },
   "modelLabel": { "message": "模型" },
   "uiLanguageLabel": { "message": "介面語言" },
-  "uiLanguageHint": { "message": "僅用於擴充功能設定彈出視窗" },
+  "uiLanguageHint": { "message": "用於整個擴充功能介面；不會影響摘要或字幕翻譯語言" },
   "outputLanguageLabel": { "message": "總結與翻譯語言" },
   "outputLanguageHint": { "message": "同時用於 AI 總結和字幕譯文" },
   "learningModeLabel": { "message": "學習模式" },

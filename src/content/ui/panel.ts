@@ -79,6 +79,8 @@ export class Panel {
   private summaryTranslationBusy = false;
   private summaryTranslationAttention = false;
   private summaryTranslationTarget = "";
+  private titleUsesDefault = true;
+  private loadingMessageKey = "starting";
   private elapsedTimer: ReturnType<typeof setInterval> | null = null;
   private startTime = 0;
 
@@ -282,7 +284,7 @@ export class Panel {
         <button class="vas-btn vas-btn-summary-translate" style="display:none"></button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
-          <input type="checkbox" class="vas-timestamp-checkbox" checked /> ${t("timestamp")}
+          <input type="checkbox" class="vas-timestamp-checkbox" checked /> <span class="vas-timestamp-text">${t("timestamp")}</span>
         </label>
         <button class="vas-btn vas-btn-copy" title="${t("copy")}" style="display:none">${t("copy")}</button>
       </div>
@@ -479,6 +481,7 @@ export class Panel {
     this.setTranslationActionsBusy(false);
     this.hideSummaryTranslationAction();
     this.isCachedView = false;
+    this.loadingMessageKey = "starting";
     this.setSummarizeButtonText(t("aiSummary"));
     this.setTranscriptView("source");
     this.setTranslationProgress("");
@@ -563,11 +566,51 @@ export class Panel {
 
   setTitle(title: string): void {
     this.titleEl.textContent = title;
+    this.titleUsesDefault = false;
   }
 
-  setLoadingMessage(msg: string): void {
+  setLoadingMessage(messageKey: string): void {
+    this.loadingMessageKey = messageKey;
     const el = this.panel.querySelector(".vas-loading-msg") as HTMLElement;
-    if (el) el.textContent = msg;
+    if (el) el.textContent = t(messageKey);
+  }
+
+  /** Refresh labels in place without replacing user content or component state. */
+  refreshLocalizedText(): void {
+    const accessibleLabel = t("openAiTools");
+    this.trigger.setAttribute("aria-label", accessibleLabel);
+    this.trigger.title = accessibleLabel;
+    if (this.titleUsesDefault) this.titleEl.textContent = t("extensionName");
+
+    const resetWidth = this.panel.querySelector<HTMLElement>(".vas-btn-reset-width");
+    const close = this.panel.querySelector<HTMLElement>(".vas-btn-close");
+    const languageSwitch = this.panel.querySelector<HTMLElement>(".vas-view-switch");
+    const timestampText = this.panel.querySelector<HTMLElement>(".vas-timestamp-text");
+    const thinkingText = this.contentEl.querySelector<HTMLElement>(".vas-thinking span");
+    if (resetWidth) resetWidth.title = t("resetWidthTitle");
+    if (close) close.title = t("closeTitle");
+    if (languageSwitch) languageSwitch.setAttribute("aria-label", t("captionLanguageAria"));
+    if (timestampText) timestampText.textContent = t("timestamp");
+    if (thinkingText) thinkingText.textContent = t("aiThinking");
+
+    this.summarizeBtn.textContent = t(this.isCachedView ? "summarizeAgain" : "aiSummary");
+    this.transcriptBtn.textContent = t("rawTranscript");
+    this.copyBtn.textContent = t("copy");
+    this.copyBtn.title = t("copy");
+    this.sourceViewBtn.textContent = t("sourceView");
+    this.translationViewBtn.textContent = t("translationView");
+    this.translateAllBtn.textContent = t("translateAll");
+    this.setCurrentSectionTranslated(this.translateCurrentBtn.dataset.translated === "true");
+    this.setLoadingMessage(this.loadingMessageKey);
+    if (this.summaryTranslationVisible) {
+      this.summaryTranslateBtn.textContent = this.summaryTranslationBusy
+        ? t("translatingSummaryTo", this.summaryTranslationTarget)
+        : t("translateSummaryTo", this.summaryTranslationTarget);
+    }
+    if (this.elapsedTimer) {
+      const secs = Math.floor((Date.now() - this.startTime) / 1000);
+      this.elapsedEl.textContent = t("elapsedSeconds", String(secs));
+    }
   }
 
   setContent(html: string): void {

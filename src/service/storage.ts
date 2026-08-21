@@ -25,7 +25,7 @@ export interface Settings {
   model: string;
   /** YouTube 总结和字幕翻译的目标语言 */
   outputLanguage: OutputLanguage;
-  /** 扩展设置弹窗使用的固定界面语言。 */
+  /** 扩展自身界面使用的固定语言，不影响总结和字幕翻译语言。 */
   uiLanguage: UiLanguage;
   /** 学习模式下仅在悬停字幕时显示译文。 */
   learningModeEnabled: boolean;

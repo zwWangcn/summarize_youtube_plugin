@@ -78,6 +78,17 @@ describe("settings and API key storage", () => {
     expect(syncStore.uiLanguage).toBe("ko");
   });
 
+  it("changes the UI language without changing the summary and translation language", async () => {
+    syncStore.outputLanguage = "fr";
+    const { getSettings, setSettings } = await import("./storage");
+
+    await setSettings({ uiLanguage: "ja" });
+
+    expect((await getSettings()).uiLanguage).toBe("ja");
+    expect((await getSettings()).outputLanguage).toBe("fr");
+    expect(syncStore.outputLanguage).toBe("fr");
+  });
+
   it("recovers an invalid popup UI language with the English fallback", async () => {
     syncStore.uiLanguage = "fr";
     uiLanguage = "fr-FR";

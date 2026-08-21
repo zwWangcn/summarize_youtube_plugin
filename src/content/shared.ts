@@ -45,11 +45,14 @@ import { runSummaryCacheOperation } from "./summary-cache-operation";
 import { getSettings } from "../service/storage";
 import { normalizeSubtitleStyle } from "../service/subtitle-style";
 import {
+  activateUiLanguage,
   getOutputLanguageInfo,
   getUiLocale,
   isOutputLanguage,
+  isUiLanguage,
   t,
   type OutputLanguage,
+  type UiLanguage,
 } from "../utils/i18n";
 import { analyzeTextScripts, logI18nDebug } from "../utils/i18n-debug";
 import {
@@ -83,6 +86,15 @@ interface DisplayedSummary {
   videoTitle: string;
   outputLanguage: OutputLanguage;
   languageStatus: OutputLanguageStatus;
+}
+
+interface LocalizedMessage {
+  key: string;
+  substitutions?: string | string[];
+}
+
+function localizedText(message: LocalizedMessage | null): string {
+  return message ? t(message.key, message.substitutions) : "";
 }
 
 interface YouTubePlayer {
@@ -244,6 +256,13 @@ export async function initContentScript(
   if (document.getElementById("vas-root")) return;
 
   const initialSettings = await getSettings();
+  try {
+    await activateUiLanguage(initialSettings.uiLanguage);
+  } catch (error) {
+    const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+    console.debug("[vas] Content UI catalog load failed:", detail);
+  }
+  let activeUiLanguage: UiLanguage = initialSettings.uiLanguage;
   let outputLanguage: OutputLanguage = initialSettings.outputLanguage;
   logI18nDebug("content initialized", {
     chromeUiLocale: getUiLocale(),
@@ -273,7 +292,7 @@ export async function initContentScript(
   let summaryAbort: AbortController | null = null;
   let summaryTranslationAbort: AbortController | null = null;
   let displayedSummary: DisplayedSummary | null = null;
-  let translationProgressText = "";
+  let translationProgressMessage: LocalizedMessage | null = null;
   let transcriptStateVersion = 0;
   let currentPanel: Panel | null = null;
   // Per-video choices live for this content-script lifetime and override the synced default.
@@ -368,7 +387,7 @@ export async function initContentScript(
     fullTranslationRequested = false;
     autoTranslationErrors = {};
     autoTranslationBlockedMessage = "";
-    translationProgressText = "";
+    translationProgressMessage = null;
     transcriptScrollTop = 0;
     destroyBilingualOverlay();
   }
@@ -384,6 +403,25 @@ export async function initContentScript(
       return;
     }
     if (areaName !== "sync") return;
+    const nextUiLanguage = changes.uiLanguage?.newValue;
+    if (isUiLanguage(nextUiLanguage) && nextUiLanguage !== activeUiLanguage) {
+      void activateUiLanguage(nextUiLanguage).then((activated) => {
+        if (!activated) return;
+        activeUiLanguage = nextUiLanguage;
+        currentPanel?.refreshLocalizedText();
+        playerTranslationToggle.refreshLocalizedText();
+        if (currentPanel?.getMode() === "transcript") {
+          renderTranscriptReader(currentPanel);
+        } else if (currentPanel) {
+          currentPanel.setTranslationProgress(localizedText(translationProgressMessage));
+          if (displayedSummary) showSummaryTranslationAction(currentPanel, displayedSummary);
+        }
+        syncBilingualOverlay();
+      }).catch((error) => {
+        const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
+        console.debug("[vas] Content UI language change failed:", detail);
+      });
+    }
     const nextLanguage = changes.outputLanguage?.newValue;
     if (isOutputLanguage(nextLanguage) && nextLanguage !== outputLanguage) {
       logI18nDebug("content output language changed", {
@@ -539,7 +577,7 @@ export async function initContentScript(
       ).every((cueId) => Boolean(translatedCues[cueId])),
     );
     panel.setTranscriptView(transcriptView);
-    panel.setTranslationProgress(translationProgressText);
+    panel.setTranslationProgress(localizedText(translationProgressMessage));
   }
 
   function renderTranscriptReader(panel: Panel, preserveScroll: boolean = true): void {
@@ -837,7 +875,10 @@ export async function initContentScript(
             clearPartialRange(range.start, range.end);
             for (const segment of partial) partialTranslatedCues[segment.cueId] = segment;
             if (formatRetry && job.sectionId !== undefined) {
-              translationProgressText = t("repairingSectionFormat", String(job.sectionId + 1));
+              translationProgressMessage = {
+                key: "repairingSectionFormat",
+                substitutions: String(job.sectionId + 1),
+              };
             }
             renderTranslationConsumers();
           },
@@ -906,22 +947,24 @@ export async function initContentScript(
         translationAbort = controller;
         if (job.kind === "all") {
           const completed = transcriptChunks.filter(isChunkTranslated).length;
-          translationProgressText = t("translatingAllProgress", [
-            String(completed),
-            String(transcriptChunks.length),
-          ]);
+          translationProgressMessage = {
+            key: "translatingAllProgress",
+            substitutions: [String(completed), String(transcriptChunks.length)],
+          };
         } else if (job.kind === "section" && job.sectionId !== undefined) {
-          translationProgressText = t("translatingSectionProgress", [
-            String(job.sectionId + 1),
-            String(transcriptChunks.length),
-          ]);
+          translationProgressMessage = {
+            key: "translatingSectionProgress",
+            substitutions: [String(job.sectionId + 1), String(transcriptChunks.length)],
+          };
         }
-        panel.setTranslationProgress(translationProgressText);
+        panel.setTranslationProgress(localizedText(translationProgressMessage));
 
         try {
           await processTranslationJob(job, controller, stateVersion);
           bilingualOverlay?.setSourceReady(true);
-          if (job.kind === "section") translationProgressText = t("translationSectionDone");
+          if (job.kind === "section") {
+            translationProgressMessage = { key: "translationSectionDone" };
+          }
         } catch (error) {
           if ((error as Error)?.name !== "AbortError") {
             const message = error instanceof Error ? error.message : t("translationFailed");
@@ -934,7 +977,10 @@ export async function initContentScript(
                 bilingualOverlay?.setSourceReady(false);
               }
             } else {
-              translationProgressText = t("translationStopped", message);
+              translationProgressMessage = {
+                key: "translationStopped",
+                substitutions: message,
+              };
               translationJobs = translationJobs.filter((queued) => queued.kind === "overlay");
               fullTranslationRequested = false;
               if (panel.getMode() === "transcript") panel.showWarning(message);
@@ -949,7 +995,7 @@ export async function initContentScript(
         }
       }
       if (fullTranslationRequested && transcriptChunks.every(isChunkTranslated)) {
-        translationProgressText = t("translationAllDone");
+        translationProgressMessage = { key: "translationAllDone" };
       }
       fullTranslationRequested = false;
     })().finally(() => {
@@ -958,7 +1004,7 @@ export async function initContentScript(
       translationAbort = null;
       currentTranslationJob = null;
       panel.setTranslationActionsBusy(false);
-      panel.setTranslationProgress(translationProgressText);
+      panel.setTranslationProgress(localizedText(translationProgressMessage));
       renderTranslationConsumers();
       if (translationJobs.length) startTranslationWorker();
     });
@@ -981,10 +1027,10 @@ export async function initContentScript(
       .filter(Boolean);
     const pending = chunks.filter((chunk) => forceRefresh || !isChunkTranslated(chunk));
     if (!pending.length) {
-      translationProgressText = t(
-        isFullTranslation ? "translationAllAlreadyDone" : "translationSectionAlreadyDone",
-      );
-      panel.setTranslationProgress(translationProgressText);
+      translationProgressMessage = {
+        key: isFullTranslation ? "translationAllAlreadyDone" : "translationSectionAlreadyDone",
+      };
+      panel.setTranslationProgress(localizedText(translationProgressMessage));
       return;
     }
     if (isFullTranslation) fullTranslationRequested = true;
@@ -1231,7 +1277,7 @@ export async function initContentScript(
 
         // ── 缓存未命中或强制刷新——走 API ──
         panel.setMode("loading");
-        panel.setLoadingMessage(t("fetchingTranscript"));
+        panel.setLoadingMessage("fetchingTranscript");
         panel.setCachedView(false);
         panel.open();
 
@@ -1251,7 +1297,7 @@ export async function initContentScript(
         });
 
         panel.setTitle(videoTitle);
-        panel.setLoadingMessage(t("generatingSummary"));
+        panel.setLoadingMessage("generatingSummary");
 
         // 切换到流式内容展示——显示「AI 正在思考...」指示器，等首批 token 到达后替换
         panel.beginStreaming();
@@ -1482,7 +1528,7 @@ export async function initContentScript(
       summaryTranslationAbort = null;
       const stateVersion = transcriptStateVersion;
       panel.setMode("loading");
-      panel.setLoadingMessage(t("fetchingTranscript"));
+      panel.setLoadingMessage("fetchingTranscript");
       panel.open();
 
       try {

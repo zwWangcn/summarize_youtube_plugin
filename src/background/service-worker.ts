@@ -8,13 +8,42 @@
  */
 
 import { streamAIText } from "../service/ai";
-import { hasAnyApiKey } from "../service/storage";
+import { getSettings, hasAnyApiKey } from "../service/storage";
 import { clearExpiredCache } from "../service/summary-cache";
+import { activateUiLanguage, isUiLanguage } from "../utils/i18n";
 import {
   AI_STREAM_PORT,
   type AIStreamEvent,
   type AIStreamRequest,
 } from "../service/ai-stream-protocol";
+
+function prepareUiLanguage(): Promise<void> {
+  return getSettings()
+    .then((settings) => activateUiLanguage(settings.uiLanguage))
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      console.debug("[vas] Background UI catalog load failed:", error);
+    });
+}
+
+let uiLanguageReady = prepareUiLanguage();
+
+async function waitForUiLanguageReady(): Promise<void> {
+  while (true) {
+    const pending = uiLanguageReady;
+    await pending;
+    if (pending === uiLanguageReady) return;
+  }
+}
+
+chrome.storage.onChanged.addListener((changes, areaName) => {
+  if (areaName !== "sync" || !isUiLanguage(changes.uiLanguage?.newValue)) return;
+  uiLanguageReady = activateUiLanguage(changes.uiLanguage.newValue)
+    .then(() => undefined)
+    .catch((error: unknown) => {
+      console.debug("[vas] Background UI language change failed:", error);
+    });
+});
 
 // ---------------------------------------------------------------------------
 // Lifecycle
@@ -114,6 +143,7 @@ chrome.runtime.onConnect.addListener((port) => {
 
     void (async () => {
       try {
+        await waitForUiLanguageReady();
         if (
           typeof message.systemPrompt !== "string" ||
           typeof message.userPrompt !== "string" ||

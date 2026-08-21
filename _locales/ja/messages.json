@@ -27,7 +27,7 @@
   "providerLabel": { "message": "AI プロバイダー" },
   "modelLabel": { "message": "モデル" },
   "uiLanguageLabel": { "message": "表示言語" },
-  "uiLanguageHint": { "message": "拡張機能の設定ポップアップにのみ使用されます" },
+  "uiLanguageHint": { "message": "拡張機能全体の表示に使用され、要約や字幕翻訳の言語には影響しません" },
   "outputLanguageLabel": { "message": "要約・翻訳の言語" },
   "outputLanguageHint": { "message": "AI 要約と字幕翻訳の両方に使用されます" },
   "learningModeLabel": { "message": "学習モード" },

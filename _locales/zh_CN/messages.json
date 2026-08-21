@@ -27,7 +27,7 @@
   "providerLabel": { "message": "AI 供应商" },
   "modelLabel": { "message": "模型" },
   "uiLanguageLabel": { "message": "界面语言" },
-  "uiLanguageHint": { "message": "仅用于扩展设置弹窗" },
+  "uiLanguageHint": { "message": "用于整个扩展界面；不会影响总结或字幕翻译语言" },
   "outputLanguageLabel": { "message": "总结与翻译语言" },
   "outputLanguageHint": { "message": "同时用于 AI 总结和字幕译文" },
   "learningModeLabel": { "message": "学习模式" },

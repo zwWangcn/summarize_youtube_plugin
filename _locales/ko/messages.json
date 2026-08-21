@@ -27,7 +27,7 @@
   "providerLabel": { "message": "AI 공급자" },
   "modelLabel": { "message": "모델" },
   "uiLanguageLabel": { "message": "표시 언어" },
-  "uiLanguageHint": { "message": "확장 프로그램 설정 팝업에만 사용됩니다" },
+  "uiLanguageHint": { "message": "확장 프로그램 전체 인터페이스에 사용되며 요약 및 자막 번역 언어에는 영향을 주지 않습니다" },
   "outputLanguageLabel": { "message": "요약 및 번역 언어" },
   "outputLanguageHint": { "message": "AI 요약과 자막 번역에 함께 사용됩니다" },
   "learningModeLabel": { "message": "학습 모드" },

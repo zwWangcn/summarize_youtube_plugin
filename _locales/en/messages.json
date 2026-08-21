@@ -27,7 +27,7 @@
   "providerLabel": { "message": "AI provider" },
   "modelLabel": { "message": "Model" },
   "uiLanguageLabel": { "message": "Interface language" },
-  "uiLanguageHint": { "message": "Used only for the extension settings popup" },
+  "uiLanguageHint": { "message": "Used throughout the extension interface; does not affect summaries or caption translations" },
   "outputLanguageLabel": { "message": "Summary and translation language" },
   "outputLanguageHint": { "message": "Used for both AI summaries and caption translations" },
   "learningModeLabel": { "message": "Learning mode" },

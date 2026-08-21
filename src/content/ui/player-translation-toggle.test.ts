@@ -82,6 +82,8 @@ class FakeMutationObserver {
   constructor(_callback: MutationCallback) {}
 }
 
+let labelLanguage = "en";
+
 function createPlayer(): { player: FakeElement; controls: FakeElement; subtitles: FakeElement } {
   const player = new FakeElement();
   const controls = new FakeElement();
@@ -95,6 +97,7 @@ function createPlayer(): { player: FakeElement; controls: FakeElement; subtitles
 
 describe("PlayerTranslationToggle", () => {
   beforeEach(() => {
+    labelLanguage = "en";
     vi.stubGlobal("document", {
       createElement: () => new FakeElement(),
     });
@@ -102,9 +105,15 @@ describe("PlayerTranslationToggle", () => {
     vi.stubGlobal("chrome", {
       i18n: {
         getMessage: (key: string) => ({
-          disableBilingualSubtitles: "Disable bilingual subtitles",
-          enableBilingualSubtitles: "Enable bilingual subtitles",
-        })[key] ?? key,
+          en: {
+            disableBilingualSubtitles: "Disable bilingual subtitles",
+            enableBilingualSubtitles: "Enable bilingual subtitles",
+          },
+          ja: {
+            disableBilingualSubtitles: "二か国語字幕を無効にする",
+            enableBilingualSubtitles: "二か国語字幕を有効にする",
+          },
+        })[labelLanguage as "en" | "ja"][key as "disableBilingualSubtitles" | "enableBilingualSubtitles"] ?? key,
       },
     });
   });
@@ -158,5 +167,19 @@ describe("PlayerTranslationToggle", () => {
 
     toggle.destroy();
     expect(controls.children).toEqual([subtitles, replacementControl]);
+  });
+
+  it("refreshes accessible labels without changing the enabled state", () => {
+    const { player, controls } = createPlayer();
+    const toggle = new PlayerTranslationToggle(vi.fn());
+    toggle.mount(player as unknown as HTMLElement);
+
+    labelLanguage = "ja";
+    toggle.refreshLocalizedText();
+
+    const button = controls.children[1];
+    expect(button.getAttribute("aria-pressed")).toBe("true");
+    expect(button.getAttribute("aria-label")).toBe("二か国語字幕を無効にする");
+    expect(button.title).toBe("二か国語字幕を無効にする");
   });
 });

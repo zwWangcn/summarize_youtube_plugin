@@ -25,6 +25,10 @@ export class PlayerTranslationToggle {
     this.updateButton();
   }
 
+  refreshLocalizedText(): void {
+    this.updateButton();
+  }
+
   destroy(): void {
     this.observer?.disconnect();
     this.observer = null;
