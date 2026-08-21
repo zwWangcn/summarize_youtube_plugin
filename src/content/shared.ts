@@ -55,6 +55,7 @@ import {
   detectOutputLanguage,
   type OutputLanguageStatus,
 } from "../utils/output-language-detection";
+import { getTranscriptLazyLoadDirection } from "./transcript-scroll";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -561,6 +562,40 @@ export async function initContentScript(
     transcriptScrollTop = content.scrollTop;
   }
 
+  function handleTranscriptWheel(panel: Panel, event: WheelEvent): void {
+    if (panel.getMode() !== "transcript" || !transcriptChunks.length) return;
+    const content = panel.getContentElement();
+    const direction = getTranscriptLazyLoadDirection({
+      deltaY: event.deltaY,
+      scrollTop: content.scrollTop,
+      clientHeight: content.clientHeight,
+      scrollHeight: content.scrollHeight,
+      loadedStart: loadedChunkStart,
+      loadedEnd: loadedChunkEnd,
+      totalChunks: transcriptChunks.length,
+    });
+    if (!direction) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+    const oldHeight = content.scrollHeight;
+    const oldTop = content.scrollTop;
+    if (direction === "after") loadedChunkEnd += 1;
+    else loadedChunkStart -= 1;
+    renderTranscriptReader(panel, false);
+
+    const addedHeight = content.scrollHeight - oldHeight;
+    const nextTop = direction === "after"
+      ? oldTop + Math.max(1, event.deltaY)
+      : oldTop + addedHeight + Math.min(-1, event.deltaY);
+    content.scrollTop = Math.max(
+      0,
+      Math.min(content.scrollHeight - content.clientHeight, nextTop),
+    );
+    transcriptScrollTop = content.scrollTop;
+    updateActiveChunkFromScroll(panel);
+  }
+
   async function ensureTranslationCache(
     expectedVersion: number = transcriptStateVersion,
   ): Promise<TranslationCacheIdentity> {
@@ -617,6 +652,11 @@ export async function initContentScript(
       "scroll",
       () => handleTranscriptScroll(panel),
       { passive: true },
+    );
+    panel.getContentElement().addEventListener(
+      "wheel",
+      (event) => handleTranscriptWheel(panel, event),
+      { passive: false },
     );
     panel.setTranslationAvailable(true);
     const title = extractor.getVideoTitle();
