@@ -46,6 +46,16 @@ describe("openai-compatible request body", () => {
     expect(body.messages[0]).toEqual({ role: "developer", content: "system" });
   });
 
+  it("uses the GPT-5.6 no-reasoning value", () => {
+    const request = openaiCompatAdapter.buildStreamRequest({
+      ...base,
+      model: "gpt-5.6-luna",
+      disableThinking: true,
+      thinkingControl: "openai",
+    });
+    expect(JSON.parse(request.body).reasoning_effort).toBe("none");
+  });
+
   it("does not send provider-specific thinking fields by default", () => {
     const request = openaiCompatAdapter.buildStreamRequest(base);
     expect(JSON.parse(request.body)).not.toHaveProperty("thinking");

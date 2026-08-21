@@ -21,7 +21,7 @@ function buildBody(params: AIRequest): string {
   } else if (params.disableThinking && params.thinkingControl === "qwen") {
     body.enable_thinking = false;
   } else if (params.disableThinking && params.thinkingControl === "openai") {
-    body.reasoning_effort = "minimal";
+    body.reasoning_effort = params.model.startsWith("gpt-5.6-") ? "none" : "minimal";
   }
   return JSON.stringify(body);
 }

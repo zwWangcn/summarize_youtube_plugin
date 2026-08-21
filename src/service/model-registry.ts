@@ -81,28 +81,28 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "GP",
     models: [
       {
-        id: "gpt-5",
-        name: "GPT-5",
+        id: "gpt-5.6-sol",
+        name: "GPT-5.6 Sol",
         provider: "openai",
-        descriptionKey: "modelDescGpt5",
-        paramSize: "~2T MoE",
-        contextWindow: 400_000,
+        descriptionKey: "modelDescGpt56Sol",
+        paramSize: "—",
+        contextWindow: 1_050_000,
       },
       {
-        id: "gpt-5-mini",
-        name: "GPT-5 Mini",
+        id: "gpt-5.6-terra",
+        name: "GPT-5.6 Terra",
         provider: "openai",
-        descriptionKey: "modelDescGpt5Mini",
-        paramSize: "~200B",
-        contextWindow: 400_000,
+        descriptionKey: "modelDescGpt56Terra",
+        paramSize: "—",
+        contextWindow: 1_050_000,
       },
       {
-        id: "gpt-4.1",
-        name: "GPT-4.1",
+        id: "gpt-5.6-luna",
+        name: "GPT-5.6 Luna",
         provider: "openai",
-        descriptionKey: "modelDescGpt41",
-        paramSize: "~1.7T",
-        contextWindow: 1_000_000,
+        descriptionKey: "modelDescGpt56Luna",
+        paramSize: "—",
+        contextWindow: 1_050_000,
       },
     ],
   },
@@ -153,26 +153,10 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "GE",
     models: [
       {
-        id: "gemini-2.5-pro",
-        name: "Gemini 2.5 Pro",
+        id: "gemini-3.7-flash",
+        name: "Gemini 3.7 Flash",
         provider: "gemini",
-        descriptionKey: "modelDescGemini25Pro",
-        paramSize: "—",
-        contextWindow: 1_000_000,
-      },
-      {
-        id: "gemini-2.5-flash",
-        name: "Gemini 2.5 Flash",
-        provider: "gemini",
-        descriptionKey: "modelDescGemini25Flash",
-        paramSize: "—",
-        contextWindow: 1_000_000,
-      },
-      {
-        id: "gemini-2.5-flash-lite",
-        name: "Gemini 2.5 Flash Lite",
-        provider: "gemini",
-        descriptionKey: "modelDescGemini25FlashLite",
+        descriptionKey: "modelDescGemini37Flash",
         paramSize: "—",
         contextWindow: 1_000_000,
       },
@@ -334,6 +318,12 @@ export function getModelsByProvider(providerId: string): ModelInfo[] {
 const LEGACY_MODEL_IDS: Record<string, string> = {
   "claude-sonnet-5-20250702": "claude-sonnet-5",
   "claude-opus-4-8-20250515": "claude-opus-4-8",
+  "gpt-5": "gpt-5.6-sol",
+  "gpt-5-mini": "gpt-5.6-terra",
+  "gpt-4.1": "gpt-5.6-luna",
+  "gemini-2.5-pro": "gemini-3.7-flash",
+  "gemini-2.5-flash": "gemini-3.7-flash",
+  "gemini-2.5-flash-lite": "gemini-3.7-flash",
 };
 
 /** 将曾经发布过的错误/旧模型 ID 归一化，避免升级后破坏已保存设置。 */
@@ -370,10 +360,11 @@ export function getAIRequestProfile(
     normalizedId === "claude-sonnet-5" || normalizedId === "claude-opus-4-8"
   );
   const openAIReasoningModel = providerId === "openai" && (
-    normalizedId === "gpt-5" || normalizedId === "gpt-5-mini"
+    normalizedId.startsWith("gpt-5.6-")
   );
+  const gemini37Flash = providerId === "gemini" && normalizedId === "gemini-3.7-flash";
   return {
-    supportsTemperature: !rejectsSamplingParameters && !openAIReasoningModel,
+    supportsTemperature: !rejectsSamplingParameters && !openAIReasoningModel && !gemini37Flash,
     maxOutputTokensField: providerId === "openai"
       ? "max_completion_tokens"
       : "max_tokens",

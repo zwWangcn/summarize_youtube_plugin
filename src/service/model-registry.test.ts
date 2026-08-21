@@ -12,18 +12,23 @@ describe("model request contracts", () => {
     expect(normalizeModelId("claude-opus-4-8-20250515")).toBe("claude-opus-4-8");
     expect(getModelForProvider("anthropic", "claude-sonnet-5-20250702")?.id)
       .toBe("claude-sonnet-5");
+    expect(getModelForProvider("openai", "gpt-5")?.id).toBe("gpt-5.6-sol");
+    expect(getModelForProvider("gemini", "gemini-2.5-flash")?.id)
+      .toBe("gemini-3.7-flash");
   });
 
   it("omits unsupported sampling parameters and selects provider-specific fields", () => {
     expect(getAIRequestProfile("anthropic", "claude-sonnet-5").supportsTemperature)
       .toBe(false);
-    expect(getAIRequestProfile("openai", "gpt-5").supportsTemperature).toBe(false);
-    expect(getAIRequestProfile("openai", "gpt-5")).toMatchObject({
+    expect(getAIRequestProfile("openai", "gpt-5.6-sol").supportsTemperature).toBe(false);
+    expect(getAIRequestProfile("openai", "gpt-5.6-sol")).toMatchObject({
       thinkingControl: "openai",
       instructionRole: "developer",
     });
-    expect(getAIRequestProfile("openai", "gpt-5").maxOutputTokensField)
+    expect(getAIRequestProfile("openai", "gpt-5.6-sol").maxOutputTokensField)
       .toBe("max_completion_tokens");
+    expect(getAIRequestProfile("gemini", "gemini-3.7-flash").supportsTemperature)
+      .toBe(false);
     expect(getAIRequestProfile("qwen", "qwen3.5-flash").thinkingControl)
       .toBe("qwen");
   });
