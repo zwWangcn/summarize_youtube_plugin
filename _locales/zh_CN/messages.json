@@ -20,7 +20,6 @@
   "textColorLabel": { "message": "文字颜色" },
   "subtitleBackgroundStyle": { "message": "背景框" },
   "backgroundOpacityLabel": { "message": "背景透明度" },
-  "backgroundPaddingLabel": { "message": "黑框留白" },
   "subtitleMaxWidthLabel": { "message": "字幕框最大宽度" },
   "aiSettingsTitle": { "message": "AI 模型" },
   "aiSettingsHint": { "message": "选择模型并保存对应服务商的 API Key。" },

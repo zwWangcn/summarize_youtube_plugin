@@ -20,7 +20,6 @@
   "textColorLabel": { "message": "文字色" },
   "subtitleBackgroundStyle": { "message": "背景ボックス" },
   "backgroundOpacityLabel": { "message": "背景の不透明度" },
-  "backgroundPaddingLabel": { "message": "ボックスの余白" },
   "subtitleMaxWidthLabel": { "message": "字幕の最大幅" },
   "aiSettingsTitle": { "message": "AI モデル" },
   "aiSettingsHint": { "message": "モデルを選択し、プロバイダーの API Key を保存します。" },

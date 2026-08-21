@@ -92,7 +92,6 @@ export class BilingualSubtitleOverlay {
         --vas-translation-color: #fff;
         --vas-caption-background: rgba(8, 8, 8, .76);
         --vas-caption-shadow: 0 2px 12px rgba(0, 0, 0, .22);
-        --vas-caption-padding: 7px 13px 8px;
         --vas-caption-max-width: 100%;
         font-family: Roboto, Arial, sans-serif;
       }
@@ -108,7 +107,7 @@ export class BilingualSubtitleOverlay {
       }
       .card {
         max-width: var(--vas-caption-max-width);
-        padding: var(--vas-caption-padding);
+        padding: 7px 13px 8px;
         border-radius: 7px;
         background: var(--vas-caption-background);
         color: #fff;
@@ -158,7 +157,7 @@ export class BilingualSubtitleOverlay {
       .hidden { display: none; }
       @media (max-width: 640px) {
         .wrap { bottom: max(56px, 10%); width: 96%; }
-        .card { padding: var(--vas-caption-padding); }
+        .card { padding: 5px 9px 6px; }
       }
     `;
     this.shadow.appendChild(style);
@@ -222,7 +221,6 @@ export class BilingualSubtitleOverlay {
     this.host.style.setProperty("--vas-translation-color", values.translationColor);
     this.host.style.setProperty("--vas-caption-background", container.background);
     this.host.style.setProperty("--vas-caption-shadow", container.boxShadow);
-    this.host.style.setProperty("--vas-caption-padding", container.padding);
     this.host.style.setProperty("--vas-caption-max-width", container.maxWidth);
   }
 

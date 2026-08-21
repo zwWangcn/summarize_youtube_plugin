@@ -20,7 +20,6 @@
   "textColorLabel": { "message": "Text color" },
   "subtitleBackgroundStyle": { "message": "Background box" },
   "backgroundOpacityLabel": { "message": "Background opacity" },
-  "backgroundPaddingLabel": { "message": "Box padding" },
   "subtitleMaxWidthLabel": { "message": "Maximum subtitle width" },
   "aiSettingsTitle": { "message": "AI models" },
   "aiSettingsHint": { "message": "Choose a model and save the API key for its provider." },

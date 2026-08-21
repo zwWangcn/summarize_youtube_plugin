@@ -8,7 +8,6 @@ export interface SubtitleStyleSettings {
   translationColor: string;
   backgroundColor: string;
   backgroundOpacity: number;
-  backgroundPaddingScale: number;
   maxWidth: number;
   bottomOffset: number;
 }
@@ -27,7 +26,6 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     translationColor: "#FFFFFF",
     backgroundColor: "#080808",
     backgroundOpacity: 76,
-    backgroundPaddingScale: 100,
     maxWidth: 100,
     bottomOffset: 11,
   },
@@ -39,7 +37,6 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     translationColor: "#FFFFFF",
     backgroundColor: "#000000",
     backgroundOpacity: 88,
-    backgroundPaddingScale: 115,
     maxWidth: 95,
     bottomOffset: 14,
   },
@@ -51,7 +48,6 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     translationColor: "#FFFFFF",
     backgroundColor: "#000000",
     backgroundOpacity: 35,
-    backgroundPaddingScale: 75,
     maxWidth: 85,
     bottomOffset: 11,
   },
@@ -71,7 +67,6 @@ export interface SubtitleTypographyCssValues {
 export interface SubtitleContainerCssValues {
   background: string;
   boxShadow: string;
-  padding: string;
   maxWidth: string;
 }
 
@@ -132,12 +127,6 @@ export function normalizeSubtitleStyle(value: unknown): SubtitleStyleSettings {
       0,
       95,
     ),
-    backgroundPaddingScale: normalizeInteger(
-      input.backgroundPaddingScale,
-      presetDefaults.backgroundPaddingScale,
-      50,
-      200,
-    ),
     maxWidth: normalizeInteger(input.maxWidth, presetDefaults.maxWidth, 40, 100),
     bottomOffset: normalizeInteger(
       input.bottomOffset,
@@ -175,15 +164,12 @@ export function getSubtitleContainerCssValues(value: unknown): SubtitleContainer
     Number.parseInt(style.backgroundColor.slice(3, 5), 16),
     Number.parseInt(style.backgroundColor.slice(5, 7), 16),
   ];
-  const factor = style.backgroundPaddingScale / 100;
-  const scaled = (size: number) => Number((size * factor).toFixed(2));
   const shadowOpacity = Number((style.backgroundOpacity / 100 * 0.29).toFixed(3));
   return {
     background: `rgba(${rgb.join(", ")}, ${style.backgroundOpacity / 100})`,
     boxShadow: shadowOpacity === 0
       ? "none"
       : `0 2px 12px rgba(0, 0, 0, ${shadowOpacity})`,
-    padding: `${scaled(7)}px ${scaled(13)}px ${scaled(8)}px`,
     maxWidth: `${style.maxWidth}%`,
   };
 }
