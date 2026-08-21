@@ -8,6 +8,8 @@ export interface SubtitleStyleSettings {
   translationColor: string;
   backgroundColor: string;
   backgroundOpacity: number;
+  backgroundPaddingScale: number;
+  maxWidth: number;
   bottomOffset: number;
 }
 
@@ -25,6 +27,8 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     translationColor: "#FFFFFF",
     backgroundColor: "#080808",
     backgroundOpacity: 76,
+    backgroundPaddingScale: 100,
+    maxWidth: 100,
     bottomOffset: 11,
   },
   cinema: {
@@ -35,6 +39,8 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     translationColor: "#FFFFFF",
     backgroundColor: "#000000",
     backgroundOpacity: 88,
+    backgroundPaddingScale: 115,
+    maxWidth: 95,
     bottomOffset: 14,
   },
   minimal: {
@@ -45,6 +51,8 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     translationColor: "#FFFFFF",
     backgroundColor: "#000000",
     backgroundOpacity: 35,
+    backgroundPaddingScale: 75,
+    maxWidth: 85,
     bottomOffset: 11,
   },
 };
@@ -58,6 +66,13 @@ export interface SubtitleTypographyCssValues {
   translationFontSize: string;
   sourceColor: string;
   translationColor: string;
+}
+
+export interface SubtitleContainerCssValues {
+  background: string;
+  boxShadow: string;
+  padding: string;
+  maxWidth: string;
 }
 
 const HEX_COLOR_PATTERN = /^#[0-9A-F]{6}$/i;
@@ -117,6 +132,13 @@ export function normalizeSubtitleStyle(value: unknown): SubtitleStyleSettings {
       0,
       95,
     ),
+    backgroundPaddingScale: normalizeInteger(
+      input.backgroundPaddingScale,
+      presetDefaults.backgroundPaddingScale,
+      50,
+      200,
+    ),
+    maxWidth: normalizeInteger(input.maxWidth, presetDefaults.maxWidth, 40, 100),
     bottomOffset: normalizeInteger(
       input.bottomOffset,
       presetDefaults.bottomOffset,
@@ -142,5 +164,26 @@ export function getSubtitleTypographyCssValues(
     translationFontSize: responsiveFontSize(style.translationFontScale, 17, 1.9, 28),
     sourceColor: style.sourceColor,
     translationColor: style.translationColor,
+  };
+}
+
+/** Convert background sizing and opacity into safe Shadow DOM CSS values. */
+export function getSubtitleContainerCssValues(value: unknown): SubtitleContainerCssValues {
+  const style = normalizeSubtitleStyle(value);
+  const rgb = [
+    Number.parseInt(style.backgroundColor.slice(1, 3), 16),
+    Number.parseInt(style.backgroundColor.slice(3, 5), 16),
+    Number.parseInt(style.backgroundColor.slice(5, 7), 16),
+  ];
+  const factor = style.backgroundPaddingScale / 100;
+  const scaled = (size: number) => Number((size * factor).toFixed(2));
+  const shadowOpacity = Number((style.backgroundOpacity / 100 * 0.29).toFixed(3));
+  return {
+    background: `rgba(${rgb.join(", ")}, ${style.backgroundOpacity / 100})`,
+    boxShadow: shadowOpacity === 0
+      ? "none"
+      : `0 2px 12px rgba(0, 0, 0, ${shadowOpacity})`,
+    padding: `${scaled(7)}px ${scaled(13)}px ${scaled(8)}px`,
+    maxWidth: `${style.maxWidth}%`,
   };
 }

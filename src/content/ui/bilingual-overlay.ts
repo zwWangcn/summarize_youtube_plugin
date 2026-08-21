@@ -1,4 +1,5 @@
 import {
+  getSubtitleContainerCssValues,
   getSubtitleTypographyCssValues,
   type SubtitleStyleSettings,
 } from "../../service/subtitle-style";
@@ -64,6 +65,10 @@ export class BilingualSubtitleOverlay {
         --vas-translation-font-size: clamp(17px, 1.9vw, 28px);
         --vas-source-color: #dbdbdb;
         --vas-translation-color: #fff;
+        --vas-caption-background: rgba(8, 8, 8, .76);
+        --vas-caption-shadow: 0 2px 12px rgba(0, 0, 0, .22);
+        --vas-caption-padding: 7px 13px 8px;
+        --vas-caption-max-width: 100%;
         font-family: Roboto, Arial, sans-serif;
       }
       .wrap {
@@ -77,14 +82,14 @@ export class BilingualSubtitleOverlay {
         pointer-events: none;
       }
       .card {
-        max-width: 100%;
-        padding: 7px 13px 8px;
+        max-width: var(--vas-caption-max-width);
+        padding: var(--vas-caption-padding);
         border-radius: 7px;
-        background: rgba(8, 8, 8, .76);
+        background: var(--vas-caption-background);
         color: #fff;
         text-align: center;
         text-shadow: 0 1px 2px rgba(0, 0, 0, .95);
-        box-shadow: 0 2px 12px rgba(0, 0, 0, .22);
+        box-shadow: var(--vas-caption-shadow);
         pointer-events: auto;
         cursor: text;
         user-select: text;
@@ -128,7 +133,7 @@ export class BilingualSubtitleOverlay {
       .hidden { display: none; }
       @media (max-width: 640px) {
         .wrap { bottom: max(56px, 10%); width: 96%; }
-        .card { padding: 5px 9px 6px; }
+        .card { padding: var(--vas-caption-padding); }
       }
     `;
     this.shadow.appendChild(style);
@@ -178,10 +183,15 @@ export class BilingualSubtitleOverlay {
 
   setStyle(settings: SubtitleStyleSettings): void {
     const values = getSubtitleTypographyCssValues(settings);
+    const container = getSubtitleContainerCssValues(settings);
     this.host.style.setProperty("--vas-source-font-size", values.sourceFontSize);
     this.host.style.setProperty("--vas-translation-font-size", values.translationFontSize);
     this.host.style.setProperty("--vas-source-color", values.sourceColor);
     this.host.style.setProperty("--vas-translation-color", values.translationColor);
+    this.host.style.setProperty("--vas-caption-background", container.background);
+    this.host.style.setProperty("--vas-caption-shadow", container.boxShadow);
+    this.host.style.setProperty("--vas-caption-padding", container.padding);
+    this.host.style.setProperty("--vas-caption-max-width", container.maxWidth);
   }
 
   setCue(cue: BilingualOverlayCue | null): void {

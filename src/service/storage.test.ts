@@ -90,6 +90,8 @@ describe("settings and API key storage", () => {
       translationColor: "#FFFFFF",
       backgroundColor: "#080808",
       backgroundOpacity: 76,
+      backgroundPaddingScale: 100,
+      maxWidth: 100,
       bottomOffset: 11,
     });
     expect(syncStore.subtitleStyle).toBeUndefined();
@@ -106,6 +108,8 @@ describe("settings and API key storage", () => {
         translationColor: "invalid",
         backgroundColor: "#000000",
         backgroundOpacity: 120,
+        backgroundPaddingScale: 250,
+        maxWidth: 20,
         bottomOffset: 20,
       },
     });
@@ -114,6 +118,8 @@ describe("settings and API key storage", () => {
       sourceColor: "#AABBCC",
       translationColor: "#FFFFFF",
       backgroundOpacity: 95,
+      backgroundPaddingScale: 200,
+      maxWidth: 40,
     });
     expect((await getSettings()).subtitleStyle).toEqual(syncStore.subtitleStyle);
   });

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SUBTITLE_STYLE,
   SUBTITLE_STYLE_PRESETS,
+  getSubtitleContainerCssValues,
   getSubtitleTypographyCssValues,
   normalizeSubtitleStyle,
 } from "./subtitle-style";
@@ -27,6 +28,8 @@ describe("subtitle style settings", () => {
       translationColor: "#123456",
       backgroundColor: "#101010",
       backgroundOpacity: 42,
+      backgroundPaddingScale: 100,
+      maxWidth: 100,
       bottomOffset: 20,
     })).toEqual({
       preset: "custom",
@@ -36,6 +39,8 @@ describe("subtitle style settings", () => {
       translationColor: "#123456",
       backgroundColor: "#101010",
       backgroundOpacity: 42,
+      backgroundPaddingScale: 100,
+      maxWidth: 100,
       bottomOffset: 20,
     });
   });
@@ -45,11 +50,15 @@ describe("subtitle style settings", () => {
       sourceFontScale: 60,
       translationFontScale: 200,
       backgroundOpacity: 42.6,
+      backgroundPaddingScale: 20,
+      maxWidth: 120,
       bottomOffset: 100,
     })).toMatchObject({
       sourceFontScale: 75,
       translationFontScale: 150,
       backgroundOpacity: 43,
+      backgroundPaddingScale: 50,
+      maxWidth: 100,
       bottomOffset: 35,
     });
   });
@@ -85,5 +94,24 @@ describe("subtitle style settings", () => {
       sourceColor: "#ABCDEF",
       translationColor: "#123456",
     });
+  });
+
+  it("converts background sizing and opacity into CSS values", () => {
+    expect(getSubtitleContainerCssValues({
+      preset: "custom",
+      backgroundColor: "#102030",
+      backgroundOpacity: 55,
+      backgroundPaddingScale: 125,
+      maxWidth: 70,
+    })).toEqual({
+      background: "rgba(16, 32, 48, 0.55)",
+      boxShadow: "0 2px 12px rgba(0, 0, 0, 0.16)",
+      padding: "8.75px 16.25px 10px",
+      maxWidth: "70%",
+    });
+  });
+
+  it("removes the background shadow at zero opacity", () => {
+    expect(getSubtitleContainerCssValues({ backgroundOpacity: 0 }).boxShadow).toBe("none");
   });
 });

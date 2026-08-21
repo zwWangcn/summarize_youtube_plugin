@@ -23,6 +23,7 @@ import { OUTPUT_LANGUAGES, getUiLocale, t } from "../utils/i18n";
 import { logI18nDebug } from "../utils/i18n-debug";
 import {
   DEFAULT_SUBTITLE_STYLE,
+  getSubtitleContainerCssValues,
   normalizeSubtitleStyle,
   type SubtitleStyleSettings,
 } from "../service/subtitle-style";
@@ -56,6 +57,13 @@ const sourceColorValue = document.getElementById("sourceColorValue") as HTMLSpan
 const translationColorValue = document.getElementById("translationColorValue") as HTMLSpanElement;
 const sourcePreview = document.getElementById("sourcePreview") as HTMLParagraphElement;
 const translationPreview = document.getElementById("translationPreview") as HTMLParagraphElement;
+const previewCaptionCard = document.querySelector(".preview-caption-card") as HTMLDivElement;
+const backgroundOpacityInput = document.getElementById("backgroundOpacity") as HTMLInputElement;
+const backgroundPaddingScaleInput = document.getElementById("backgroundPaddingScale") as HTMLInputElement;
+const subtitleMaxWidthInput = document.getElementById("subtitleMaxWidth") as HTMLInputElement;
+const backgroundOpacityValue = document.getElementById("backgroundOpacityValue") as HTMLOutputElement;
+const backgroundPaddingScaleValue = document.getElementById("backgroundPaddingScaleValue") as HTMLOutputElement;
+const subtitleMaxWidthValue = document.getElementById("subtitleMaxWidthValue") as HTMLOutputElement;
 
 // Model info card elements
 const infoParamSize = document.getElementById("infoParamSize") as HTMLSpanElement;
@@ -191,6 +199,17 @@ function renderSubtitleTypography(): void {
   translationPreview.style.fontSize = `${15 * subtitleStyle.translationFontScale / 100}px`;
   sourcePreview.style.color = subtitleStyle.sourceColor;
   translationPreview.style.color = subtitleStyle.translationColor;
+  backgroundOpacityInput.value = String(subtitleStyle.backgroundOpacity);
+  backgroundPaddingScaleInput.value = String(subtitleStyle.backgroundPaddingScale);
+  subtitleMaxWidthInput.value = String(subtitleStyle.maxWidth);
+  backgroundOpacityValue.value = `${subtitleStyle.backgroundOpacity}%`;
+  backgroundPaddingScaleValue.value = `${subtitleStyle.backgroundPaddingScale}%`;
+  subtitleMaxWidthValue.value = `${subtitleStyle.maxWidth}%`;
+  const container = getSubtitleContainerCssValues(subtitleStyle);
+  previewCaptionCard.style.background = container.background;
+  previewCaptionCard.style.boxShadow = container.boxShadow;
+  previewCaptionCard.style.padding = container.padding;
+  previewCaptionCard.style.maxWidth = container.maxWidth;
 }
 
 async function saveSubtitleStyle(): Promise<void> {
@@ -216,6 +235,9 @@ function updateSubtitleTypography(): void {
     translationFontScale: Number(translationFontScaleInput.value),
     sourceColor: sourceColorInput.value,
     translationColor: translationColorInput.value,
+    backgroundOpacity: Number(backgroundOpacityInput.value),
+    backgroundPaddingScale: Number(backgroundPaddingScaleInput.value),
+    maxWidth: Number(subtitleMaxWidthInput.value),
   });
   renderSubtitleTypography();
   if (subtitleStyleSaveTimer) clearTimeout(subtitleStyleSaveTimer);
@@ -297,6 +319,9 @@ for (const input of [
   translationFontScaleInput,
   sourceColorInput,
   translationColorInput,
+  backgroundOpacityInput,
+  backgroundPaddingScaleInput,
+  subtitleMaxWidthInput,
 ]) {
   input.addEventListener("input", updateSubtitleTypography);
   input.addEventListener("change", () => void saveSubtitleStyle());
