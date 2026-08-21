@@ -7,6 +7,8 @@ export type TranscriptSplitReason =
   | "terminal-punctuation"
   | "long-pause"
   | "sentence-boundary-model"
+  | "clause-boundary"
+  | "sound-label"
   | "weak-punctuation"
   | "speaker-change"
   | "forced-best-candidate"

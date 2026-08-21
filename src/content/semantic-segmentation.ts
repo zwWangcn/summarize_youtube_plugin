@@ -11,9 +11,11 @@ import {
 
 const STRONG_PAUSE_SECONDS = 0.6;
 const MEDIUM_PAUSE_SECONDS = 0.25;
-const PREFERRED_SEGMENT_WIDTH = 120;
-const PREFERRED_SEGMENT_SECONDS = 14;
-const MIN_SEGMENT_WIDTH = 10;
+const PREFERRED_SEGMENT_WIDTH = 110;
+const PREFERRED_SEGMENT_SECONDS = 10;
+const HARD_SEGMENT_WIDTH = 200;
+const HARD_SEGMENT_SECONDS = 18;
+const MIN_SEGMENT_WIDTH = 24;
 const MIN_SEGMENT_SECONDS = 0.8;
 const CUT_COST = 2.5;
 const MAX_PREDECESSORS = 140;
@@ -31,13 +33,29 @@ const COMMON_ABBREVIATIONS = new Set([
 ]);
 const ENGLISH_FORBIDDEN_WORDS = new Set([
   "a", "about", "across", "after", "among", "an", "and", "around", "as", "at",
-  "because", "before", "between", "but", "by", "during", "for", "from", "if", "in",
-  "into", "nor", "of", "on", "onto", "or", "over", "so", "than", "that", "the",
-  "through", "to", "under", "when", "which", "while", "who", "with", "within",
-  "without", "yet",
+  "because", "before", "between", "but", "by", "during", "every", "for", "from", "he", "i",
+  "if", "in", "into", "it", "nor", "of", "on", "onto", "or", "over", "she", "so", "some",
+  "than", "that", "the", "these", "they", "this", "those", "through", "to", "under", "we",
+  "when", "which", "while", "who", "with", "within", "without", "yet", "you",
 ]);
 const CJK_FORBIDDEN_END_RE = /(?:[的地得把被给和与及或而但因若在向从于对将]|から|まで|より|ので|のに|なら|そして|しかし|また|は|が|を|に|へ|と|で|の|も|て)$/u;
 const KOREAN_FORBIDDEN_END_RE = /(?:은|는|이|가|을|를|에|에서|와|과|의|로|으로|그리고|하지만)$/u;
+const ENGLISH_AUXILIARY_ENDINGS = new Set([
+  "am", "are", "be", "been", "being", "can", "could", "did", "do", "does",
+  "had", "has", "have", "is", "may", "might", "must", "shall", "should",
+  "was", "were", "will", "would",
+]);
+const ENGLISH_GERUND_COMPLEMENT_VERBS = new Set([
+  "avoid", "begin", "consider", "continue", "finish", "keep", "start", "stop",
+]);
+const ENGLISH_RELATIVE_HEADS = new Set(["place", "reason", "thing", "things", "time", "way"]);
+const ENGLISH_CLAUSE_START_RE = /^(?:(?:although|because|but|if|so|then|though|unless|when|whereas|while|who|which)\b|(?:i|you|he|she|it|we|they|this|that|there|here)(?:['’](?:d|ll|m|re|s|ve)|\s+(?:am|are|can|could|did|do|does|had|has|have|is|may|might|must|shall|should|was|were|will|would)\b))/iu;
+const SOUND_LABEL_PATTERN = "\\[(?:music(?:\\s+playing)?|applause|laughter|laughing|cheering|booing|音乐|音樂|掌声|笑声|笑聲|音楽|拍手|笑い|음악|박수|웃음)\\]";
+const SOUND_LABEL_RE = new RegExp(SOUND_LABEL_PATTERN, "giu");
+const SOUND_LABEL_ONLY_RE = new RegExp(
+  `^\\s*(?:${SOUND_LABEL_PATTERN})(?:\\s*(?:${SOUND_LABEL_PATTERN}))*\\s*$`,
+  "iu",
+);
 
 interface SourceCue extends TranscriptSegment {
   sourceStartId: number;
@@ -53,8 +71,12 @@ interface CandidateSignals {
   weakPunctuation: boolean;
   pauseSeconds: number;
   speakerChange: boolean;
+  clauseBoundary: boolean;
+  awkwardBoundary: boolean;
+  soundLabelBoundary: boolean;
   forbiddenEnding: boolean;
-  unclosedDelimiter: boolean;
+  insideQuote: boolean;
+  insideStructuralDelimiter: boolean;
   fallbackBoundary: boolean;
 }
 
@@ -73,6 +95,7 @@ interface CandidateSeed {
   offset: number;
   modelSource?: SentenceBoundaryHint["source"];
   fallbackBoundary?: boolean;
+  soundLabelBoundary?: boolean;
 }
 
 function normalizedText(text: string): string {
@@ -161,7 +184,19 @@ function addSeed(seeds: Map<number, CandidateSeed>, text: string, seed: Candidat
       ? "sentencex"
       : existing?.modelSource ?? seed.modelSource,
     fallbackBoundary: existing?.fallbackBoundary || seed.fallbackBoundary,
+    soundLabelBoundary: existing?.soundLabelBoundary || seed.soundLabelBoundary,
   });
+}
+
+function soundLabelSeeds(text: string, seeds: Map<number, CandidateSeed>): void {
+  for (const match of text.matchAll(SOUND_LABEL_RE)) {
+    const start = match.index ?? 0;
+    addSeed(seeds, text, { offset: start, soundLabelBoundary: true });
+    addSeed(seeds, text, {
+      offset: start + match[0].length,
+      soundLabelBoundary: true,
+    });
+  }
 }
 
 function punctuationSeeds(text: string, seeds: Map<number, CandidateSeed>): void {
@@ -282,14 +317,60 @@ function looksLikeAbbreviation(textBefore: string): boolean {
     /^(?:[A-Z]\.)+[A-Z]$/u.test(token);
 }
 
-function delimiterStateAtOffsets(text: string, offsets: number[]): Map<number, boolean> {
-  const result = new Map<number, boolean>();
+function edgeWord(text: string, fromEnd: boolean): string {
+  const match = fromEnd
+    ? text.trimEnd().match(/[\p{L}\p{N}'’]+$/u)
+    : text.trimStart().match(/^[\p{L}\p{N}'’]+/u);
+  return match?.[0].toLowerCase() ?? "";
+}
+
+function looksLikeClauseBoundary(
+  textBefore: string,
+  textAfter: string,
+  languageCode: string,
+): boolean {
+  if (languageCode.toLowerCase().split(/[-_]/u)[0] !== "en") return false;
+  const after = textAfter.trimStart();
+  if (ENGLISH_CLAUSE_START_RE.test(after)) return true;
+  return WEAK_PUNCTUATION_RE.test(textBefore) && /^(?:a|an|the|this|that|these|those)\b/iu.test(after);
+}
+
+function looksLikeAwkwardBoundary(
+  textBefore: string,
+  textAfter: string,
+  languageCode: string,
+): boolean {
+  if (hasForbiddenEnding(textBefore, languageCode)) return true;
+  if (languageCode.toLowerCase().split(/[-_]/u)[0] !== "en") return false;
+  const leftWord = edgeWord(textBefore.replace(/[,;:]+$/u, ""), true);
+  const rightWord = edgeWord(textAfter, false);
+  if (!leftWord || !rightWord) return false;
+  if (ENGLISH_AUXILIARY_ENDINGS.has(leftWord) || /(?:n't|['’](?:d|ll|m|re|s|ve))$/iu.test(leftWord)) {
+    return true;
+  }
+  if (/^(?:a|an|every|some|the|this|that|these|those)$/iu.test(rightWord) && /(?:ed|ing)$/iu.test(leftWord)) {
+    return true;
+  }
+  if (ENGLISH_RELATIVE_HEADS.has(leftWord) && /^(?:he|i|it|she|they|we|you)$/iu.test(rightWord)) {
+    return true;
+  }
+  return ENGLISH_GERUND_COMPLEMENT_VERBS.has(leftWord) && /ing$/iu.test(rightWord);
+}
+
+interface DelimiterState {
+  insideQuote: boolean;
+  insideStructuralDelimiter: boolean;
+}
+
+function delimiterStateAtOffsets(text: string, offsets: number[]): Map<number, DelimiterState> {
+  const result = new Map<number, DelimiterState>();
   const stack: string[] = [];
   const matching: Record<string, string> = {
     ")": "(", "]": "[", "}": "{", "）": "（", "】": "【", "」": "「",
     "』": "『", "”": "“", "’": "‘",
   };
   const opening = new Set(Object.values(matching));
+  const quoteOpenings = new Set(["“", "‘"]);
   let asciiDoubleQuoteOpen = false;
   let cursor = 0;
 
@@ -307,7 +388,10 @@ function delimiterStateAtOffsets(text: string, offsets: number[]): Map<number, b
       }
       cursor += char.length;
     }
-    result.set(offset, stack.length > 0 || asciiDoubleQuoteOpen);
+    result.set(offset, {
+      insideQuote: asciiDoubleQuoteOpen || stack.some((char) => quoteOpenings.has(char)),
+      insideStructuralDelimiter: stack.some((char) => !quoteOpenings.has(char)),
+    });
   }
   return result;
 }
@@ -316,6 +400,7 @@ function candidateScore(signals: CandidateSignals): number {
   const hasStrongSignal = signals.terminalPunctuation ||
     signals.pauseSeconds >= STRONG_PAUSE_SECONDS ||
     signals.modelSource === "sentencex" ||
+    signals.soundLabelBoundary ||
     signals.speakerChange;
   let score = hasStrongSignal ? 0 : -CUT_COST;
   if (signals.terminalPunctuation) score += 5;
@@ -325,16 +410,24 @@ function candidateScore(signals: CandidateSignals): number {
   else if (signals.modelSource === "intl-segmenter") score += 1;
   if (signals.weakPunctuation) score += 1;
   if (signals.speakerChange) score += 5;
+  if (signals.soundLabelBoundary) score += 10;
+  if (signals.clauseBoundary) score += 0.5;
   if (signals.forbiddenEnding && !signals.terminalPunctuation) score -= 5;
-  if (signals.unclosedDelimiter) score -= 2;
+  if (signals.awkwardBoundary && !signals.terminalPunctuation && !signals.soundLabelBoundary) {
+    score -= 8;
+  }
+  if (signals.insideQuote && !signals.terminalPunctuation && !signals.soundLabelBoundary) score -= 3;
+  if (signals.insideStructuralDelimiter && !signals.soundLabelBoundary) score -= 8;
   return score;
 }
 
 function candidateReason(signals: CandidateSignals): TranscriptSplitReason {
+  if (signals.soundLabelBoundary) return "sound-label";
   if (signals.speakerChange) return "speaker-change";
   if (signals.terminalPunctuation) return "terminal-punctuation";
   if (signals.pauseSeconds >= STRONG_PAUSE_SECONDS) return "long-pause";
   if (signals.modelSource) return "sentence-boundary-model";
+  if (signals.clauseBoundary) return "clause-boundary";
   if (signals.weakPunctuation) return "weak-punctuation";
   return "forced-best-candidate";
 }
@@ -353,6 +446,7 @@ function buildCandidates(
     addSeed(seeds, text, { offset: cues[index].textStart, fallbackBoundary: true });
   }
   punctuationSeeds(text, seeds);
+  soundLabelSeeds(text, seeds);
   fallbackWordSeeds(text, seeds);
 
   const offsets = [...seeds.keys()].sort((a, b) => a - b);
@@ -368,8 +462,12 @@ function buildCandidates(
       weakPunctuation: false,
       pauseSeconds: 0,
       speakerChange: false,
+      clauseBoundary: false,
+      awkwardBoundary: false,
+      soundLabelBoundary: false,
       forbiddenEnding: false,
-      unclosedDelimiter: false,
+      insideQuote: false,
+      insideStructuralDelimiter: false,
       fallbackBoundary: false,
     },
     score: 0,
@@ -381,6 +479,10 @@ function buildCandidates(
     const timing = boundaryTiming(cues, offset);
     const textBefore = text.slice(Math.max(0, offset - 80), offset).trimEnd();
     const textAfter = text.slice(offset).trimStart();
+    const delimiterState = delimiterStates.get(offset) ?? {
+      insideQuote: false,
+      insideStructuralDelimiter: false,
+    };
     const terminalPunctuation = TERMINAL_PUNCTUATION_RE.test(textBefore);
     const ambiguousPeriod = terminalPunctuation && AMBIGUOUS_PERIOD_RE.test(textBefore);
     const pauseSeconds = timing.leftCueIndex !== timing.rightCueIndex
@@ -392,8 +494,11 @@ function buildCandidates(
       weakPunctuation: WEAK_PUNCTUATION_RE.test(textBefore),
       pauseSeconds,
       speakerChange: timing.leftCueIndex !== timing.rightCueIndex && SPEAKER_MARKER_RE.test(textAfter),
+      clauseBoundary: looksLikeClauseBoundary(textBefore, textAfter, languageCode),
+      awkwardBoundary: looksLikeAwkwardBoundary(textBefore, textAfter, languageCode),
+      soundLabelBoundary: seed.soundLabelBoundary ?? false,
       forbiddenEnding: hasForbiddenEnding(textBefore, languageCode),
-      unclosedDelimiter: delimiterStates.get(offset) ?? false,
+      ...delimiterState,
       fallbackBoundary: seed.fallbackBoundary ?? false,
     };
     let score = candidateScore(signals);
@@ -404,14 +509,6 @@ function buildCandidates(
       signals.modelSource !== "sentencex" &&
       looksLikeAbbreviation(textBefore)
     ) score -= 6;
-    // Function words are continuations, not emergency length boundaries. If every
-    // nearby option is forbidden, the global path keeps the longer semantic unit.
-    if (signals.forbiddenEnding && !signals.terminalPunctuation && !signals.speakerChange) {
-      score = Number.NEGATIVE_INFINITY;
-    }
-    if (signals.unclosedDelimiter && !signals.speakerChange) {
-      score = Number.NEGATIVE_INFINITY;
-    }
     candidates.push({
       offset,
       ...timing,
@@ -433,8 +530,12 @@ function buildCandidates(
       weakPunctuation: false,
       pauseSeconds: 0,
       speakerChange: false,
+      clauseBoundary: false,
+      awkwardBoundary: false,
+      soundLabelBoundary: false,
       forbiddenEnding: false,
-      unclosedDelimiter: false,
+      insideQuote: false,
+      insideStructuralDelimiter: false,
       fallbackBoundary: false,
     },
     score: 0,
@@ -450,6 +551,9 @@ function segmentPenalty(
 ): number {
   const width = widthPrefix[right.offset] - widthPrefix[left.offset];
   const duration = Math.max(0, right.leftEnd - left.rightStart);
+  if (width > HARD_SEGMENT_WIDTH || duration > HARD_SEGMENT_SECONDS) {
+    return Number.POSITIVE_INFINITY;
+  }
   const shortPenaltyFactor = left.score > 0 || right.score > 0 ? 0.5 : 1;
   let penalty = 0;
 
@@ -542,7 +646,7 @@ export async function segmentTranscriptSemantically(
     const left = candidates[path[index - 1]];
     const right = candidates[path[index]];
     const segmentText = normalizedText(text.slice(left.offset, right.offset));
-    if (!segmentText) continue;
+    if (!segmentText || SOUND_LABEL_ONLY_RE.test(segmentText)) continue;
     const firstCue = cues[left.rightCueIndex];
     const lastCue = cues[right.leftCueIndex];
     segments.push({

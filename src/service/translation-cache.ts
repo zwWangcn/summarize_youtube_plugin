@@ -35,7 +35,7 @@ const STORAGE_PREFIX = "vas-translation-section:";
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 // Increment whenever local cue construction or cue-to-translation alignment changes.
-const PIPELINE_VERSION = 8;
+const PIPELINE_VERSION = 9;
 
 function identityKey(identity: TranslationCacheIdentity): string {
   return [

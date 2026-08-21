@@ -61,7 +61,7 @@ describe("section translation cache", () => {
       targetEnd: 2,
       segments: [translated(0, 0, 3, "第一段")],
     });
-    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(8);
+    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(9);
     await setCachedTranslationSection(identity, {
       chunkId: 2,
       targetStart: 5,
