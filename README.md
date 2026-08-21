@@ -1,8 +1,8 @@
-# 🤖 视频 AI 总结 — Chrome 扩展
+# 🤖 YouTube AI 总结与翻译 — Chrome 扩展
 
 > 🌐 简体中文 | [English](README.en.md)
 
-AI 驱动的 YouTube 视频总结工具。一键提取字幕并流式生成结构化总结，支持 8 家 AI 供应商、20+ 模型自由切换。
+一款面向 YouTube 的 AI 总结与字幕翻译工具。可流式生成结构化总结、阅读或翻译完整字幕，并在播放器中显示同步双语字幕；支持 8 家 AI 供应商、20+ 模型自由切换。
 
 ## 功能
 
@@ -49,7 +49,7 @@ AI 驱动的 YouTube 视频总结工具。一键提取字幕并流式生成结�
 
 ### 界面与输出语言
 
-manifest、Popup 和 YouTube 面板使用 Chrome 原生 i18n，界面随 Chrome 显示简体中文、繁體中文、日本語、한국어或 English；其他 Chrome 界面语言默认显示英语。Popup 中的 **YouTube 输出语言** 是独立设置：首次按 Chrome 语言初始化，之后固定为用户选择。输出当前支持简体中文、繁體中文、English、日本語、한국어、Español、Français 和 Deutsch。
+manifest、Popup 和 YouTube 面板使用 Chrome 原生 i18n，界面随 Chrome 显示简体中文、繁體中文、日本語、한국어或 English；其他 Chrome 界面语言默认显示英语。Popup 中的 **总结与翻译语言** 同时控制 AI 总结和字幕译文：首次按 Chrome 语言初始化，之后固定为用户选择。当前支持简体中文、繁體中文、English、日本語、한국어、Español、Français 和 Deutsch。
 
 ### SPA 导航感知
 
@@ -96,12 +96,12 @@ npm run build
    - [通义千问](https://bailian.console.aliyun.com/#/api-key)
    - [智谱 GLM](https://open.bigmodel.cn/usercenter/apikeys)
    - [xAI Grok](https://console.x.ai)
-2. 点击扩展图标 → 选供应商、模型和 YouTube 输出语言 → 填 API Key → 保存
+2. 点击扩展图标 → 选供应商、模型和总结与翻译语言 → 填 API Key → 保存
 
-### 总结视频
+### 总结与翻译视频
 
 1. 打开 YouTube 视频页
-2. 点击标题旁的 **🤖 AI 总结** 按钮
+2. 点击播放器右上角的 **AI 总结与翻译** 按钮
 3. 面板从右侧滑入，点击 **AI 总结** 流式生成
 4. 点击 **字幕原文** 查看原始字幕（可点时间戳跳转）
 5. 字幕语言与目标语言不同时，可点击 **翻译本段** 或 **翻译全文**，并用 **原文 / 译文** 切换查看

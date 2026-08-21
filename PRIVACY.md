@@ -6,7 +6,7 @@ Last updated / 最后更新：2026-08-02
 
 ### 概述
 
-“视频 AI 总结”是一款在 YouTube 页面提取字幕，并使用用户主动选择的第三方 AI 服务生成总结或字幕翻译的 Chrome 扩展。扩展不运营用于接收 API Key、视频字幕或 AI 输出的开发者服务器，也不出售用户数据。
+“YouTube AI 总结与翻译”是一款在 YouTube 页面提取字幕，并使用用户主动选择的第三方 AI 服务生成总结或字幕翻译的 Chrome 扩展。扩展不运营用于接收 API Key、视频字幕或 AI 输出的开发者服务器，也不出售用户数据。
 
 ### 扩展处理的数据
 
@@ -50,7 +50,7 @@ Last updated / 最后更新：2026-08-02
 
 ### Overview
 
-Video AI Summarizer extracts captions from YouTube pages and uses a third-party AI provider selected by the user to create summaries or caption translations. The extension does not operate a developer-controlled server that receives API keys, video transcripts, or AI output, and it does not sell user data.
+YouTube AI Summary & Translation extracts captions from YouTube pages and uses a third-party AI provider selected by the user to create summaries or caption translations. The extension does not operate a developer-controlled server that receives API keys, video transcripts, or AI output, and it does not sell user data.
 
 ### Data handled by the extension
 

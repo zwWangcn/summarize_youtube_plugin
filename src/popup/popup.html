@@ -3,15 +3,15 @@
 <head>
   <meta charset="UTF-8" />
   <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-  <title data-i18n="extensionName">视频 AI 总结</title>
+  <title data-i18n="extensionName">YouTube AI 总结与翻译</title>
   <link rel="stylesheet" href="./popup.css" />
 </head>
 <body>
   <div class="container">
     <header class="header">
       <img class="brand-icon" src="/assets/icons/icon48.png" width="40" height="40" alt="" />
-      <h1 data-i18n="extensionName">视频 AI 总结</h1>
-      <p class="subtitle" data-i18n="popupSubtitle">YouTube 视频内容一键总结</p>
+      <h1 data-i18n="extensionName">YouTube AI 总结与翻译</h1>
+      <p class="subtitle" data-i18n="popupSubtitle">一键总结视频，翻译字幕</p>
     </header>
 
     <main class="main">
@@ -31,8 +31,9 @@
 
       <!-- Output language -->
       <section class="section">
-        <label class="label" for="outputLanguage" data-i18n="outputLanguageLabel">YouTube 输出语言</label>
+        <label class="label" for="outputLanguage" data-i18n="outputLanguageLabel">总结与翻译语言</label>
         <select id="outputLanguage" class="input"></select>
+        <p class="hint" data-i18n="outputLanguageHint">同时用于 AI 总结和字幕译文</p>
       </section>
 
       <section class="section setting-toggle-row">
@@ -107,7 +108,7 @@
     </main>
 
     <footer class="footer">
-      <p data-i18n="popupFooter">打开 YouTube 视频页面，点击“AI 总结”按钮即可使用</p>
+      <p data-i18n="popupFooter">打开 YouTube 视频，在播放器中点击“AI 总结与翻译”即可使用</p>
     </footer>
   </div>
 

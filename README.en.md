@@ -1,8 +1,8 @@
-# 🤖 Video AI Summarizer — Chrome Extension
+# 🤖 YouTube AI Summary & Translation — Chrome Extension
 
 > 🌐 [简体中文](README.md) | English
 
-An AI-powered summarizer for YouTube videos. Extract captions with one click and stream structured summaries, with 8 AI providers and 20+ models to switch between.
+An AI summary and caption-translation companion for YouTube. Stream structured summaries, read or translate full captions, and watch with synchronized bilingual subtitles using 8 AI providers and 20+ models.
 
 ## Features
 
@@ -49,7 +49,7 @@ Surrounding cues are still supplied as read-only context for terminology and inc
 
 ### UI and Output Language
 
-The manifest, popup, and YouTube panel use Chrome's native i18n system and follow Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. Other Chrome UI languages fall back to English. **YouTube output language** is a separate popup setting: it is initialized from Chrome once, then remains fixed until the user changes it. Supported output languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German.
+The manifest, popup, and YouTube panel use Chrome's native i18n system and follow Chrome in Simplified Chinese, Traditional Chinese, Japanese, Korean, or English. Other Chrome UI languages fall back to English. The popup's **Summary and translation language** controls both AI summaries and caption translations: it is initialized from Chrome once, then remains fixed until the user changes it. Supported languages are Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German.
 
 ### SPA Navigation Awareness
 
@@ -96,12 +96,12 @@ Dev hot-reload: `npm run dev`
    - [Tongyi Qwen](https://bailian.console.aliyun.com/#/api-key)
    - [Zhipu GLM](https://open.bigmodel.cn/usercenter/apikeys)
    - [xAI Grok](https://console.x.ai)
-2. Click the extension icon → pick a provider, model, and YouTube output language → enter the API key → save
+2. Click the extension icon → pick a provider, model, and summary and translation language → enter the API key → save
 
-### Summarize a Video
+### Summarize and Translate a Video
 
 1. Open a YouTube video page
-2. Click the **🤖 AI Summary** button next to the title
+2. Click **AI Summary & Translation** in the upper-right corner of the player
 3. The panel slides in from the right; click **AI Summary** to stream
 4. Click **Raw Captions** to view the original captions (click timestamps to seek)
 5. When the caption language differs from the output language, use **Translate Section** or **Translate All** inside the captions view

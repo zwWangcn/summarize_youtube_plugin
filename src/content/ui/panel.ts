@@ -190,7 +190,7 @@ export class Panel {
       transition: "opacity 0.3s ease, background 0.2s",
     });
 
-    btn.innerHTML = `${bilingualSubtitlesIconMarkup(16, "vas-trigger-icon")}<span>${t("aiSummary")}</span>`;
+    btn.innerHTML = `${bilingualSubtitlesIconMarkup(16, "vas-trigger-icon")}<span>${t("openAiTools")}</span>`;
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "rgba(0, 0, 0, 0.8)";
     });
