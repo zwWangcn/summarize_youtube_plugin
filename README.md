@@ -1,93 +1,64 @@
-# 🤖 YouTube AI 总结与翻译 — Chrome 扩展
+# YouTube AI 总结与翻译
 
-> 🌐 简体中文 | [English](README.en.md)
+> 简体中文 | [English](README.en.md)
 
-一款面向 YouTube 的 AI 总结与字幕翻译工具。可流式生成结构化总结、阅读或翻译完整字幕，并在播放器中显示同步双语字幕；支持 8 家 AI 供应商、20+ 模型自由切换。
+一款用于 YouTube 的 Chrome 扩展。它可以使用你自己的 AI API Key 总结视频内容、阅读和翻译字幕，并在播放器中显示同步双语字幕。
 
-## 功能
+## 主要功能
 
-- **多模型自由切换** — DeepSeek / OpenAI / Claude / Gemini / Kimi / Qwen / GLM / Grok，20+ 模型 Popup 一键切换
-- **一键 AI 总结** — 流式生成结构化 Markdown 总结
-- **多语言输出** — 总结和字幕翻译支持简中、繁中、英、日、韩、西、法、德 8 种语言
-- **界面 i18n** — 扩展界面随 Chrome 使用简中、繁中、日语、韩语或英语，其他语言回退到英语
-- **字幕原文查看** — 支持点击时间戳跳转
-- **播放器双语字幕** — 原文与译文严格按本地时间轴对齐，支持直接框选复制、全屏和影院模式
-- **字幕分段翻译** — 播放器自动预译当前 60 秒，面板也可按段或断点续译全文
-- **网络失败恢复** — API 网络错误会自动退避重试；全部失败后可直接在播放器字幕层重试当前窗口
-- **实时流式渲染** — token 级逐字输出
-- **SPA 导航感知** — 自动检测视频切换
-- **多语言字幕** — 智能选择最佳语言（ja > en > zh）
-- **语言隔离缓存** — 不同输出语言独立缓存，7 天 TTL，LRU 淘汰
+### AI 视频总结
 
-## 实现原理
+- 一键生成结构化的视频内容总结
+- 生成过程实时显示，无需等待全部完成
+- 支持简体中文、繁体中文、英语、日语、韩语、西班牙语、法语和德语
+- 同一视频的总结会保存在本地，方便再次查看
 
-### 多模型 AI 架构
+### 字幕阅读与翻译
 
-通过 Provider Adapter 模式统一三种异构 API 格式，上层调用一致：
+- 在侧边面板中查看视频完整字幕
+- 点击字幕时间戳可直接跳转到对应播放位置
+- 支持按段翻译，也可以从当前进度继续翻译全文
+- 原文和译文可随时切换
 
-| API 格式 | 供应商 | 请求 | 认证 |
-|---|---|---|---|
-| `openai-compat` | OpenAI / DeepSeek / Kimi / Qwen / GLM / Grok | POST `/v1/chat/completions` | `Authorization: Bearer` |
-| `anthropic-messages` | Claude | POST `/v1/messages` | `x-api-key` |
-| `gemini` | Gemini | POST `/models/{model}:streamGenerateContent` | URL `key` 参数 |
+### 播放器双语字幕
 
-适配器将各供应商流式响应统一为 `StreamChunk { token?, finishReason? }`。添加新供应商只需在 `src/service/model-registry.ts` 的 `PROVIDERS` 数组追加配置；若是新 API 格式，则先实现 `ProviderAdapter` 接口（`src/service/ai/types.ts`）。
+- 在 YouTube 播放器内同时显示原文和译文
+- 字幕跟随视频时间同步，支持全屏和影院模式
+- 字幕文字可以直接框选和复制
+- 自动预先翻译即将播放的内容，拖动进度条后会从新位置继续
+- 学习模式下，只有鼠标移到字幕上时才显示译文
 
-### 字幕提取
+### 多家 AI 服务可选
 
-三条路径按优先级依次尝试：
+支持 DeepSeek、OpenAI、Anthropic Claude、Google Gemini、Moonshot Kimi、通义千问 Qwen、智谱 GLM 和 xAI Grok，并可在扩展设置中切换模型。
 
-1. **Interceptor 缓存**（3s 超时）— Service Worker 在 MAIN world patch `fetch`/`XHR`，拦截播放器的 timedtext 请求（带 POT 签名）并缓存，通过 DOM `CustomEvent` 跨 isolated-world 边界传回。
-2. **InnerTube ANDROID** — 以 ANDROID 客户端上下文 POST `youtubei/v1/player`，绕过 WEB 的 POT 限制，完全静默。
-3. **直接 fetch** — 从 `ytInitialPlayerResponse` 提取字幕 URL 直接请求，兜底。
+你只需要配置其中一家服务商的 API Key。调用产生的费用由对应服务商按照其规则收取。
 
-### 字幕翻译与修正
+## 安装
 
-翻译功能同时用于播放器双语字幕和「字幕原文」阅读器。扩展先在本地识别 YouTube 单条字幕内部的句末；优先用 JSON3 逐词时间确定新句起点，缺少逐词时间时才按文本长度插值，再跨相邻字幕合并同一句的连续片段。完整句、明显停顿、换行、说话人标记和显示长度上限会形成边界。AI 必须为每个 cue ID 返回恰好一条译文，不能合并、拆分或改写时间戳。
+目前需要以“加载已解压的扩展程序”的方式安装。
 
-处理时仍会提供前后文帮助理解术语和残句，但上下文内容不能移动进当前 cue。播放器从当前位置开始预译后续约 60 秒，缓存不足 15 秒时继续预取；跳转到窗口外会优先翻译新位置。译文按目标语言独立缓存 7 天，播放器和面板共用结果。播放器字幕按视频帧的媒体时间同步；字幕层中的文字可直接拖选复制，选中时会暂停 DOM 更新。源字幕已经属于目标语言时不会调用翻译 AI。
+### 1. 构建扩展
 
-### 界面与输出语言
-
-manifest、Popup 和 YouTube 面板使用 Chrome 原生 i18n，界面随 Chrome 显示简体中文、繁體中文、日本語、한국어或 English；其他 Chrome 界面语言默认显示英语。Popup 中的 **总结与翻译语言** 同时控制 AI 总结和字幕译文：首次按 Chrome 语言初始化，之后固定为用户选择。当前支持简体中文、繁體中文、English、日本語、한국어、Español、Français 和 Deutsch。
-
-### SPA 导航感知
-
-通过三路拦截感知 YouTube SPA 导航：`MutationObserver` 监听 `<title>`、重写 `history.pushState`/`replaceState`、`popstate` 事件。切换视频时销毁旧面板，800ms 后重新注入，并有 1s/3s/6s 恢复检查应对 skeleton → real DOM 切换。
-
-### Shadow DOM 隔离
-
-面板以 Shadow DOM 注入 `<body>`（`position: fixed`），样式与页面完全隔离，暗色主题跨页一致。
-
-### AI 流式调用
-
-`fetch` + `ReadableStream` 逐行解析 SSE → `adapter.parseStreamChunk()` 统一提取 token → `AsyncGenerator` 逐个 yield。
-
-- 内容过滤信号统一映射为 `ContentFilteredError`
-- 使用英文模块化 system prompt 拼接受控的目标语言约束
-- 仅对 5xx 与网络错误重试（最多 2 次，指数退避），4xx 不重试
-- API Key 仅存于当前设备的 `chrome.storage.local`；调用时只直接发送给用户选择的 AI 服务商，不经过开发者服务器
-
-### 总结缓存
-
-`chrome.storage.local`，7 天 TTL，最多 50 条。总结按最近访问淘汰，字幕译文按最近更新淘汰；每条总结和每个翻译分段使用独立 storage key，避免多标签页并发覆盖。两类缓存都把目标语言纳入身份，不会跨语言复用。
-
-## 使用方法
-
-### 安装
+请先安装 Node.js，然后在项目目录运行：
 
 ```bash
 npm install
 npm run build
 ```
 
-打开 `chrome://extensions` → 开启「开发者模式」→「加载已解压的扩展程序」→ 选择 `dist/` 目录。
+构建完成后，项目中会生成 `dist` 目录。
 
-开发热更新：`npm run dev`
+### 2. 加载到 Chrome
 
-### 配置
+1. 在 Chrome 地址栏打开 `chrome://extensions`
+2. 开启右上角的“开发者模式”
+3. 点击“加载已解压的扩展程序”
+4. 选择刚刚生成的 `dist` 目录
 
-1. 获取 API Key（任选一个供应商）：
+## 配置
+
+1. 从任意一家受支持的服务商获取 API Key：
    - [DeepSeek](https://platform.deepseek.com/api_keys)
    - [OpenAI](https://platform.openai.com/api-keys)
    - [Anthropic](https://console.anthropic.com/keys)
@@ -95,23 +66,71 @@ npm run build
    - [Moonshot Kimi](https://platform.kimi.ai)
    - [通义千问](https://bailian.console.aliyun.com/#/api-key)
    - [智谱 GLM](https://open.bigmodel.cn/usercenter/apikeys)
-   - [xAI Grok](https://console.x.ai)
-2. 点击扩展图标 → 选供应商、模型和总结与翻译语言 → 填 API Key → 保存
+   - [xAI](https://console.x.ai)
+2. 点击 Chrome 工具栏中的扩展图标
+3. 选择 AI 服务商和模型
+4. 填入对应的 API Key
+5. 选择总结与翻译的输出语言，然后保存
 
-### 总结与翻译视频
+API Key 与服务商一一对应。切换服务商后，需要为新服务商配置相应的 Key。
 
-1. 打开 YouTube 视频页
-2. 点击播放器右上角的 **AI 总结与翻译** 按钮
-3. 面板从右侧滑入，点击 **AI 总结** 流式生成
-4. 点击 **字幕原文** 查看原始字幕（可点时间戳跳转）
-5. 字幕语言与目标语言不同时，可点击 **翻译本段** 或 **翻译全文**，并用 **原文 / 译文** 切换查看
-6. 在播放器原生 CC 按钮旁点击翻译按钮，开启或关闭当前视频的双语字幕；每个新视频默认开启
-7. 可在扩展设置中开启**学习模式**，此时译文仅在鼠标悬停字幕时显示
+## 使用方法
+
+### 总结视频
+
+1. 打开一个带字幕的 YouTube 视频
+2. 点击播放器右上角的“AI 总结与翻译”按钮
+3. 在右侧面板中选择“AI 总结”
+4. 等待总结实时生成
+
+### 阅读或翻译字幕
+
+1. 打开右侧面板中的“字幕原文”
+2. 点击时间戳可跳转到对应位置
+3. 当字幕语言与目标语言不同时，可选择“翻译本段”或“翻译全文”
+4. 使用“原文 / 译文”切换阅读内容
+
+### 开启双语字幕
+
+1. 在播放器原生 CC 按钮旁找到翻译按钮
+2. 点击按钮开启或关闭双语字幕
+3. 如需减少译文干扰，可在扩展设置中开启学习模式
+
+## 工作原理
+
+扩展的大致处理流程如下：
+
+1. 打开视频后，扩展从 YouTube 页面获取可用字幕，并优先选择合适的字幕语言。
+2. 生成总结时，扩展整理带时间信息的字幕，并将内容直接发送给你所选择的 AI 服务商。
+3. AI 返回内容时，扩展边接收边显示，因此可以看到总结逐步生成。
+4. 翻译字幕时，扩展先在本地整理句子和时间轴，再分段请求 AI 翻译，以尽量保持译文与原字幕一一对应。
+5. 播放双语字幕时，扩展根据播放器当前时间显示对应的原文和译文，并提前翻译后续约一分钟的字幕。
+6. 总结和翻译结果按视频、模型和目标语言缓存在本地。缓存有效期为 7 天，不同语言的结果互不混用。
+
+如果字幕本身已经是所选目标语言，扩展不会再调用 AI 进行翻译。临时网络错误会自动重试；切换 YouTube 视频时，扩展也会自动识别并更新面板内容。
+
+## 隐私说明
+
+- API Key 仅保存在当前设备的 Chrome 本地存储中
+- 视频字幕会直接发送给你选择的 AI 服务商，不经过本项目开发者的服务器
+- 本地缓存主要用于减少重复请求，可随扩展本地数据一同清除
+
+使用前请同时了解所选 AI 服务商的数据处理政策。更多信息请参阅[隐私政策](PRIVACY.md)。
+
+## 常见问题
+
+### 为什么有些视频无法总结或翻译？
+
+扩展需要先获取视频字幕。视频没有字幕、字幕受限，或 YouTube 暂时无法提供字幕时，相关功能可能不可用。
+
+### 为什么双语字幕刚开启时没有立即显示译文？
+
+首次翻译需要请求 AI 服务。译文生成后会显示并保存到本地，之后再次播放相同片段通常会更快。
+
+### 为什么需要自己提供 API Key？
+
+扩展直接使用你选择的 AI 服务，不设置统一的中转服务器。这样可以自由选择服务商和模型，但相应的 API 用量及费用由你的服务商账户承担。
 
 ## License
 
 [MIT](LICENSE)
-
-## 隐私
-
-请参阅[隐私政策](PRIVACY.md)。
