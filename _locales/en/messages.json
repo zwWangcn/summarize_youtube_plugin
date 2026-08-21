@@ -31,6 +31,8 @@
   "outputLanguageHint": { "message": "Used for both AI summaries and caption translations" },
   "learningModeLabel": { "message": "Learning mode" },
   "learningModeHint": { "message": "Show translations only when hovering over captions" },
+  "translationOnlyLabel": { "message": "Translation only" },
+  "translationOnlyHint": { "message": "Hide source captions and keep translations visible" },
   "paramSizeLabel": { "message": "Parameter class" },
   "pricingLabel": { "message": "Input / output" },
   "contextWindowLabel": { "message": "Context window" },

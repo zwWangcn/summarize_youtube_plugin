@@ -31,6 +31,8 @@
   "outputLanguageHint": { "message": "AI 요약과 자막 번역에 함께 사용됩니다" },
   "learningModeLabel": { "message": "학습 모드" },
   "learningModeHint": { "message": "자막에 마우스를 올릴 때만 번역 표시" },
+  "translationOnlyLabel": { "message": "번역문만 표시" },
+  "translationOnlyHint": { "message": "원문을 숨기고 번역문을 계속 표시합니다" },
   "paramSizeLabel": { "message": "매개변수 규모" },
   "pricingLabel": { "message": "입력 / 출력" },
   "contextWindowLabel": { "message": "컨텍스트 창" },

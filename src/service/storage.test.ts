@@ -80,6 +80,14 @@ describe("settings and API key storage", () => {
     expect(syncStore.learningModeEnabled).toBe(true);
   });
 
+  it("defaults and persists the translation-only switch", async () => {
+    const { getSettings, setSettings } = await import("./storage");
+    expect((await getSettings()).translationOnlyEnabled).toBe(false);
+    await setSettings({ translationOnlyEnabled: true });
+    expect((await getSettings()).translationOnlyEnabled).toBe(true);
+    expect(syncStore.translationOnlyEnabled).toBe(true);
+  });
+
   it("provides classic subtitle styling without writing defaults for existing users", async () => {
     const { getSettings } = await import("./storage");
     expect((await getSettings()).subtitleStyle).toEqual({

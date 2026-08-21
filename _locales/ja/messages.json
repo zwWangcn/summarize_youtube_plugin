@@ -31,6 +31,8 @@
   "outputLanguageHint": { "message": "AI 要約と字幕翻訳の両方に使用されます" },
   "learningModeLabel": { "message": "学習モード" },
   "learningModeHint": { "message": "字幕にカーソルを重ねたときだけ翻訳を表示" },
+  "translationOnlyLabel": { "message": "翻訳のみ表示" },
+  "translationOnlyHint": { "message": "原文を隠して翻訳を常に表示します" },
   "paramSizeLabel": { "message": "パラメータ規模" },
   "pricingLabel": { "message": "入力／出力" },
   "contextWindowLabel": { "message": "コンテキストウィンドウ" },

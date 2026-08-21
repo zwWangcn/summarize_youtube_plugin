@@ -277,6 +277,7 @@ export async function initContentScript(
   const bilingualStateByVideo = new Map<string, boolean>();
   let bilingualEnabled = true;
   let learningModeEnabled = initialSettings.learningModeEnabled;
+  let translationOnlyEnabled = initialSettings.translationOnlyEnabled;
   let subtitleStyle = initialSettings.subtitleStyle;
   let bilingualOverlay: BilingualSubtitleOverlay | null = null;
   let bilingualVideo: HTMLVideoElement | null = null;
@@ -395,6 +396,15 @@ export async function initContentScript(
     if (typeof nextLearningMode === "boolean" && nextLearningMode !== learningModeEnabled) {
       learningModeEnabled = nextLearningMode;
       bilingualOverlay?.setLearningMode(learningModeEnabled);
+    }
+
+    const nextTranslationOnly = changes.translationOnlyEnabled?.newValue;
+    if (
+      typeof nextTranslationOnly === "boolean" &&
+      nextTranslationOnly !== translationOnlyEnabled
+    ) {
+      translationOnlyEnabled = nextTranslationOnly;
+      bilingualOverlay?.setTranslationOnly(translationOnlyEnabled);
     }
 
     if (changes.subtitleStyle) {
@@ -1056,6 +1066,7 @@ export async function initContentScript(
     });
     bilingualOverlay = overlay;
     overlay.setLearningMode(learningModeEnabled);
+    overlay.setTranslationOnly(translationOnlyEnabled);
     overlay.setStyle(subtitleStyle);
     playerTranslationToggle.mount(player);
     playerTranslationToggle.setEnabled(bilingualEnabled);

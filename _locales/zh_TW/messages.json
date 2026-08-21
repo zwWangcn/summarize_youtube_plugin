@@ -31,6 +31,8 @@
   "outputLanguageHint": { "message": "同時用於 AI 總結和字幕譯文" },
   "learningModeLabel": { "message": "學習模式" },
   "learningModeHint": { "message": "僅在滑鼠懸停字幕時顯示譯文" },
+  "translationOnlyLabel": { "message": "僅顯示譯文" },
+  "translationOnlyHint": { "message": "隱藏原文並持續顯示譯文" },
   "paramSizeLabel": { "message": "參數等級" },
   "pricingLabel": { "message": "輸入／輸出" },
   "contextWindowLabel": { "message": "上下文視窗" },

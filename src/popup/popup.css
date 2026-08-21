@@ -239,6 +239,16 @@ select {
   gap: 18px;
 }
 
+.subtitle-mode-row + .subtitle-mode-row {
+  margin-top: 13px;
+  padding-top: 13px;
+  border-top: 1px solid var(--vas-border-subtle);
+}
+
+.subtitle-mode-row.is-disabled {
+  opacity: 0.42;
+}
+
 .setting-toggle-row .label {
   margin-bottom: 0;
   color: var(--vas-text-primary);
@@ -255,6 +265,10 @@ select {
   flex: 0 0 auto;
   accent-color: var(--vas-accent-strong);
   cursor: pointer;
+}
+
+.setting-toggle:disabled {
+  cursor: not-allowed;
 }
 
 .subtitle-preview {

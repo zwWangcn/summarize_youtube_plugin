@@ -11,6 +11,30 @@ export interface BilingualOverlayCue {
   retryText?: string;
 }
 
+export interface BilingualOverlayVisibility {
+  showSource: boolean;
+  showTranslation: boolean;
+  showStatus: boolean;
+  showRetry: boolean;
+}
+
+export function getBilingualOverlayVisibility(
+  cue: BilingualOverlayCue,
+  options: { learningMode: boolean; translationOnly: boolean; hovered: boolean },
+): BilingualOverlayVisibility {
+  const hasTranslationDetails = Boolean(
+    cue.translationText || cue.statusText || cue.retryText,
+  );
+  const showDetails = options.translationOnly || !options.learningMode || options.hovered;
+  return {
+    // When no translation is required, the source is already the desired output.
+    showSource: !options.translationOnly || !hasTranslationDetails,
+    showTranslation: showDetails && Boolean(cue.translationText),
+    showStatus: showDetails && Boolean(cue.statusText),
+    showRetry: showDetails && Boolean(cue.retryText),
+  };
+}
+
 const PLAYER_ACTIVE_CLASS = "vas-bilingual-subtitles-active";
 const NATIVE_CAPTION_STYLE_ID = "vas-bilingual-native-caption-style";
 
@@ -40,6 +64,7 @@ export class BilingualSubtitleOverlay {
   private renderedCue: BilingualOverlayCue | null = null;
   private selectionFrozen = false;
   private learningMode = false;
+  private translationOnly = false;
   private hovered = false;
   private readonly onSelectionChange: () => void;
 
@@ -181,6 +206,13 @@ export class BilingualSubtitleOverlay {
     if (!this.selectionFrozen) this.renderPendingCue();
   }
 
+  setTranslationOnly(enabled: boolean): void {
+    if (this.translationOnly === enabled) return;
+    this.translationOnly = enabled;
+    this.renderedCue = null;
+    if (!this.selectionFrozen) this.renderPendingCue();
+  }
+
   setStyle(settings: SubtitleStyleSettings): void {
     const values = getSubtitleTypographyCssValues(settings);
     const container = getSubtitleContainerCssValues(settings);
@@ -241,12 +273,17 @@ export class BilingualSubtitleOverlay {
 
     this.card.classList.remove("hidden");
     this.sourceEl.textContent = cue.sourceText;
-    const showTranslation = !this.learningMode || this.hovered;
+    const visibility = getBilingualOverlayVisibility(cue, {
+      learningMode: this.learningMode,
+      translationOnly: this.translationOnly,
+      hovered: this.hovered,
+    });
+    this.sourceEl.classList.toggle("hidden", !visibility.showSource);
     this.translationEl.textContent = cue.translationText ?? "";
-    this.translationEl.classList.toggle("hidden", !showTranslation || !cue.translationText);
+    this.translationEl.classList.toggle("hidden", !visibility.showTranslation);
     this.statusEl.textContent = cue.statusText ?? "";
-    this.statusEl.classList.toggle("hidden", !showTranslation || !cue.statusText);
+    this.statusEl.classList.toggle("hidden", !visibility.showStatus);
     this.retryEl.textContent = cue.retryText ?? "";
-    this.retryEl.classList.toggle("hidden", !showTranslation || !cue.retryText);
+    this.retryEl.classList.toggle("hidden", !visibility.showRetry);
   }
 }

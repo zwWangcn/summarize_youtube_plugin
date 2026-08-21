@@ -38,6 +38,8 @@ const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
 const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSelectElement;
 const learningModeInput = document.getElementById("learningMode") as HTMLInputElement;
+const translationOnlyInput = document.getElementById("translationOnly") as HTMLInputElement;
+const learningModeRow = document.getElementById("learningModeRow") as HTMLElement;
 const apiKeyInput = document.getElementById("apiKey") as HTMLInputElement;
 const toggleKeyBtn = document.getElementById("toggleKey") as HTMLButtonElement;
 const saveAiBtn = document.getElementById("saveAiBtn") as HTMLButtonElement;
@@ -137,6 +139,8 @@ async function init(): Promise<void> {
   const savedModel = selection.model.id;
   outputLanguageSelect.value = settings.outputLanguage;
   learningModeInput.checked = settings.learningModeEnabled;
+  translationOnlyInput.checked = settings.translationOnlyEnabled;
+  updateSubtitleModeAvailability();
   subtitleStyle = settings.subtitleStyle;
   renderSubtitleTypography();
   logI18nDebug("popup settings loaded", {
@@ -174,7 +178,10 @@ function activateTab(tabId: PopupTabId, focus: boolean = false): void {
 }
 
 async function saveAutomaticSettings(
-  partial: Partial<Pick<Settings, "outputLanguage" | "learningModeEnabled">>,
+  partial: Partial<Pick<
+    Settings,
+    "outputLanguage" | "learningModeEnabled" | "translationOnlyEnabled"
+  >>,
 ): Promise<void> {
   try {
     await setSettings(partial);
@@ -184,6 +191,13 @@ async function saveAutomaticSettings(
     console.debug("[vas] Automatic settings save failed:", detail);
     showStatus(t("saveFailed"), "error");
   }
+}
+
+function updateSubtitleModeAvailability(): void {
+  const translationOnly = translationOnlyInput.checked;
+  learningModeInput.disabled = translationOnly;
+  learningModeRow.classList.toggle("is-disabled", translationOnly);
+  learningModeRow.setAttribute("aria-disabled", String(translationOnly));
 }
 
 function renderSubtitleTypography(): void {
@@ -312,6 +326,11 @@ outputLanguageSelect.addEventListener("change", () => {
 
 learningModeInput.addEventListener("change", () => {
   void saveAutomaticSettings({ learningModeEnabled: learningModeInput.checked });
+});
+
+translationOnlyInput.addEventListener("change", () => {
+  updateSubtitleModeAvailability();
+  void saveAutomaticSettings({ translationOnlyEnabled: translationOnlyInput.checked });
 });
 
 for (const input of [
