@@ -1,5 +1,5 @@
 import { t } from "../../utils/i18n";
-import { bilingualSubtitlesIconMarkup } from "./icons";
+import { translationToggleIconMarkup } from "./icons";
 
 /** A YouTube-control-bar button that owns only the current video's translation state. */
 export class PlayerTranslationToggle {
@@ -53,7 +53,6 @@ export class PlayerTranslationToggle {
     const button = document.createElement("button");
     button.type = "button";
     button.className = "ytp-button vas-player-translation-toggle";
-    button.innerHTML = `<div class="ytp-subtitles-button-icon vas-player-translation-toggle-icon">${bilingualSubtitlesIconMarkup()}</div>`;
     button.addEventListener("click", () => this.onChange(!this.enabled));
     if (subtitles) subtitles.insertAdjacentElement("afterend", button);
     else controls.prepend(button);
@@ -66,5 +65,9 @@ export class PlayerTranslationToggle {
     this.button.setAttribute("aria-pressed", String(this.enabled));
     this.button.setAttribute("aria-label", t(this.enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles"));
     this.button.title = t(this.enabled ? "disableBilingualSubtitles" : "enableBilingualSubtitles");
+    const variant = this.enabled ? "translation-on" : "translation-off";
+    if (!this.button.innerHTML.includes(`data-icon-variant="${variant}"`)) {
+      this.button.innerHTML = `<div class="ytp-subtitles-button-icon vas-player-translation-toggle-icon">${translationToggleIconMarkup(24, "", variant)}</div>`;
+    }
   }
 }

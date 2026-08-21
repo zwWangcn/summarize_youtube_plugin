@@ -128,7 +128,8 @@ describe("PlayerTranslationToggle", () => {
     expect(button.style.cssText).toBe("");
     expect(button.innerHTML).toContain("ytp-subtitles-button-icon");
     expect(button.innerHTML).toContain('viewBox="0 0 24 24"');
-    expect(button.innerHTML).toContain('stroke="currentColor"');
+    expect(button.innerHTML).toContain('data-icon-variant="translation-on"');
+    expect(button.innerHTML).toContain('fill="url(#vas-translation-active-gradient)"');
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("aria-label")).toBe("Disable bilingual subtitles");
 
@@ -146,6 +147,8 @@ describe("PlayerTranslationToggle", () => {
     expect(button.getAttribute("aria-pressed")).toBe("false");
     expect(button.getAttribute("aria-label")).toBe("Enable bilingual subtitles");
     expect(button.title).toBe("Enable bilingual subtitles");
+    expect(button.innerHTML).toContain('data-icon-variant="translation-off"');
+    expect(button.innerHTML).toContain('fill="currentColor"');
     expect(button.style).not.toHaveProperty("opacity");
 
     const replacementControl = new FakeElement();

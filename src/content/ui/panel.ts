@@ -17,7 +17,7 @@
 import panelStyles from "./styles.css?inline";
 import { linkifyTimestampsInDom } from "./renderer";
 import { t } from "../../utils/i18n";
-import { bilingualSubtitlesIconMarkup } from "./icons";
+import { aiSummaryIconMarkup } from "./icons";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -193,7 +193,7 @@ export class Panel {
     const accessibleLabel = t("openAiTools");
     btn.setAttribute("aria-label", accessibleLabel);
     btn.title = accessibleLabel;
-    btn.innerHTML = bilingualSubtitlesIconMarkup(16, "vas-trigger-icon");
+    btn.innerHTML = aiSummaryIconMarkup(22, "vas-trigger-icon");
     btn.addEventListener("mouseenter", () => {
       btn.style.background = "rgba(0, 0, 0, 0.8)";
     });
@@ -268,7 +268,7 @@ export class Panel {
     el.innerHTML = `
       <div class="vas-header">
         <div class="vas-header-brand">
-          ${bilingualSubtitlesIconMarkup(22, "vas-header-brand-icon")}
+          ${aiSummaryIconMarkup(22, "vas-header-brand-icon")}
           <span class="vas-header-title">${t("extensionName")}</span>
         </div>
         <div class="vas-header-actions">

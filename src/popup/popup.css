@@ -2,19 +2,23 @@
   --vas-text-primary: #f5f5f7;
   --vas-text-secondary: rgba(245, 245, 247, 0.72);
   --vas-text-muted: rgba(245, 245, 247, 0.46);
-  --vas-bg-base: rgba(14, 14, 20, 0.9);
-  --vas-bg-elevated: rgba(28, 28, 38, 0.96);
+  --vas-bg-base: rgba(17, 12, 14, 0.92);
+  --vas-bg-elevated: rgba(31, 24, 27, 0.96);
   --vas-bg-card: rgba(255, 255, 255, 0.055);
   --vas-bg-input: rgba(255, 255, 255, 0.07);
   --vas-bg-hover: rgba(255, 255, 255, 0.105);
-  --vas-bg-active: rgba(129, 140, 248, 0.13);
+  --vas-bg-active: rgba(255, 75, 87, 0.11);
   --vas-border-subtle: rgba(255, 255, 255, 0.065);
   --vas-border: rgba(255, 255, 255, 0.11);
-  --vas-border-focus: rgba(165, 180, 252, 0.7);
-  --vas-accent: #a5b4fc;
-  --vas-accent-strong: #818cf8;
-  --vas-accent-bg: rgba(99, 102, 241, 0.1);
-  --vas-accent-border: rgba(129, 140, 248, 0.24);
+  --vas-border-focus: rgba(255, 151, 157, 0.72);
+  --vas-accent: #ffb4b9;
+  --vas-accent-strong: #ff5964;
+  --vas-accent-bg: rgba(255, 61, 72, 0.09);
+  --vas-accent-border: rgba(255, 103, 112, 0.22);
+  --vas-accent-hover: rgba(255, 61, 72, 0.2);
+  --vas-accent-ring: rgba(255, 103, 112, 0.09);
+  --vas-glow-red: rgba(255, 42, 55, 0.14);
+  --vas-glow-orange: rgba(255, 113, 0, 0.06);
 }
 
 * {
@@ -40,8 +44,8 @@ body {
   line-height: 1.5;
   color: var(--vas-text-primary);
   background:
-    radial-gradient(circle at 14% -8%, rgba(99, 102, 241, 0.24), transparent 38%),
-    radial-gradient(circle at 110% 72%, rgba(59, 130, 246, 0.1), transparent 34%),
+    radial-gradient(circle at 14% -8%, var(--vas-glow-red), transparent 38%),
+    radial-gradient(circle at 110% 72%, var(--vas-glow-orange), transparent 34%),
     var(--vas-bg-base);
   -webkit-backdrop-filter: blur(24px) saturate(135%);
   backdrop-filter: blur(24px) saturate(135%);
@@ -74,6 +78,7 @@ select {
   width: 38px;
   height: 38px;
   flex: 0 0 auto;
+  filter: drop-shadow(0 5px 12px rgba(255, 42, 55, 0.14));
 }
 
 .brand-copy {
@@ -129,7 +134,7 @@ select {
 
 .settings-tab.is-active {
   color: var(--vas-text-primary);
-  background: rgba(129, 140, 248, 0.16);
+  background: var(--vas-bg-active);
   box-shadow: inset 0 0 0 1px var(--vas-accent-border);
 }
 
@@ -283,8 +288,8 @@ select {
   border: 1px solid var(--vas-border-subtle);
   border-radius: 16px;
   background:
-    linear-gradient(180deg, rgba(15, 23, 42, 0.18), rgba(0, 0, 0, 0.38)),
-    radial-gradient(circle at 70% 25%, rgba(129, 140, 248, 0.18), transparent 42%);
+    linear-gradient(180deg, rgba(29, 20, 23, 0.18), rgba(0, 0, 0, 0.38)),
+    radial-gradient(circle at 70% 25%, rgba(255, 61, 72, 0.11), transparent 42%);
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
@@ -425,7 +430,7 @@ select {
 .input:focus {
   border-color: var(--vas-border-focus);
   background: var(--vas-bg-hover);
-  box-shadow: 0 0 0 3px rgba(129, 140, 248, 0.08);
+  box-shadow: 0 0 0 3px var(--vas-accent-ring);
 }
 
 .input::placeholder {
@@ -541,13 +546,13 @@ select.input option {
   padding: 9px 14px;
   border: 1px solid var(--vas-accent-border);
   color: var(--vas-text-primary);
-  background: rgba(99, 102, 241, 0.18);
+  background: var(--vas-bg-active);
   font-weight: 620;
 }
 
 .btn-primary:hover {
-  border-color: rgba(165, 180, 252, 0.48);
-  background: rgba(99, 102, 241, 0.27);
+  border-color: var(--vas-border-focus);
+  background: var(--vas-accent-hover);
 }
 
 .btn-primary:active,

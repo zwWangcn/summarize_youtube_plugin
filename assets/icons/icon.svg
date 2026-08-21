@@ -1,13 +1,8 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Bilingual subtitles">
-  <defs>
-    <linearGradient id="background" x1="20" y1="16" x2="108" y2="116" gradientUnits="userSpaceOnUse">
-      <stop stop-color="#818cf8"/>
-      <stop offset="1" stop-color="#6366f1"/>
-    </linearGradient>
-  </defs>
-  <rect x="6" y="6" width="116" height="116" rx="28" fill="url(#background)"/>
-  <g transform="translate(24 24) scale(3.333333)" color="#fff">
-    <rect x="2" y="3" width="20" height="18" rx="2" fill="none" stroke="currentColor" stroke-width="2"/>
-    <path d="M3 12h18M6 8h7m2 0h3M6 16h4m2 0h6" fill="none" stroke="currentColor" stroke-width="1.8" stroke-linecap="round"/>
-  </g>
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 128 128" role="img" aria-label="Video AI summary">
+  <rect x="18" y="10" width="92" height="108" rx="22" fill="#f7f7f8" stroke="#dadde2" stroke-width="3"/>
+  <rect x="8" y="25" width="72" height="50" rx="15" fill="#ff1724"/>
+  <path d="M36 39v22l19-11-19-11Z" fill="#fff"/>
+  <rect x="35" y="86" width="40" height="8" rx="4" fill="#c9ccd1"/>
+  <rect x="35" y="101" width="32" height="8" rx="4" fill="#ff1724"/>
+  <path d="M100 65c2 14 9 21 23 23-14 2-21 9-23 23-2-14-9-21-23-23 14-2 21-9 23-23Z" fill="#ff6a00"/>
 </svg>

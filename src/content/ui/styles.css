@@ -107,7 +107,7 @@
 }
 .vas-header-brand-icon {
   flex: 0 0 auto;
-  color: #818cf8;
+  color: var(--vas-text-secondary);
 }
 .vas-header-title {
   font-size: 15px;
