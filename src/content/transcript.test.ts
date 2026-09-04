@@ -34,6 +34,19 @@ describe("transcript helpers", () => {
     expect(transcriptToText(transcript)).toBe("0:01\nHello\n1:01\nworld");
   });
 
+  it("caps player prefetch by both time and characters", () => {
+    const segments = [
+      { start: 0, duration: 10, text: "a".repeat(20) },
+      { start: 10, duration: 10, text: "b".repeat(20) },
+      { start: 20, duration: 10, text: "c".repeat(20) },
+      { start: 30, duration: 10, text: "d".repeat(20) },
+    ];
+    expect(getCaptionPrefetchRange(segments, 0, 0, () => false, 15, 120, 90))
+      .toEqual({ start: 0, end: 1 });
+    expect(getCaptionPrefetchRange(segments, 0, 0, () => false, 15, 30, 10_000))
+      .toEqual({ start: 0, end: 2 });
+  });
+
   it("merges only short continuing fragments and preserves source ranges", async () => {
     const aligned = await buildAlignedTranscript({
       languageCode: "en",

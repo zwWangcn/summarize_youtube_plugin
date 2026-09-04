@@ -241,4 +241,67 @@ describe("settings and API key storage", () => {
     });
   });
 
+  it("defaults AI controls without changing existing user behavior", async () => {
+    const { getSettings } = await import("./storage");
+    const settings = await getSettings();
+    expect(settings.activeCustomPromptId).toBeNull();
+    expect(settings.translationChunkPreset).toBe("balanced");
+  });
+
+  it("stores prompt profiles as separate synced items and preserves their order", async () => {
+    const {
+      getCustomPromptProfiles,
+      saveCustomPromptProfile,
+    } = await import("./storage");
+    const first = await saveCustomPromptProfile({
+      name: "Game terms",
+      instruction: "Use official item names.",
+    });
+    const second = await saveCustomPromptProfile({
+      name: "Engineering",
+      instruction: "Keep API names in English.",
+    });
+
+    expect(await getCustomPromptProfiles()).toEqual([first, second]);
+    expect(syncStore[`vas-custom-prompt:${first.id}`]).toEqual(first);
+    expect(syncStore[`vas-custom-prompt:${second.id}`]).toEqual(second);
+  });
+
+  it("edits a profile in place, rejects duplicate names, and clears an active deletion", async () => {
+    const {
+      deleteCustomPromptProfile,
+      getCustomPromptProfiles,
+      saveCustomPromptProfile,
+      setSettings,
+    } = await import("./storage");
+    const first = await saveCustomPromptProfile({ name: "Game", instruction: "Old terms" });
+    await saveCustomPromptProfile({ name: "Finance", instruction: "Use ticker symbols" });
+    await expect(saveCustomPromptProfile({ name: "game", instruction: "Duplicate" }))
+      .rejects.toMatchObject({ code: "name-duplicate" });
+
+    const edited = await saveCustomPromptProfile({
+      id: first.id,
+      name: "Gaming",
+      instruction: "Use official localized terms",
+    });
+    expect(edited.id).toBe(first.id);
+    await setSettings({ activeCustomPromptId: first.id });
+    await deleteCustomPromptProfile(first.id);
+
+    expect((await getCustomPromptProfiles()).map((profile) => profile.name)).toEqual(["Finance"]);
+    expect(syncStore.activeCustomPromptId).toBeNull();
+    expect(syncStore[`vas-custom-prompt:${first.id}`]).toBeUndefined();
+  });
+
+  it("enforces the ten-profile and 500-character limits", async () => {
+    const { saveCustomPromptProfile } = await import("./storage");
+    await expect(saveCustomPromptProfile({ name: "Long", instruction: "字".repeat(501) }))
+      .rejects.toMatchObject({ code: "instruction-too-long" });
+    for (let index = 0; index < 10; index++) {
+      await saveCustomPromptProfile({ name: `Preset ${index}`, instruction: `Rule ${index}` });
+    }
+    await expect(saveCustomPromptProfile({ name: "Eleventh", instruction: "Rule" }))
+      .rejects.toMatchObject({ code: "profile-limit" });
+  });
+
 });

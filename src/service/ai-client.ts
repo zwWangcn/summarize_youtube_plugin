@@ -99,6 +99,7 @@ async function reduceToContextBudget(
   maxChars: number,
   outputLanguage: OutputLanguage,
   signal?: AbortSignal,
+  customInstruction: string = "",
 ): Promise<{ text: string; passes: number }> {
   let text = transcript;
   let passes = 0;
@@ -118,7 +119,7 @@ This is section ${index + 1} of ${chunks.length} from a long transcript or an ea
 ${chunks[index]}
 <<<END OF SECTION>>>`;
       partials.push(await collectStream(streamAIText(
-        getSystemPrompt(outputLanguage),
+        getSystemPrompt(outputLanguage, customInstruction),
         prompt,
         { ...summaryStreamOptions(signal), maxOutputTokens: 4096 },
       )));
@@ -138,6 +139,7 @@ export async function* summarizeTextStream(
   transcript: string,
   outputLanguage: OutputLanguage = "zh-CN",
   signal?: AbortSignal,
+  customInstruction: string = "",
 ): AsyncGenerator<string> {
   const identity = await getActiveAIIdentity();
   const { model } = resolveAISelection(identity.providerId, identity.modelId);
@@ -151,9 +153,10 @@ export async function* summarizeTextStream(
     maxChars,
     outputLanguage,
     signal,
+    customInstruction,
   );
   const text = reduced.text;
-  const systemPrompt = getSystemPrompt(outputLanguage);
+  const systemPrompt = getSystemPrompt(outputLanguage, customInstruction);
   const languageReminder = getSummaryLanguageReminder(outputLanguage);
   const transcriptPrompt = reduced.passes === 0
     ? buildSummaryUserPrompt(text, outputLanguage)
@@ -189,9 +192,10 @@ export async function* translateSummaryStream(
   summary: string,
   outputLanguage: OutputLanguage,
   signal?: AbortSignal,
+  customInstruction: string = "",
 ): AsyncGenerator<string> {
   yield* streamAIText(
-    buildSummaryTranslationSystemPrompt(outputLanguage),
+    buildSummaryTranslationSystemPrompt(outputLanguage, customInstruction),
     buildSummaryTranslationUserPrompt(summary),
     summaryStreamOptions(signal),
   );

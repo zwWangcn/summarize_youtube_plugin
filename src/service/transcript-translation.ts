@@ -6,6 +6,7 @@ import {
   type OutputLanguage,
 } from "../utils/i18n";
 import { formatTime } from "../utils/text";
+import { buildCustomInstructionSection } from "./prompts";
 
 export const TARGET_CHARS_PER_CHUNK = 4_000;
 export const TARGET_SECONDS_PER_CHUNK = 60;
@@ -78,8 +79,12 @@ function isRetryableNetworkError(error: unknown): boolean {
       .test(value.message ?? "");
 }
 
-export function buildTranslationSystemPrompt(targetLanguage: OutputLanguage): string {
+export function buildTranslationSystemPrompt(
+  targetLanguage: OutputLanguage,
+  customInstruction?: string,
+): string {
   const { englishName } = getOutputLanguageInfo(targetLanguage);
+  const customSection = buildCustomInstructionSection(customInstruction);
   const scriptRule = targetLanguage === "zh-CN"
     ? "Use Simplified Chinese characters, not Traditional Chinese."
     : targetLanguage === "zh-TW"
@@ -102,6 +107,8 @@ Strict rules:
 9. After the final cue, return this terminal line exactly once:
 {"type":"complete"}
 ${scriptRule}
+
+${customSection}
 
 Final constraint: Every translatedText value must be written in ${englishName}.`;
 }
@@ -245,6 +252,7 @@ async function requestTranslationBatch(
   signal: AbortSignal | undefined,
   budget: TranslationAttemptBudget,
   fallbackRepair: boolean,
+  customInstruction: string,
   networkRetriesRemaining: number = MAX_NETWORK_BATCH_RETRIES,
 ): Promise<ModelCaption[]> {
   let previousOutput = "";
@@ -293,7 +301,7 @@ async function requestTranslationBatch(
       };
 
       for await (const token of streamAIText(
-        buildTranslationSystemPrompt(targetLanguage),
+        buildTranslationSystemPrompt(targetLanguage, customInstruction),
         buildTranslationUserPrompt(
           transcript,
           chunk,
@@ -337,6 +345,7 @@ async function requestTranslationBatch(
             signal,
             budget,
             fallbackRepair,
+            customInstruction,
             networkRetriesRemaining - 1,
           );
         }
@@ -374,6 +383,7 @@ async function translateRange(
   signal: AbortSignal | undefined,
   budget: TranslationAttemptBudget,
   fallbackRepair: boolean = false,
+  customInstruction: string = "",
 ): Promise<ModelCaption[]> {
   try {
     return await requestTranslationBatch(
@@ -384,6 +394,7 @@ async function translateRange(
       signal,
       budget,
       fallbackRepair,
+      customInstruction,
     );
   } catch (error) {
     if (
@@ -407,6 +418,7 @@ async function translateRange(
       signal,
       budget,
       true,
+      customInstruction,
     );
     const right = await translateRange(
       transcript,
@@ -416,6 +428,7 @@ async function translateRange(
       signal,
       budget,
       true,
+      customInstruction,
     );
     return [...left, ...right];
   }
@@ -444,6 +457,7 @@ export async function translateTranscriptChunk(
   targetLanguage: OutputLanguage,
   onProgress?: (partial: TranslatedSegment[], formatRetry: boolean) => void,
   signal?: AbortSignal,
+  customInstruction: string = "",
 ): Promise<TranslatedSegment[]> {
   const budget = { remaining: MAX_SECTION_AI_ATTEMPTS };
   const items = await translateRange(
@@ -455,6 +469,8 @@ export async function translateTranscriptChunk(
     },
     signal,
     budget,
+    false,
+    customInstruction,
   );
   return toTranslatedSegments(transcript, items);
 }

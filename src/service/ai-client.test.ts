@@ -75,6 +75,28 @@ describe("localized summary AI requests", () => {
     });
   });
 
+  it("applies the selected customization to summary generation and translation", async () => {
+    const { requests } = installMockPort();
+    vi.spyOn(console, "info").mockImplementation(() => {});
+
+    await consume(summarizeTextStream(
+      "[00:00] Smolder scales late",
+      "zh-CN",
+      undefined,
+      "Smolder 固定译为斯莫德。",
+    ));
+    await consume(translateSummaryStream(
+      "## Smolder",
+      "zh-CN",
+      undefined,
+      "Smolder 固定译为斯莫德。",
+    ));
+
+    expect(requests).toHaveLength(2);
+    expect(requests.every((request) => request.systemPrompt.includes("Smolder 固定译为斯莫德。")))
+      .toBe(true);
+  });
+
   it("uses temperature zero for language repair", async () => {
     const { requests } = installMockPort();
 
@@ -93,13 +115,21 @@ describe("localized summary AI requests", () => {
     vi.spyOn(console, "info").mockImplementation(() => {});
 
     const transcript = `${"a".repeat(120_000)}\n${"middle-marker"}\n${"z".repeat(120_000)}`;
-    await consume(summarizeTextStream(transcript, "zh-CN"));
+    await consume(summarizeTextStream(
+      transcript,
+      "zh-CN",
+      undefined,
+      "Keep game item names consistent.",
+    ));
 
     expect(requests).toHaveLength(3);
     expect(requests[0].userPrompt).toContain("section 1 of 2");
     expect(requests.slice(0, 2).some((request) => request.userPrompt.includes("middle-marker")))
       .toBe(true);
     expect(requests[2].userPrompt).toContain("REDUCED TRANSCRIPT NOTES");
+    expect(requests.every((request) => (
+      request.systemPrompt.includes("Keep game item names consistent.")
+    ))).toBe(true);
     expect(requests.some((request) => request.userPrompt.includes("middle omitted"))).toBe(false);
   });
 

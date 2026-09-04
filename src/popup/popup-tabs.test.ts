@@ -5,11 +5,14 @@ describe("popup tab navigation", () => {
   it("recognizes supported tabs", () => {
     expect(isPopupTabId("general")).toBe(true);
     expect(isPopupTabId("subtitles")).toBe(true);
+    expect(isPopupTabId("controls")).toBe(true);
     expect(isPopupTabId("settings")).toBe(false);
   });
 
   it("moves and wraps with horizontal arrow keys", () => {
     expect(getAdjacentPopupTab("general", "ArrowRight")).toBe("subtitles");
+    expect(getAdjacentPopupTab("subtitles", "ArrowRight")).toBe("controls");
+    expect(getAdjacentPopupTab("controls", "ArrowRight")).toBe("ai");
     expect(getAdjacentPopupTab("ai", "ArrowRight")).toBe("general");
     expect(getAdjacentPopupTab("general", "ArrowLeft")).toBe("ai");
   });

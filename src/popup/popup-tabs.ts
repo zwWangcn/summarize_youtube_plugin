@@ -1,4 +1,4 @@
-export const POPUP_TAB_IDS = ["general", "subtitles", "ai"] as const;
+export const POPUP_TAB_IDS = ["general", "subtitles", "controls", "ai"] as const;
 
 export type PopupTabId = (typeof POPUP_TAB_IDS)[number];
 

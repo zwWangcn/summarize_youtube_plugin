@@ -80,6 +80,7 @@ export function getCaptionPrefetchRange(
   hasTranslation: (cueId: number) => boolean,
   minimumBufferSeconds: number = 15,
   windowSeconds: number = 60,
+  maxChars: number = 4_000,
 ): CaptionPrefetchRange | null {
   let firstMissing = currentCueId;
   while (firstMissing < segments.length && hasTranslation(firstMissing)) firstMissing += 1;
@@ -93,7 +94,12 @@ export function getCaptionPrefetchRange(
 
   const startTime = segments[firstMissing].start;
   let end = firstMissing;
-  while (end + 1 < segments.length && segments[end + 1].start < startTime + windowSeconds) {
+  let chars = segments[firstMissing].text.length + 24;
+  while (end + 1 < segments.length) {
+    const next = segments[end + 1];
+    const nextLength = next.text.length + 24;
+    if (next.start >= startTime + windowSeconds || chars + nextLength > maxChars) break;
+    chars += nextLength;
     end += 1;
   }
   return { start: firstMissing, end };

@@ -4,12 +4,24 @@
 
 import {
   clearAllApiKeys,
+  deleteCustomPromptProfile,
   getApiKey,
+  getCustomPromptProfiles,
   getSettings,
+  saveCustomPromptProfile,
   setApiKey,
   setSettings,
   type Settings,
 } from "../service/storage";
+import {
+  CustomPromptValidationError,
+  MAX_CUSTOM_PROMPT_INSTRUCTION_CHARS,
+  MAX_CUSTOM_PROMPT_NAME_CHARS,
+  MAX_CUSTOM_PROMPT_PROFILES,
+  truncateUnicode,
+  unicodeLength,
+  type CustomPromptProfile,
+} from "../service/ai-controls";
 import {
   PROVIDERS,
   getModelsByProvider,
@@ -86,6 +98,19 @@ const backgroundOpacityInput = document.getElementById("backgroundOpacity") as H
 const subtitleMaxWidthInput = document.getElementById("subtitleMaxWidth") as HTMLInputElement;
 const backgroundOpacityValue = document.getElementById("backgroundOpacityValue") as HTMLOutputElement;
 const subtitleMaxWidthValue = document.getElementById("subtitleMaxWidthValue") as HTMLOutputElement;
+const customPromptSelect = document.getElementById("customPromptSelect") as HTMLSelectElement;
+const newPromptBtn = document.getElementById("newPromptBtn") as HTMLButtonElement;
+const editPromptBtn = document.getElementById("editPromptBtn") as HTMLButtonElement;
+const deletePromptBtn = document.getElementById("deletePromptBtn") as HTMLButtonElement;
+const promptEditor = document.getElementById("promptEditor") as HTMLElement;
+const promptNameInput = document.getElementById("promptName") as HTMLInputElement;
+const promptInstructionInput = document.getElementById("promptInstruction") as HTMLTextAreaElement;
+const promptError = document.getElementById("promptError") as HTMLParagraphElement;
+const promptCharCount = document.getElementById("promptCharCount") as HTMLSpanElement;
+const cancelPromptBtn = document.getElementById("cancelPromptBtn") as HTMLButtonElement;
+const savePromptBtn = document.getElementById("savePromptBtn") as HTMLButtonElement;
+const translationChunkPresetSelect = document.getElementById("translationChunkPreset") as HTMLSelectElement;
+const translationChunkHint = document.getElementById("translationChunkHint") as HTMLParagraphElement;
 
 // Model info card elements
 const infoParamSize = document.getElementById("infoParamSize") as HTMLSpanElement;
@@ -106,6 +131,8 @@ let subtitleStyleSaveTimer: ReturnType<typeof setTimeout> | null = null;
 let subtitleStyle: SubtitleStyleSettings = { ...DEFAULT_SUBTITLE_STYLE };
 let activeUiLanguage: UiLanguage = "en";
 let t: PopupTranslator = chromeT;
+let customPromptProfiles: CustomPromptProfile[] = [];
+let editingPromptId: string | null = null;
 
 async function loadApiKeyForProvider(providerId: string): Promise<void> {
   const version = ++apiKeyLoadVersion;
@@ -183,6 +210,10 @@ async function init(): Promise<void> {
   learningModeInput.checked = settings.learningModeEnabled;
   bilingualDefaultInput.checked = settings.bilingualSubtitlesDefaultEnabled;
   translationOnlyInput.checked = settings.translationOnlyEnabled;
+  customPromptProfiles = await getCustomPromptProfiles();
+  translationChunkPresetSelect.value = settings.translationChunkPreset;
+  renderCustomPromptSelect(settings.activeCustomPromptId);
+  updateTranslationChunkHint();
   updateSubtitleModeAvailability();
   subtitleStyle = settings.subtitleStyle;
   renderSubtitleTypography();
@@ -218,6 +249,12 @@ function renderLocalizedUi(): void {
   document.querySelectorAll<HTMLElement>("[data-i18n-aria-label]").forEach((element) => {
     element.setAttribute("aria-label", t(element.dataset.i18nAriaLabel!));
   });
+  document.querySelectorAll<HTMLInputElement | HTMLTextAreaElement>("[data-i18n-placeholder]")
+    .forEach((element) => {
+      element.placeholder = t(element.dataset.i18nPlaceholder!);
+    });
+  renderCustomPromptSelect(customPromptSelect.value || null);
+  updateTranslationChunkHint();
   updateModelInfo();
   updateApiKeyUI(currentProvider);
   updateSetupUi();
@@ -246,6 +283,8 @@ async function saveAutomaticSettings(
     | "learningModeEnabled"
     | "translationOnlyEnabled"
     | "bilingualSubtitlesDefaultEnabled"
+    | "activeCustomPromptId"
+    | "translationChunkPreset"
   >>,
 ): Promise<void> {
   try {
@@ -320,6 +359,82 @@ function updateSubtitleTypography(): void {
     subtitleStyleSaveTimer = null;
     void saveSubtitleStyle();
   }, 300);
+}
+
+function renderCustomPromptSelect(activeId: string | null): void {
+  customPromptSelect.innerHTML = "";
+  const noneOption = document.createElement("option");
+  noneOption.value = "";
+  noneOption.textContent = t("customPromptNone");
+  customPromptSelect.appendChild(noneOption);
+  for (const profile of customPromptProfiles) {
+    const option = document.createElement("option");
+    option.value = profile.id;
+    option.textContent = profile.name;
+    customPromptSelect.appendChild(option);
+  }
+  customPromptSelect.value = customPromptProfiles.some((profile) => profile.id === activeId)
+    ? activeId!
+    : "";
+  updateCustomPromptButtons();
+}
+
+function updateCustomPromptButtons(): void {
+  const hasSelection = Boolean(customPromptSelect.value);
+  newPromptBtn.disabled = customPromptProfiles.length >= MAX_CUSTOM_PROMPT_PROFILES;
+  editPromptBtn.disabled = !hasSelection;
+  deletePromptBtn.disabled = !hasSelection;
+}
+
+function updatePromptCharacterCount(): void {
+  promptCharCount.textContent = `${unicodeLength(promptInstructionInput.value)} / ${MAX_CUSTOM_PROMPT_INSTRUCTION_CHARS}`;
+}
+
+function closePromptEditor(): void {
+  editingPromptId = null;
+  promptEditor.hidden = true;
+  promptError.textContent = "";
+  promptNameInput.removeAttribute("aria-invalid");
+  promptInstructionInput.removeAttribute("aria-invalid");
+}
+
+function openPromptEditor(profile?: CustomPromptProfile): void {
+  editingPromptId = profile?.id ?? null;
+  promptNameInput.value = profile?.name ?? "";
+  promptInstructionInput.value = profile?.instruction ?? "";
+  promptError.textContent = "";
+  promptNameInput.removeAttribute("aria-invalid");
+  promptInstructionInput.removeAttribute("aria-invalid");
+  updatePromptCharacterCount();
+  promptEditor.hidden = false;
+  promptNameInput.focus();
+}
+
+function promptValidationMessage(error: CustomPromptValidationError): string {
+  const keyByCode: Record<CustomPromptValidationError["code"], string> = {
+    "name-required": "promptNameRequired",
+    "name-too-long": "promptNameTooLong",
+    "name-duplicate": "promptNameDuplicate",
+    "instruction-required": "promptInstructionRequired",
+    "instruction-too-long": "promptInstructionTooLong",
+    "profile-limit": "promptProfileLimit",
+  };
+  return t(keyByCode[error.code], error.code === "name-too-long"
+    ? String(MAX_CUSTOM_PROMPT_NAME_CHARS)
+    : error.code === "instruction-too-long"
+      ? String(MAX_CUSTOM_PROMPT_INSTRUCTION_CHARS)
+      : error.code === "profile-limit"
+        ? String(MAX_CUSTOM_PROMPT_PROFILES)
+        : undefined);
+}
+
+function updateTranslationChunkHint(): void {
+  const key = translationChunkPresetSelect.value === "fast"
+    ? "translationChunkFastHint"
+    : translationChunkPresetSelect.value === "context"
+      ? "translationChunkContextHint"
+      : "translationChunkBalancedHint";
+  translationChunkHint.textContent = t(key);
 }
 
 // ── Populate model dropdown for a given provider ─────────────────────
@@ -491,6 +606,96 @@ for (const input of [
   input.addEventListener("input", updateSubtitleTypography);
   input.addEventListener("change", () => void saveSubtitleStyle());
 }
+
+customPromptSelect.addEventListener("change", () => {
+  closePromptEditor();
+  updateCustomPromptButtons();
+  void saveAutomaticSettings({
+    activeCustomPromptId: customPromptSelect.value || null,
+  });
+});
+
+newPromptBtn.addEventListener("click", () => {
+  if (customPromptProfiles.length < MAX_CUSTOM_PROMPT_PROFILES) openPromptEditor();
+});
+
+editPromptBtn.addEventListener("click", () => {
+  const profile = customPromptProfiles.find((item) => item.id === customPromptSelect.value);
+  if (profile) openPromptEditor(profile);
+});
+
+deletePromptBtn.addEventListener("click", async () => {
+  const profile = customPromptProfiles.find((item) => item.id === customPromptSelect.value);
+  if (!profile || !window.confirm(t("deletePromptConfirm", profile.name))) return;
+  try {
+    deletePromptBtn.disabled = true;
+    await deleteCustomPromptProfile(profile.id);
+    customPromptProfiles = await getCustomPromptProfiles();
+    closePromptEditor();
+    renderCustomPromptSelect(null);
+    showStatus(t("promptDeleted"), "success");
+  } catch (err) {
+    const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+    console.debug("[vas] Custom prompt deletion failed:", detail);
+    showStatus(t("saveFailed"), "error");
+    updateCustomPromptButtons();
+  }
+});
+
+promptNameInput.addEventListener("input", () => {
+  promptNameInput.value = truncateUnicode(promptNameInput.value, MAX_CUSTOM_PROMPT_NAME_CHARS);
+  promptNameInput.removeAttribute("aria-invalid");
+  promptError.textContent = "";
+});
+
+promptInstructionInput.addEventListener("input", () => {
+  promptInstructionInput.value = truncateUnicode(
+    promptInstructionInput.value,
+    MAX_CUSTOM_PROMPT_INSTRUCTION_CHARS,
+  );
+  promptInstructionInput.removeAttribute("aria-invalid");
+  promptError.textContent = "";
+  updatePromptCharacterCount();
+});
+
+cancelPromptBtn.addEventListener("click", closePromptEditor);
+
+savePromptBtn.addEventListener("click", async () => {
+  try {
+    savePromptBtn.disabled = true;
+    const profile = await saveCustomPromptProfile({
+      id: editingPromptId ?? undefined,
+      name: promptNameInput.value,
+      instruction: promptInstructionInput.value,
+    });
+    await setSettings({ activeCustomPromptId: profile.id });
+    customPromptProfiles = await getCustomPromptProfiles();
+    closePromptEditor();
+    renderCustomPromptSelect(profile.id);
+    showStatus(t("promptSaved"), "success");
+  } catch (err) {
+    if (err instanceof CustomPromptValidationError) {
+      promptError.textContent = promptValidationMessage(err);
+      if (err.code.startsWith("name")) promptNameInput.setAttribute("aria-invalid", "true");
+      if (err.code.startsWith("instruction")) {
+        promptInstructionInput.setAttribute("aria-invalid", "true");
+      }
+    } else {
+      const detail = err instanceof Error ? (err.stack ?? err.message) : String(err);
+      console.debug("[vas] Custom prompt save failed:", detail);
+      promptError.textContent = t("saveFailed");
+    }
+  } finally {
+    savePromptBtn.disabled = false;
+  }
+});
+
+translationChunkPresetSelect.addEventListener("change", () => {
+  updateTranslationChunkHint();
+  void saveAutomaticSettings({
+    translationChunkPreset: translationChunkPresetSelect.value as Settings["translationChunkPreset"],
+  });
+});
 
 // Provider changed → repopulate models
 providerSelect.addEventListener("change", () => {

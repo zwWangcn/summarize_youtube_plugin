@@ -42,8 +42,17 @@ import {
 } from "../service/summary-cache";
 import { handleError } from "./error-handler";
 import { runSummaryCacheOperation } from "./summary-cache-operation";
-import { getSettings } from "../service/storage";
+import {
+  CUSTOM_PROMPT_STORAGE_PREFIX,
+  getCustomPromptProfile,
+  getSettings,
+} from "../service/storage";
 import { normalizeSubtitleStyle } from "../service/subtitle-style";
+import {
+  getTranslationChunkLimits,
+  isTranslationChunkPreset,
+  type TranslationChunkPreset,
+} from "../service/ai-controls";
 import {
   activateUiLanguage,
   getOutputLanguageInfo,
@@ -274,6 +283,7 @@ export async function initContentScript(
   if (document.getElementById("vas-root")) return;
 
   const initialSettings = await getSettings();
+  const initialCustomPrompt = await getCustomPromptProfile(initialSettings.activeCustomPromptId);
   const initialSelection = resolveAISelection(initialSettings.provider, initialSettings.model);
   let aiSetupStatus = await requestAISetupStatus({
     providerId: initialSelection.provider.id,
@@ -288,6 +298,9 @@ export async function initContentScript(
   }
   let activeUiLanguage: UiLanguage = initialSettings.uiLanguage;
   let outputLanguage: OutputLanguage = initialSettings.outputLanguage;
+  let activeCustomPromptId = initialSettings.activeCustomPromptId;
+  let activeCustomPromptInstruction = initialCustomPrompt?.instruction ?? "";
+  let translationChunkPreset: TranslationChunkPreset = initialSettings.translationChunkPreset;
   logI18nDebug("content initialized", {
     chromeUiLocale: getUiLocale(),
     outputLanguage,
@@ -376,6 +389,21 @@ export async function initContentScript(
     targetEnd: number;
     forceRefresh: boolean;
     sectionId?: number;
+    customInstruction?: string;
+  }
+
+  function buildConfiguredTranslationChunks(transcript: Transcript): TranslationChunk[] {
+    const limits = getTranslationChunkLimits(translationChunkPreset);
+    return buildTranslationChunks(transcript.segments, limits.maxChars, limits.maxSeconds);
+  }
+
+  async function refreshActiveCustomPrompt(): Promise<void> {
+    const profile = await getCustomPromptProfile(activeCustomPromptId);
+    if (activeCustomPromptId === profile?.id) {
+      activeCustomPromptInstruction = profile.instruction;
+    } else if (!profile) {
+      activeCustomPromptInstruction = "";
+    }
   }
 
   function destroyBilingualOverlay(): void {
@@ -454,6 +482,37 @@ export async function initContentScript(
       return;
     }
     if (areaName !== "sync") return;
+    if (changes.activeCustomPromptId) {
+      const nextId = changes.activeCustomPromptId.newValue;
+      activeCustomPromptId = typeof nextId === "string" && nextId ? nextId : null;
+      void refreshActiveCustomPrompt();
+    } else if (
+      activeCustomPromptId &&
+      changes[`${CUSTOM_PROMPT_STORAGE_PREFIX}${activeCustomPromptId}`]
+    ) {
+      void refreshActiveCustomPrompt();
+    }
+
+    const nextChunkPreset = changes.translationChunkPreset?.newValue;
+    if (
+      isTranslationChunkPreset(nextChunkPreset) &&
+      nextChunkPreset !== translationChunkPreset
+    ) {
+      translationChunkPreset = nextChunkPreset;
+      translationAbort?.abort();
+      translationJobs = [];
+      partialTranslatedCues = {};
+      fullTranslationRequested = false;
+      translationProgressMessage = null;
+      if (transcriptData) {
+        transcriptChunks = buildConfiguredTranslationChunks(transcriptData);
+        activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
+        loadedChunkStart = Math.max(0, activeChunkId - 1);
+        loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
+        if (currentPanel?.getMode() === "transcript") renderTranscriptReader(currentPanel, false);
+        syncBilingualOverlay();
+      }
+    }
     const nextUiLanguage = changes.uiLanguage?.newValue;
     if (isUiLanguage(nextUiLanguage) && nextUiLanguage !== activeUiLanguage) {
       void activateUiLanguage(nextUiLanguage).then((activated) => {
@@ -625,6 +684,7 @@ export async function initContentScript(
         (_, offset) => chunk.targetStart + offset,
       ).every((cueId) => Boolean(translatedCues[cueId])),
     );
+    panel.setAllSectionsTranslated(transcriptChunks.every(isChunkTranslated));
     panel.setTranscriptView(transcriptView);
     panel.setTranslationProgress(localizedText(translationProgressMessage));
   }
@@ -731,6 +791,8 @@ export async function initContentScript(
       modelId: ai.modelId,
       targetLanguage: outputLanguage,
     };
+    // Custom instructions intentionally do not participate in cache identity.
+    // Users opt into new wording through the explicit retranslation actions.
     const key = JSON.stringify(identity);
     if (translationIdentityKey !== key) {
       translatedCues = {};
@@ -934,6 +996,7 @@ export async function initContentScript(
             renderTranslationConsumers();
           },
           controller.signal,
+          job.customInstruction ?? "",
         );
         assertCurrent();
         clearPartialRange(range.start, range.end);
@@ -941,7 +1004,7 @@ export async function initContentScript(
         await persistTranslationRangeSafely(identity, range.start, range.end);
       } catch (error) {
         clearPartialRange(range.start, range.end);
-        if (latestPartial.length) {
+        if ((error as Error)?.name !== "AbortError" && latestPartial.length) {
           commitTranslatedSegments(latestPartial);
           await persistTranslationRangeSafely(identity, range.start, range.end);
         }
@@ -955,6 +1018,7 @@ export async function initContentScript(
 
   function enqueueTranslationJob(job: TranslationJob): void {
     if (!transcriptData || job.targetStart > job.targetEnd) return;
+    job.customInstruction ??= activeCustomPromptInstruction;
     const alreadyCurrent = currentTranslationJob &&
       currentTranslationJob.kind === job.kind &&
       currentTranslationJob.targetStart <= job.targetStart &&
@@ -997,7 +1061,9 @@ export async function initContentScript(
         const controller = new AbortController();
         translationAbort = controller;
         if (job.kind === "all") {
-          const completed = transcriptChunks.filter(isChunkTranslated).length;
+          const completed = job.forceRefresh
+            ? (job.sectionId ?? 0)
+            : transcriptChunks.filter(isChunkTranslated).length;
           translationProgressMessage = {
             key: "translatingAllProgress",
             substitutions: [String(completed), String(transcriptChunks.length)],
@@ -1102,12 +1168,16 @@ export async function initContentScript(
 
   function maybeQueueOverlayPrefetch(currentCueId: number): void {
     if (!transcriptData || isTranscriptInOutputLanguage(transcriptData.languageCode, outputLanguage)) return;
+    if (fullTranslationRequested) return;
     if (autoTranslationBlockedMessage) return;
     const range = getCaptionPrefetchRange(
       transcriptData.segments,
       currentCueId,
       getCurrentPlaybackTime(),
       (cueId) => Boolean(translatedCues[cueId]),
+      15,
+      getTranslationChunkLimits(translationChunkPreset).maxSeconds,
+      getTranslationChunkLimits(translationChunkPreset).maxChars,
     );
     if (!range || autoTranslationErrors[range.start] || partialTranslatedCues[range.start]) return;
     enqueueTranslationJob({
@@ -1132,6 +1202,9 @@ export async function initContentScript(
       cueId,
       currentTime,
       (candidateCueId) => Boolean(translatedCues[candidateCueId]),
+      15,
+      getTranslationChunkLimits(translationChunkPreset).maxSeconds,
+      getTranslationChunkLimits(translationChunkPreset).maxChars,
     );
     if (range) {
       clearPartialRange(range.start, range.end);
@@ -1195,7 +1268,7 @@ export async function initContentScript(
     try {
       const transcript = await ensureTranscript(getPanel(), stateVersion);
       if (!bilingualEnabled || bilingualOverlay !== overlay || stateVersion !== transcriptStateVersion) return;
-      if (!transcriptChunks.length) transcriptChunks = buildTranslationChunks(transcript.segments);
+      if (!transcriptChunks.length) transcriptChunks = buildConfiguredTranslationChunks(transcript);
       if (!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage)) {
         await ensureTranslationCache(stateVersion);
       }
@@ -1243,6 +1316,7 @@ export async function initContentScript(
         return;
       }
       const requestedLanguage = outputLanguage;
+      const customInstruction = activeCustomPromptInstruction;
       const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       summaryTranslationAbort?.abort();
       summaryTranslationAbort = null;
@@ -1290,6 +1364,8 @@ export async function initContentScript(
           panel.hideCacheHint();
         }
 
+        // Custom instructions intentionally do not change the summary cache key;
+        // "Summarize again" is the explicit refresh path after switching presets.
         // ── 非强制刷新时先检查缓存 ──
         if (!isForceRefresh) {
           const cached = await runSummaryCacheOperation(
@@ -1370,6 +1446,7 @@ export async function initContentScript(
           transcriptText,
           requestedLanguage,
           summaryController.signal,
+          customInstruction,
         )) {
           buffer += chunk;
           if (!pendingRender) {
@@ -1462,6 +1539,7 @@ export async function initContentScript(
       }
       const requestId = `${Date.now().toString(36)}-${Math.random().toString(36).slice(2, 8)}`;
       const controller = new AbortController();
+      const customInstruction = activeCustomPromptInstruction;
       summaryTranslationAbort = controller;
       let renderFrameId: number | null = null;
       let pendingRender = false;
@@ -1495,6 +1573,7 @@ export async function initContentScript(
           sourceSummary.text,
           sourceSummary.outputLanguage,
           controller.signal,
+          customInstruction,
         )) {
           assertSourceCurrent();
           if (!streamStarted) {
@@ -1599,7 +1678,7 @@ export async function initContentScript(
         panel.setTitle(extractor.getVideoTitle());
         transcriptWithTimestamps = withTimestamps;
         if (!transcriptChunks.length) {
-          transcriptChunks = buildTranslationChunks(transcript.segments);
+          transcriptChunks = buildConfiguredTranslationChunks(transcript);
         }
         if (shouldSyncToPlayback) {
           activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
@@ -1657,11 +1736,11 @@ export async function initContentScript(
       runTranslationQueue(getPanel(), [activeChunkId], forceRefresh, false);
     },
 
-    onTranslateAll: () => {
+    onTranslateAll: (forceRefresh: boolean) => {
       runTranslationQueue(
         getPanel(),
         transcriptChunks.map((chunk) => chunk.id),
-        false,
+        forceRefresh,
         true,
       );
     },

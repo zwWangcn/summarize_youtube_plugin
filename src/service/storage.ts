@@ -17,6 +17,18 @@ import {
   normalizeSubtitleStyle,
   type SubtitleStyleSettings,
 } from "./subtitle-style";
+import {
+  CustomPromptValidationError,
+  DEFAULT_TRANSLATION_CHUNK_PRESET,
+  MAX_CUSTOM_PROMPT_INSTRUCTION_CHARS,
+  MAX_CUSTOM_PROMPT_NAME_CHARS,
+  MAX_CUSTOM_PROMPT_PROFILES,
+  normalizeCustomPromptProfile,
+  normalizeTranslationChunkPreset,
+  unicodeLength,
+  type CustomPromptProfile,
+  type TranslationChunkPreset,
+} from "./ai-controls";
 
 export interface Settings {
   /** 当前选中的供应商 */
@@ -35,6 +47,10 @@ export interface Settings {
   bilingualSubtitlesDefaultEnabled: boolean;
   /** 播放器双语字幕的同步样式设置。 */
   subtitleStyle: SubtitleStyleSettings;
+  /** 当前启用的自定义 AI 提示词；null 表示不使用。 */
+  activeCustomPromptId: string | null;
+  /** 字幕翻译请求的目标分块大小。 */
+  translationChunkPreset: TranslationChunkPreset;
 }
 
 const DEFAULTS: Omit<Settings, "outputLanguage" | "uiLanguage"> = {
@@ -44,12 +60,16 @@ const DEFAULTS: Omit<Settings, "outputLanguage" | "uiLanguage"> = {
   translationOnlyEnabled: false,
   bilingualSubtitlesDefaultEnabled: true,
   subtitleStyle: DEFAULT_SUBTITLE_STYLE,
+  activeCustomPromptId: null,
+  translationChunkPreset: DEFAULT_TRANSLATION_CHUNK_PRESET,
 };
 
 const API_KEYS_KEY = "apiKeys";
 const API_KEY_PREFIX = "vas-api-key:";
 const V1_MIGRATION_KEY = "vas-settings-migrated-v2";
 const LOCAL_KEYS_MIGRATION_KEY = "vas-api-keys-migrated-v4";
+export const CUSTOM_PROMPT_STORAGE_PREFIX = "vas-custom-prompt:";
+const CUSTOM_PROMPT_ORDER_KEY = "vas-custom-prompt-order";
 let migrationPromise: Promise<void> | null = null;
 
 function normalizeApiKeys(value: unknown): Record<string, string> {
@@ -148,6 +168,11 @@ export async function getSettings(): Promise<Settings> {
   return {
     ...result,
     subtitleStyle: normalizeSubtitleStyle(result.subtitleStyle),
+    activeCustomPromptId: typeof result.activeCustomPromptId === "string" &&
+        result.activeCustomPromptId.trim()
+      ? result.activeCustomPromptId.trim()
+      : null,
+    translationChunkPreset: normalizeTranslationChunkPreset(result.translationChunkPreset),
   } as Settings;
 }
 
@@ -194,4 +219,92 @@ export async function clearAllApiKeys(): Promise<void> {
 
 export async function hasAnyApiKey(): Promise<boolean> {
   return Object.keys(await getApiKeys()).length > 0;
+}
+
+function customPromptStorageKey(id: string): string {
+  return `${CUSTOM_PROMPT_STORAGE_PREFIX}${id}`;
+}
+
+function normalizePromptOrder(value: unknown): string[] {
+  if (!Array.isArray(value)) return [];
+  return [...new Set(value.filter((id): id is string => typeof id === "string" && Boolean(id)))]
+    .slice(0, MAX_CUSTOM_PROMPT_PROFILES);
+}
+
+function createCustomPromptId(): string {
+  return typeof globalThis.crypto?.randomUUID === "function"
+    ? globalThis.crypto.randomUUID()
+    : `${Date.now().toString(36)}-${Math.random().toString(36).slice(2)}`;
+}
+
+export async function getCustomPromptProfiles(): Promise<CustomPromptProfile[]> {
+  const indexResult = await chrome.storage.sync.get(CUSTOM_PROMPT_ORDER_KEY);
+  const order = normalizePromptOrder(indexResult[CUSTOM_PROMPT_ORDER_KEY]);
+  if (!order.length) return [];
+  const keys = order.map(customPromptStorageKey);
+  const stored = await chrome.storage.sync.get(keys);
+  const profiles: CustomPromptProfile[] = [];
+  for (const id of order) {
+    const profile = normalizeCustomPromptProfile(stored[customPromptStorageKey(id)]);
+    if (profile && profile.id === id) profiles.push(profile);
+  }
+  return profiles;
+}
+
+export async function getCustomPromptProfile(
+  id: string | null | undefined,
+): Promise<CustomPromptProfile | null> {
+  if (!id) return null;
+  const key = customPromptStorageKey(id);
+  const stored = await chrome.storage.sync.get(key);
+  const profile = normalizeCustomPromptProfile(stored[key]);
+  return profile?.id === id ? profile : null;
+}
+
+export async function saveCustomPromptProfile(input: {
+  id?: string;
+  name: string;
+  instruction: string;
+}): Promise<CustomPromptProfile> {
+  const name = input.name.trim();
+  const instruction = input.instruction.trim();
+  if (!name) throw new CustomPromptValidationError("name-required");
+  if (unicodeLength(name) > MAX_CUSTOM_PROMPT_NAME_CHARS) {
+    throw new CustomPromptValidationError("name-too-long");
+  }
+  if (!instruction) throw new CustomPromptValidationError("instruction-required");
+  if (unicodeLength(instruction) > MAX_CUSTOM_PROMPT_INSTRUCTION_CHARS) {
+    throw new CustomPromptValidationError("instruction-too-long");
+  }
+
+  const profiles = await getCustomPromptProfiles();
+  const existing = input.id ? profiles.find((profile) => profile.id === input.id) : undefined;
+  if (!existing && profiles.length >= MAX_CUSTOM_PROMPT_PROFILES) {
+    throw new CustomPromptValidationError("profile-limit");
+  }
+  if (profiles.some((profile) => (
+    profile.id !== input.id && profile.name.localeCompare(name, undefined, { sensitivity: "accent" }) === 0
+  ))) {
+    throw new CustomPromptValidationError("name-duplicate");
+  }
+
+  const id = existing?.id ?? createCustomPromptId();
+  const profile = { id, name, instruction };
+  const order = existing ? profiles.map((item) => item.id) : [...profiles.map((item) => item.id), id];
+  await chrome.storage.sync.set({
+    [customPromptStorageKey(id)]: profile,
+    [CUSTOM_PROMPT_ORDER_KEY]: order,
+  });
+  return profile;
+}
+
+export async function deleteCustomPromptProfile(id: string): Promise<void> {
+  const profiles = await getCustomPromptProfiles();
+  const nextOrder = profiles.filter((profile) => profile.id !== id).map((profile) => profile.id);
+  const settings = await getSettings();
+  await chrome.storage.sync.set({
+    [CUSTOM_PROMPT_ORDER_KEY]: nextOrder,
+    ...(settings.activeCustomPromptId === id ? { activeCustomPromptId: null } : {}),
+  });
+  await chrome.storage.sync.remove(customPromptStorageKey(id));
 }

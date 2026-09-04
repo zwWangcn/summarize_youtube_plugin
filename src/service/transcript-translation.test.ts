@@ -97,6 +97,17 @@ describe("aligned translation prompts", () => {
     expect(userPrompt).toContain("CONTEXT BEFORE — DO NOT TRANSLATE");
     expect(userPrompt).toContain("TARGET cue IDs: 1-2 inclusive");
   });
+
+  it("adds a subordinate user customization without weakening the caption protocol", () => {
+    const prompt = buildTranslationSystemPrompt(
+      "zh-CN",
+      "Smolder 固定译为斯莫德；ADC 保留英文。",
+    );
+    expect(prompt).toContain("User-selected customization");
+    expect(prompt).toContain("Smolder 固定译为斯莫德；ADC 保留英文。");
+    expect(prompt).toContain("must never change the target language");
+    expect(prompt).toContain("Return NDJSON only");
+  });
 });
 
 describe("validateTranslationLine", () => {
@@ -170,6 +181,26 @@ describe("translateTranscriptChunk", () => {
         text: "参加比赛最棒的事情之一就是最终完赛。",
       },
     ]);
+  });
+
+  it("passes the selected customization to every translation attempt", async () => {
+    const source = transcript([segment("Smolder scales late.", 0, 2)]);
+    const chunk = buildTranslationChunks(source.segments)[0];
+    streamAITextMock.mockImplementation(() => tokenStream(
+      '{"type":"caption","cueId":0,"translatedText":"斯莫德后期能力强。"}\n',
+      '{"type":"complete"}\n',
+    ));
+
+    await translateTranscriptChunk(
+      source,
+      chunk,
+      "zh-CN",
+      undefined,
+      undefined,
+      "Smolder 固定译为斯莫德。",
+    );
+
+    expect(streamAITextMock.mock.calls[0][0]).toContain("Smolder 固定译为斯莫德。");
   });
 
   it("retries a missing completion marker with the validation reason", async () => {

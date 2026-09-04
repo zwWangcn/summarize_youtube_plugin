@@ -31,7 +31,7 @@ export interface PanelCallbacks {
   onTranscript: (withTimestamps: boolean) => void;
   onTranscriptViewChange?: (view: TranscriptView) => void;
   onTranslateCurrent?: (forceRefresh: boolean) => void;
-  onTranslateAll?: () => void;
+  onTranslateAll?: (forceRefresh: boolean) => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -79,6 +79,7 @@ export class Panel {
   private aiAvailable = true;
   private aiProviderName = "AI";
   private translationActionsBusy = false;
+  private allSectionsTranslated = false;
   private summaryTranslationVisible = false;
   private summaryTranslationBusy = false;
   private summaryTranslationAttention = false;
@@ -350,7 +351,9 @@ export class Panel {
         this.translateCurrentBtn.dataset.translated === "true",
       );
     });
-    this.translateAllBtn.addEventListener("click", () => this.callbacks.onTranslateAll?.());
+    this.translateAllBtn.addEventListener("click", () => {
+      this.callbacks.onTranslateAll?.(this.allSectionsTranslated);
+    });
     // Copy button
     this.copyBtn.addEventListener("click", () => this.copyContent());
     // Timestamp toggle
@@ -606,7 +609,9 @@ export class Panel {
     this.copyBtn.title = t("copy");
     this.sourceViewBtn.textContent = t("sourceView");
     this.translationViewBtn.textContent = t("translationView");
-    this.translateAllBtn.textContent = t("translateAll");
+    this.translateAllBtn.textContent = t(
+      this.allSectionsTranslated ? "retranslateAll" : "translateAll",
+    );
     this.setCurrentSectionTranslated(this.translateCurrentBtn.dataset.translated === "true");
     this.setLoadingMessage(this.loadingMessageKey);
     if (this.summaryTranslationVisible) {
@@ -723,6 +728,11 @@ export class Panel {
     this.translateCurrentBtn.textContent = t(
       translated ? "retranslateSection" : "translateSection",
     );
+  }
+
+  setAllSectionsTranslated(translated: boolean): void {
+    this.allSectionsTranslated = translated;
+    this.translateAllBtn.textContent = t(translated ? "retranslateAll" : "translateAll");
   }
 
   setTranslationActionsBusy(busy: boolean): void {

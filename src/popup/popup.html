@@ -19,6 +19,7 @@
     <nav class="settings-tabs" role="tablist" data-i18n-aria-label="settingsTabsAria">
       <button id="tab-general" class="settings-tab is-active" type="button" role="tab" aria-selected="true" aria-controls="panel-general" tabindex="0" data-tab="general" data-i18n="generalTab">通用</button>
       <button id="tab-subtitles" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-subtitles" tabindex="-1" data-tab="subtitles" data-i18n="subtitlesTab">字幕</button>
+      <button id="tab-controls" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-controls" tabindex="-1" data-tab="controls" data-i18n="aiControlsTab">AI 控制</button>
       <button id="tab-ai" class="settings-tab" type="button" role="tab" aria-selected="false" aria-controls="panel-ai" tabindex="-1" data-tab="ai">
         <span data-i18n="aiModelsTab">AI 模型</span><span id="aiTabBadge" class="tab-status-dot" aria-hidden="true"></span>
       </button>
@@ -127,6 +128,59 @@
           </section>
         </div>
         <p class="autosave-note" data-i18n="autoSaveHint">更改后自动保存</p>
+      </section>
+
+      <section id="panel-controls" class="tab-panel" role="tabpanel" aria-labelledby="tab-controls" data-panel="controls" hidden>
+        <div class="page-intro">
+          <h2 data-i18n="aiControlsTitle">AI 控制</h2>
+          <p data-i18n="aiControlsHint">使用自定义提示词统一领域术语，并调整字幕翻译的上下文长度。</p>
+        </div>
+
+        <div class="settings-card">
+          <section class="section">
+            <label class="label" for="customPromptSelect" data-i18n="customPromptLabel">自定义提示词</label>
+            <select id="customPromptSelect" class="input"></select>
+            <p class="hint" data-i18n="customPromptHint">每次只启用一条，并应用于新生成的字幕翻译、总结和总结翻译。</p>
+            <div class="prompt-actions">
+              <button id="newPromptBtn" type="button" class="btn-compact" data-i18n="newPrompt">新建</button>
+              <button id="editPromptBtn" type="button" class="btn-compact" data-i18n="editPrompt">编辑</button>
+              <button id="deletePromptBtn" type="button" class="btn-compact btn-danger" data-i18n="deletePrompt">删除</button>
+            </div>
+          </section>
+
+          <section id="promptEditor" class="prompt-editor" hidden>
+            <label class="label" for="promptName" data-i18n="promptNameLabel">预设名称</label>
+            <input id="promptName" class="input" type="text" autocomplete="off" data-i18n-placeholder="promptNamePlaceholder" placeholder="例如：英雄联盟国服术语" />
+            <label class="label prompt-instruction-label" for="promptInstruction" data-i18n="promptInstructionLabel">提示词内容</label>
+            <textarea id="promptInstruction" class="input prompt-textarea" rows="8" data-i18n-placeholder="promptInstructionPlaceholder" placeholder="例如：角色名和装备名采用国服官方译名；ADC 保留英文。"></textarea>
+            <div class="prompt-editor-meta">
+              <p id="promptError" class="field-error" role="alert"></p>
+              <span id="promptCharCount" class="prompt-char-count" aria-live="polite">0 / 500</span>
+            </div>
+            <div class="prompt-editor-actions">
+              <button id="cancelPromptBtn" type="button" class="btn-compact" data-i18n="cancel">取消</button>
+              <button id="savePromptBtn" type="button" class="btn-compact btn-accent" data-i18n="savePrompt">保存提示词</button>
+            </div>
+          </section>
+        </div>
+
+        <div class="settings-card controls-chunk-card">
+          <section class="section">
+            <label class="label" for="translationChunkPreset" data-i18n="translationChunkLabel">字幕翻译 Chunk</label>
+            <select id="translationChunkPreset" class="input">
+              <option value="fast" data-i18n="translationChunkFast">快速 · 30 秒 / 2000 字符</option>
+              <option value="balanced" data-i18n="translationChunkBalanced">平衡 · 60 秒 / 4000 字符</option>
+              <option value="context" data-i18n="translationChunkContext">长上下文 · 120 秒 / 8000 字符</option>
+            </select>
+            <p id="translationChunkHint" class="hint"></p>
+          </section>
+        </div>
+
+        <section class="controls-cache-note">
+          <strong data-i18n="customPromptCacheTitle">已有结果不会自动更新</strong>
+          <p data-i18n="customPromptCacheHint">切换提示词或 Chunk 后，请使用“重新翻译本段/全文”或“再次总结”生成新结果。</p>
+        </section>
+        <p class="autosave-note" data-i18n="promptSyncHint">提示词会通过 Chrome 同步；只有点击保存后才会写入。</p>
       </section>
 
       <section id="panel-ai" class="tab-panel" role="tabpanel" aria-labelledby="tab-ai" data-panel="ai" hidden>
