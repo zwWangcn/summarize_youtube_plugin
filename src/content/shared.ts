@@ -1311,6 +1311,24 @@ export async function initContentScript(
   const callbacks = {
     onSummarize: async () => {
       const panel = getPanel();
+
+      // 字幕视图会复用内容容器，但总结仍保存在内存中。此时“AI 总结”
+      // 是返回总结视图的入口；只有已处于总结视图时，点击才会强制刷新。
+      if (
+        panel.getMode() !== "summary" &&
+        displayedSummary?.text.trim() &&
+        displayedSummary.videoId === extractor.getVideoId() &&
+        displayedSummary.outputLanguage === outputLanguage
+      ) {
+        panel.setTitle(displayedSummary.videoTitle || extractor.getVideoTitle());
+        panel.setContent(renderMarkdown(displayedSummary.text));
+        showSummaryTranslationAction(panel, displayedSummary);
+        panel.setMode("summary");
+        panel.setCachedView(true);
+        panel.open();
+        return;
+      }
+
       if (!aiSetupStatus.hasKey) {
         panel.setAIAvailable(false, aiSetupStatus.providerName);
         return;
@@ -1360,7 +1378,6 @@ export async function initContentScript(
           );
           assertCurrent();
           panel.setCachedView(false);
-          panel.setSummarizeButtonText(t("aiSummary"));
           panel.hideCacheHint();
         }
 
@@ -1397,7 +1414,6 @@ export async function initContentScript(
             showSummaryTranslationAction(panel, summaryState);
             panel.setMode("summary");
             panel.setCachedView(true);
-            panel.setSummarizeButtonText(t("summarizeAgain"));
 
             // 显示缓存时间
             const elapsed = Date.now() - cached.timestamp;
@@ -1503,7 +1519,6 @@ export async function initContentScript(
         panel.setMode("summary");
         // API 获取的新内容，标记为可「再次总结」
         panel.setCachedView(true);
-        panel.setSummarizeButtonText(t("summarizeAgain"));
         if (cacheFailed) {
           panel.showWarning(t("summaryCacheUnavailable"));
         }

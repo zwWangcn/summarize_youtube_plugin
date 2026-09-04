@@ -25,6 +25,13 @@ import { aiSummaryIconMarkup } from "./icons";
 export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "error";
 export type TranscriptView = "source" | "translation";
 
+export function getSummarizeButtonMessageKey(
+  mode: PanelMode,
+  hasReusableSummary: boolean,
+): "aiSummary" | "summarizeAgain" {
+  return mode === "summary" && hasReusableSummary ? "summarizeAgain" : "aiSummary";
+}
+
 export interface PanelCallbacks {
   onSummarize: () => void;
   onTranslateSummary?: () => void;
@@ -437,9 +444,10 @@ export class Panel {
 
   // ---- Cache-aware button ----
 
-  /** 切换总结按钮文字。 */
-  setSummarizeButtonText(text: string): void {
-    this.summarizeBtn.textContent = text;
+  private refreshSummarizeButtonText(): void {
+    this.summarizeBtn.textContent = t(
+      getSummarizeButtonMessageKey(this.mode, this.isCachedView),
+    );
   }
 
   /** 显示缓存时间提示（如「缓存于 2 小时前」）。 */
@@ -460,6 +468,7 @@ export class Panel {
   /** 标记当前是否显示的是缓存内容。 */
   setCachedView(cached: boolean): void {
     this.isCachedView = cached;
+    this.refreshSummarizeButtonText();
   }
 
   /** 是否正在显示缓存内容。 */
@@ -489,9 +498,8 @@ export class Panel {
     this.copyBtn.style.display = "none";
     this.setTranslationActionsBusy(false);
     this.hideSummaryTranslationAction();
-    this.isCachedView = false;
+    this.setCachedView(false);
     this.loadingMessageKey = "starting";
-    this.setSummarizeButtonText(t("aiSummary"));
     this.setTranscriptView("source");
     this.setTranslationProgress("");
     this.hideCacheHint();
@@ -534,6 +542,7 @@ export class Panel {
 
     this.mode = mode;
     this.hideAll();
+    this.refreshSummarizeButtonText();
 
     switch (mode) {
       case "idle":
@@ -603,7 +612,7 @@ export class Panel {
     if (thinkingText) thinkingText.textContent = t("aiThinking");
     this.renderAIAvailability();
 
-    this.summarizeBtn.textContent = t(this.isCachedView ? "summarizeAgain" : "aiSummary");
+    this.refreshSummarizeButtonText();
     this.transcriptBtn.textContent = t("rawTranscript");
     this.copyBtn.textContent = t("copy");
     this.copyBtn.title = t("copy");
