@@ -193,7 +193,7 @@
   "errorTranslationAttemptLimit": { "message": "The caption translation retry limit was reached." },
   "errorTranslationValidation": { "message": "Caption translation format validation failed." },
 
-  "modelDescDeepseekV4Flash": { "message": "Fast and economical V4 Flash 0731 for everyday use" },
+  "modelDescDeepseekV4Flash": { "message": "Fast and economical V4.1 Flash for everyday use" },
   "modelDescDeepseekV4": { "message": "Stronger reasoning for complex content" },
   "modelDescGpt56Sol": { "message": "Frontier capability for complex professional work" },
   "modelDescGpt56Terra": { "message": "Balanced intelligence and cost" },
@@ -207,6 +207,7 @@
   "modelDescKimiTurbo": { "message": "Economical option with strong value" },
   "modelDescQwenMax": { "message": "Flagship model for deep understanding of complex content" },
   "modelDescQwenPlus": { "message": "Balanced value with a 1M context window" },
+  "modelDescQwen37Flash": { "message": "Recommended for short subtitle translation; lower output price at inputs up to 32K tokens" },
   "modelDescQwenFlash": { "message": "Very fast and inexpensive for everyday use" },
   "modelDescGlm47": { "message": "Latest flagship with deep reasoning" },
   "modelDescGlm45": { "message": "Strong value for processing Chinese captions" },

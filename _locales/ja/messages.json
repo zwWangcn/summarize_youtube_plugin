@@ -193,7 +193,7 @@
   "errorTranslationAttemptLimit": { "message": "字幕翻訳の再試行回数が上限に達しました" },
   "errorTranslationValidation": { "message": "字幕翻訳の形式検証に失敗しました" },
 
-  "modelDescDeepseekV4Flash": { "message": "高速で低コストな V4 Flash 0731。日常利用におすすめ" },
+  "modelDescDeepseekV4Flash": { "message": "高速で低コストな V4.1 Flash。日常利用におすすめ" },
   "modelDescDeepseekV4": { "message": "より強力な推論で複雑な内容に最適" },
   "modelDescGpt56Sol": { "message": "複雑な専門タスク向けの最高性能モデル" },
   "modelDescGpt56Terra": { "message": "性能とコストのバランスに優れたモデル" },
@@ -207,6 +207,7 @@
   "modelDescKimiTurbo": { "message": "コスト性能に優れた経済的な選択肢" },
   "modelDescQwenMax": { "message": "複雑な内容の深い理解に適したフラッグシップモデル" },
   "modelDescQwenPlus": { "message": "1M コンテキストを備えた高コスト性能モデル" },
+  "modelDescQwen37Flash": { "message": "短い字幕の翻訳におすすめ。入力32Kトークン以下で出力単価が低下" },
   "modelDescQwenFlash": { "message": "非常に高速で低コスト。日常利用に最適" },
   "modelDescGlm47": { "message": "深い推論を備えた最新フラッグシップ" },
   "modelDescGlm45": { "message": "中国語字幕の処理に適した高コスト性能モデル" },

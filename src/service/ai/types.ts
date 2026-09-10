@@ -13,7 +13,7 @@ export interface AIRequest {
   temperature?: number;
   disableThinking?: boolean;
   maxOutputTokensField?: "max_tokens" | "max_completion_tokens";
-  thinkingControl?: "none" | "deepseek" | "qwen" | "openai";
+  thinkingControl?: "none" | "deepseek" | "qwen" | "openai" | "thinking";
   instructionRole?: "system" | "developer";
 }
 

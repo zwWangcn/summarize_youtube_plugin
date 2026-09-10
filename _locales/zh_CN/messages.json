@@ -193,7 +193,7 @@
   "errorTranslationAttemptLimit": { "message": "字幕翻译重试次数已达上限" },
   "errorTranslationValidation": { "message": "字幕翻译格式校验失败" },
 
-  "modelDescDeepseekV4Flash": { "message": "V4 Flash 0731，快速经济，推荐日常使用" },
+  "modelDescDeepseekV4Flash": { "message": "V4.1 Flash，快速经济，推荐日常使用" },
   "modelDescDeepseekV4": { "message": "更强推理，适合复杂内容" },
   "modelDescGpt56Sol": { "message": "旗舰能力，适合复杂专业任务" },
   "modelDescGpt56Terra": { "message": "能力与成本均衡" },
@@ -207,6 +207,7 @@
   "modelDescKimiTurbo": { "message": "经济选择，性价比之选" },
   "modelDescQwenMax": { "message": "旗舰模型，适合深度理解复杂内容" },
   "modelDescQwenPlus": { "message": "均衡性价比，1M 超长上下文" },
+  "modelDescQwen37Flash": { "message": "推荐短字幕翻译，输入不超过 32K tokens 时输出单价更低" },
   "modelDescQwenFlash": { "message": "极速低价，适合日常使用" },
   "modelDescGlm47": { "message": "最新旗舰，深度推理" },
   "modelDescGlm45": { "message": "高性价比，适合处理中文字幕" },

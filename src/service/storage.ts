@@ -55,7 +55,7 @@ export interface Settings {
 
 const DEFAULTS: Omit<Settings, "outputLanguage" | "uiLanguage"> = {
   provider: "deepseek",
-  model: "deepseek-v4-flash",
+  model: "deepseek-flash",
   learningModeEnabled: false,
   translationOnlyEnabled: false,
   bilingualSubtitlesDefaultEnabled: true,

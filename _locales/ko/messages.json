@@ -193,7 +193,7 @@
   "errorTranslationAttemptLimit": { "message": "자막 번역 재시도 횟수가 한도에 도달했습니다" },
   "errorTranslationValidation": { "message": "자막 번역 형식 검증에 실패했습니다" },
 
-  "modelDescDeepseekV4Flash": { "message": "빠르고 경제적인 V4 Flash 0731, 일상적인 사용에 추천" },
+  "modelDescDeepseekV4Flash": { "message": "빠르고 경제적인 V4.1 Flash, 일상적인 사용에 추천" },
   "modelDescDeepseekV4": { "message": "복잡한 콘텐츠에 적합한 강력한 추론" },
   "modelDescGpt56Sol": { "message": "복잡한 전문 작업을 위한 최고 성능 모델" },
   "modelDescGpt56Terra": { "message": "성능과 비용의 균형이 뛰어난 모델" },
@@ -207,6 +207,7 @@
   "modelDescKimiTurbo": { "message": "가성비가 뛰어난 경제적인 선택" },
   "modelDescQwenMax": { "message": "복잡한 콘텐츠의 깊은 이해를 위한 플래그십 모델" },
   "modelDescQwenPlus": { "message": "1M 컨텍스트 창을 갖춘 균형 잡힌 고가성비 모델" },
+  "modelDescQwen37Flash": { "message": "짧은 자막 번역에 추천. 입력 32K 토큰 이하에서 출력 단가 절감" },
   "modelDescQwenFlash": { "message": "매우 빠르고 저렴하며 일상적인 사용에 적합" },
   "modelDescGlm47": { "message": "심층 추론을 갖춘 최신 플래그십 모델" },
   "modelDescGlm45": { "message": "중국어 자막 처리에 적합한 고가성비 모델" },

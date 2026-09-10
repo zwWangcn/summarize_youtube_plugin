@@ -34,7 +34,7 @@ export interface ProviderInfo {
 export interface AIRequestProfile {
   supportsTemperature: boolean;
   maxOutputTokensField: "max_tokens" | "max_completion_tokens";
-  thinkingControl: "none" | "deepseek" | "qwen" | "openai";
+  thinkingControl: "none" | "deepseek" | "qwen" | "openai" | "thinking";
   instructionRole: "system" | "developer";
 }
 
@@ -53,16 +53,16 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "DS",
     models: [
       {
-        id: "deepseek-v4-flash",
-        name: "DeepSeek V4 Flash",
+        id: "deepseek-flash",
+        name: "DeepSeek V4.1 Flash",
         provider: "deepseek",
         descriptionKey: "modelDescDeepseekV4Flash",
-        paramSize: "284B MoE / 13B active",
+        paramSize: "—",
         contextWindow: 1_000_000,
       },
       {
         id: "deepseek-v4-pro",
-        name: "DeepSeek V4 Pro",
+        name: "DeepSeek V4 Pro (legacy)",
         provider: "deepseek",
         descriptionKey: "modelDescDeepseekV4",
         paramSize: "1.6T MoE / 49B active",
@@ -125,12 +125,12 @@ export const PROVIDERS: ProviderInfo[] = [
         contextWindow: 1_000_000,
       },
       {
-        id: "claude-opus-4-8",
-        name: "Claude Opus 4.8",
+        id: "claude-opus-5",
+        name: "Claude Opus 5",
         provider: "anthropic",
         descriptionKey: "modelDescClaudeOpus",
         paramSize: "—",
-        contextWindow: 200_000,
+        contextWindow: 1_000_000,
       },
       {
         id: "claude-haiku-4-5-20251001",
@@ -158,7 +158,7 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "gemini",
         descriptionKey: "modelDescGemini37Flash",
         paramSize: "—",
-        contextWindow: 1_000_000,
+        contextWindow: 1_048_576,
       },
     ],
   },
@@ -178,23 +178,7 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "moonshot",
         descriptionKey: "modelDescKimiK2",
         paramSize: "~1T MoE",
-        contextWindow: 128_000,
-      },
-      {
-        id: "kimi-k2.6-thinking",
-        name: "Kimi K2.6 Thinking",
-        provider: "moonshot",
-        descriptionKey: "modelDescKimiThinking",
-        paramSize: "~1T MoE",
-        contextWindow: 128_000,
-      },
-      {
-        id: "kimi-k2.5",
-        name: "Kimi K2.5",
-        provider: "moonshot",
-        descriptionKey: "modelDescKimiTurbo",
-        paramSize: "~1T MoE",
-        contextWindow: 128_000,
+        contextWindow: 262_144,
       },
     ],
   },
@@ -225,6 +209,14 @@ export const PROVIDERS: ProviderInfo[] = [
         contextWindow: 1_000_000,
       },
       {
+        id: "qwen3.7-flash",
+        name: "Qwen3.7 Flash",
+        provider: "qwen",
+        descriptionKey: "modelDescQwen37Flash",
+        paramSize: "—",
+        contextWindow: 1_000_000,
+      },
+      {
         id: "qwen3.5-flash",
         name: "Qwen3.5 Flash",
         provider: "qwen",
@@ -250,7 +242,7 @@ export const PROVIDERS: ProviderInfo[] = [
         provider: "zhipu",
         descriptionKey: "modelDescGlm47",
         paramSize: "744B",
-        contextWindow: 128_000,
+        contextWindow: 1_000_000,
       },
       {
         id: "glm-4.5",
@@ -288,14 +280,6 @@ export const PROVIDERS: ProviderInfo[] = [
         paramSize: "—",
         contextWindow: 1_000_000,
       },
-      {
-        id: "grok-4.1-fast",
-        name: "Grok 4.1 Fast",
-        provider: "grok",
-        descriptionKey: "modelDescGrok4Fast",
-        paramSize: "—",
-        contextWindow: 2_000_000,
-      },
     ],
   },
 ];
@@ -316,8 +300,16 @@ export function getModelsByProvider(providerId: string): ModelInfo[] {
 }
 
 const LEGACY_MODEL_IDS: Record<string, string> = {
+  "deepseek-v4-flash": "deepseek-flash",
+  "deepseek-v4-flash-vision-exp": "deepseek-flash",
+  "deepseek-chat": "deepseek-flash",
+  "deepseek-reasoner": "deepseek-flash",
+  "kimi-k2.6-thinking": "kimi-k2.6",
+  "kimi-k2.5": "kimi-k2.6",
+  "grok-4.1-fast": "grok-4.3",
   "claude-sonnet-5-20250702": "claude-sonnet-5",
-  "claude-opus-4-8-20250515": "claude-opus-4-8",
+  "claude-opus-4-8-20250515": "claude-opus-5",
+  "claude-opus-4-8": "claude-opus-5",
   "gpt-5": "gpt-5.6-sol",
   "gpt-5-mini": "gpt-5.6-terra",
   "gpt-4.1": "gpt-5.6-luna",
@@ -357,14 +349,15 @@ export function getAIRequestProfile(
 ): AIRequestProfile {
   const normalizedId = normalizeModelId(modelId);
   const rejectsSamplingParameters = providerId === "anthropic" && (
-    normalizedId === "claude-sonnet-5" || normalizedId === "claude-opus-4-8"
+    normalizedId === "claude-sonnet-5" || normalizedId === "claude-opus-5"
   );
   const openAIReasoningModel = providerId === "openai" && (
     normalizedId.startsWith("gpt-5.6-")
   );
+  const kimiFixedSampling = providerId === "moonshot" && normalizedId === "kimi-k2.6";
   const gemini37Flash = providerId === "gemini" && normalizedId === "gemini-3.7-flash";
   return {
-    supportsTemperature: !rejectsSamplingParameters && !openAIReasoningModel && !gemini37Flash,
+    supportsTemperature: !rejectsSamplingParameters && !openAIReasoningModel && !gemini37Flash && !kimiFixedSampling,
     maxOutputTokensField: providerId === "openai"
       ? "max_completion_tokens"
       : "max_tokens",
@@ -372,7 +365,9 @@ export function getAIRequestProfile(
       ? "openai"
       : providerId === "deepseek"
       ? "deepseek"
-      : providerId === "qwen"
+      : kimiFixedSampling || providerId === "zhipu"
+        ? "thinking"
+        : providerId === "qwen"
         ? "qwen"
         : "none",
     instructionRole: providerId === "openai" ? "developer" : "system",

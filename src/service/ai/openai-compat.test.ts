@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { openaiCompatAdapter } from "./openai-compat";
+import { getAIRequestProfile, resolveAISelection } from "../model-registry";
 
 describe("openai-compatible request body", () => {
   const base = {
@@ -33,6 +34,18 @@ describe("openai-compatible request body", () => {
     expect(JSON.parse(request.body)).not.toHaveProperty("max_tokens");
   });
 
+  it("keeps Qwen 3.7 Flash translation requests in non-thinking mode", () => {
+    const model = "qwen3.7-flash";
+    const body = JSON.parse(openaiCompatAdapter.buildStreamRequest({
+      ...base,
+      ...getAIRequestProfile("qwen", model),
+      model,
+      disableThinking: true,
+    }).body);
+    expect(body).toMatchObject({ model, enable_thinking: false, max_tokens: 16384 });
+    expect(body).not.toHaveProperty("thinking");
+  });
+
   it("uses OpenAI reasoning controls and developer instructions", () => {
     const request = openaiCompatAdapter.buildStreamRequest({
       ...base,
@@ -59,5 +72,23 @@ describe("openai-compatible request body", () => {
   it("does not send provider-specific thinking fields by default", () => {
     const request = openaiCompatAdapter.buildStreamRequest(base);
     expect(JSON.parse(request.body)).not.toHaveProperty("thinking");
+  });
+
+  it.each(["moonshot", "zhipu"])("disables thinking using the %s request contract", (provider) => {
+    const selection = resolveAISelection(provider, provider === "moonshot" ? "kimi-k2.5" : "glm-5.2");
+    const profile = getAIRequestProfile(provider, selection.model.id);
+    const body = JSON.parse(openaiCompatAdapter.buildStreamRequest({
+      ...base,
+      ...profile,
+      model: selection.model.id,
+      temperature: profile.supportsTemperature ? 0.2 : undefined,
+      disableThinking: true,
+    }).body);
+    expect(body.thinking).toEqual({ type: "disabled" });
+    expect(body).not.toHaveProperty("reasoning_effort");
+    if (provider === "moonshot") {
+      expect(body.model).toBe("kimi-k2.6");
+      expect(body).not.toHaveProperty("temperature");
+    }
   });
 });

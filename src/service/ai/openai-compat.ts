@@ -16,7 +16,7 @@ function buildBody(params: AIRequest): string {
   };
   if (typeof params.temperature === "number") body.temperature = params.temperature;
   body[params.maxOutputTokensField ?? "max_tokens"] = params.maxOutputTokens ?? 16384;
-  if (params.disableThinking && params.thinkingControl === "deepseek") {
+  if (params.disableThinking && (params.thinkingControl === "deepseek" || params.thinkingControl === "thinking")) {
     body.thinking = { type: "disabled" };
   } else if (params.disableThinking && params.thinkingControl === "qwen") {
     body.enable_thinking = false;
