@@ -572,7 +572,7 @@ function segmentPenalty(
   return penalty;
 }
 
-function selectBestPath(text: string, candidates: SplitCandidate[]): number[] {
+function selectBestPath(text: string, candidates: SplitCandidate[]): number[] | null {
   const widthPrefix = displayWidthPrefix(text);
   const scores = Array<number>(candidates.length).fill(Number.NEGATIVE_INFINITY);
   const previous = Array<number>(candidates.length).fill(-1);
@@ -617,7 +617,7 @@ function selectBestPath(text: string, candidates: SplitCandidate[]): number[] {
     path.push(cursor);
     if (cursor === 0) break;
     cursor = previous[cursor];
-    if (cursor < 0) return [0, candidates.length - 1];
+    if (cursor < 0) return null;
   }
   return path.reverse();
 }
@@ -634,12 +634,67 @@ function roundedDuration(start: number, end: number): number {
 export async function segmentTranscriptSemantically(
   transcript: Transcript,
 ): Promise<Transcript> {
+  // A short source caption may remain visible for much longer than speech lasts.
+  // Accept that timing as an isolated cue; optimize the surrounding runs normally.
+  // Isolation also prevents a following overlapping cue from shortening its end.
+  const longCueIndexes = transcript.segments.flatMap((segment, index) => (
+    segment.duration > HARD_SEGMENT_SECONDS &&
+    normalizedText(segment.text) &&
+    displayWidth(normalizedText(segment.text)) <= HARD_SEGMENT_WIDTH
+      ? [index]
+      : []
+  ));
+  if (longCueIndexes.length) {
+    const source = transcript.segments.map((segment, index) => ({
+      ...segment,
+      sourceStartId: segment.sourceStartId ?? index,
+      sourceEndId: segment.sourceEndId ?? index,
+    }));
+    const segments: TranscriptSegment[] = [];
+    let start = 0;
+    for (const index of [...longCueIndexes, source.length]) {
+      if (index > start) {
+        const aligned = await segmentTranscriptSemantically({
+          ...transcript,
+          segments: source.slice(start, index),
+        });
+        segments.push(...aligned.segments);
+      }
+      if (index < source.length) {
+        const cue = source[index];
+        const text = normalizedText(cue.text);
+        if (!SOUND_LABEL_ONLY_RE.test(text)) {
+          segments.push({ ...cue, text, splitReason: "forced-best-candidate" });
+        }
+      }
+      start = index + 1;
+    }
+    return { ...transcript, segments };
+  }
   const { text, cues } = flattenTranscript(transcript);
   if (!text || !cues.length) return { ...transcript, segments: [] };
 
   const modelHints = await detectSentenceBoundaries(transcript.languageCode, text);
   const candidates = buildCandidates(transcript.languageCode, text, cues, modelHints);
   const path = selectBestPath(text, candidates);
+  if (!path) {
+    // Sparse word timing or a long-lived cue can make the hard limits impossible.
+    // Keep the original cue boundaries instead of collapsing the entire video.
+    console.warn("[vas] Semantic segmentation has no valid path; preserving source caption timestamps", {
+      sourceSegments: cues.length,
+      candidates: candidates.length,
+    });
+    return {
+      ...transcript,
+      segments: cues
+        .filter((cue) => !SOUND_LABEL_ONLY_RE.test(cue.text))
+        .map(({ textStart: _textStart, textEnd: _textEnd, end, ...cue }) => ({
+          ...cue,
+          duration: roundedDuration(cue.start, end),
+          splitReason: "forced-best-candidate" as const,
+        })),
+    };
+  }
   const segments: TranscriptSegment[] = [];
 
   for (let index = 1; index < path.length; index += 1) {

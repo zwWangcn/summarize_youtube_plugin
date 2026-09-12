@@ -1,0 +1,499 @@
+{
+  "events": [
+    {
+      "tStartMs": 0,
+      "dDurationMs": 5127920,
+      "id": 1,
+      "wpWinPosId": 1,
+      "wsWinStyleId": 1
+    },
+    {
+      "tStartMs": 1959,
+      "dDurationMs": 9840,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "ここ",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "は",
+          "tOffsetMs": 241,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "長崎",
+          "tOffsetMs": 1200,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "県",
+          "tOffsetMs": 1760,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "の",
+          "tOffsetMs": 2000,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "五藤",
+          "tOffsetMs": 2360,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "レド",
+          "tOffsetMs": 2800,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "福島",
+          "tOffsetMs": 3281,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "です",
+          "tOffsetMs": 4241,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "今回",
+          "tOffsetMs": 5241,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "は",
+          "tOffsetMs": 5561,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 8430,
+      "dDurationMs": 3369,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 8440,
+      "dDurationMs": 6960,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "マルチ",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "マリン",
+          "tOffsetMs": 480,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "と",
+          "tOffsetMs": 920,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "いう",
+          "tOffsetMs": 1040,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "釣り竿",
+          "tOffsetMs": 1279,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "を",
+          "tOffsetMs": 1800,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "使っ",
+          "tOffsetMs": 1880,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "て",
+          "tOffsetMs": 2119,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "海",
+          "tOffsetMs": 2760,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "の",
+          "tOffsetMs": 3040,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 11789,
+      "dDurationMs": 3611,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 11799,
+      "dDurationMs": 7281,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "餌釣り",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "に",
+          "tOffsetMs": 521,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "つい",
+          "tOffsetMs": 720,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "て",
+          "tOffsetMs": 920,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "触れ",
+          "tOffsetMs": 1681,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "て",
+          "tOffsetMs": 1960,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "いき",
+          "tOffsetMs": 2081,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "たい",
+          "tOffsetMs": 2201,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "と",
+          "tOffsetMs": 2361,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "思い",
+          "tOffsetMs": 2401,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ます",
+          "tOffsetMs": 2601,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 15390,
+      "dDurationMs": 3690,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 15400,
+      "dDurationMs": 6360,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "一体",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "餌釣り",
+          "tOffsetMs": 639,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "に",
+          "tOffsetMs": 1040,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "は",
+          "tOffsetMs": 1280,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "どんな",
+          "tOffsetMs": 1680,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "メリット",
+          "tOffsetMs": 2120,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "が",
+          "tOffsetMs": 2600,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "あっ",
+          "tOffsetMs": 2760,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "たり",
+          "tOffsetMs": 2879,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 19070,
+      "dDurationMs": 2690,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 19080,
+      "dDurationMs": 5160,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "面白い",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ところ",
+          "tOffsetMs": 640,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "が",
+          "tOffsetMs": 880,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ある",
+          "tOffsetMs": 1000,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "の",
+          "tOffsetMs": 1199,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "か",
+          "tOffsetMs": 1320,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "え",
+          "tOffsetMs": 1640,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "こう",
+          "tOffsetMs": 2119,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "いっ",
+          "tOffsetMs": 2279,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "た",
+          "tOffsetMs": 2400,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "こと",
+          "tOffsetMs": 2520,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 21750,
+      "dDurationMs": 2490,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 21760,
+      "dDurationMs": 6320,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "を",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "皆",
+          "tOffsetMs": 200,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "さん",
+          "tOffsetMs": 400,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "と",
+          "tOffsetMs": 599,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "一緒",
+          "tOffsetMs": 679,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "に",
+          "tOffsetMs": 920,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "釣り",
+          "tOffsetMs": 1040,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "を",
+          "tOffsetMs": 1320,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "し",
+          "tOffsetMs": 1439,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ながら",
+          "tOffsetMs": 1560,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "回っ",
+          "tOffsetMs": 2080,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "て",
+          "tOffsetMs": 2359,
+          "acAsrConf": 0
+        }
+      ]
+    },
+    {
+      "tStartMs": 24230,
+      "dDurationMs": 3850,
+      "wWinId": 1,
+      "aAppend": 1,
+      "segs": [
+        {
+          "utf8": "\n"
+        }
+      ]
+    },
+    {
+      "tStartMs": 24240,
+      "dDurationMs": 7839,
+      "wWinId": 1,
+      "segs": [
+        {
+          "utf8": "いき",
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "たい",
+          "tOffsetMs": 119,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "と",
+          "tOffsetMs": 240,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "思い",
+          "tOffsetMs": 320,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ます",
+          "tOffsetMs": 520,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "最近",
+          "tOffsetMs": 1520,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "釣り",
+          "tOffsetMs": 2199,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "を",
+          "tOffsetMs": 2480,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "始め",
+          "tOffsetMs": 2600,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "た",
+          "tOffsetMs": 2879,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "方",
+          "tOffsetMs": 2959,
+          "acAsrConf": 0
+        },
+        {
+          "utf8": "ま",
+          "tOffsetMs": 3640,
+          "acAsrConf": 0
+        }
+      ]
+    }
+  ]
+}
