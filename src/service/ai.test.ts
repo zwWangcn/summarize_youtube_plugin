@@ -1,9 +1,10 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
+const selectedAI = vi.hoisted(() => ({ provider: "deepseek", model: "deepseek-v4-flash" }));
+
 vi.mock("./storage", () => ({
   getSettings: vi.fn(async () => ({
-    provider: "deepseek",
-    model: "deepseek-v4-flash",
+    ...selectedAI,
     outputLanguage: "en",
   })),
   getApiKey: vi.fn(async () => "test-key"),
@@ -13,6 +14,7 @@ import { streamAIText } from "./ai";
 
 describe("AI stream cancellation", () => {
   beforeEach(() => {
+    Object.assign(selectedAI, { provider: "deepseek", model: "deepseek-v4-flash" });
     Object.defineProperty(globalThis, "chrome", {
       configurable: true,
       value: {
@@ -115,5 +117,36 @@ describe("AI stream cancellation", () => {
       }
     };
     await expect(consume()).rejects.toThrow("quota exceeded");
+  });
+
+  it.each([
+    ["openai", "gpt-5.6-luna", { model: "gpt-6-luna", reasoning_effort: "none" }],
+    ["openai", "gpt-5.6-sol", { model: "gpt-6.1-sol", reasoning_effort: "low" }],
+    ["anthropic", "claude-sonnet-5", { model: "claude-sonnet-5-5", thinking: { type: "between_tools" }, output_config: { effort: "low" } }],
+    ["anthropic", "claude-opus-5", { model: "claude-opus-5-5", thinking: { type: "adaptive" }, output_config: { effort: "low" } }],
+    ["zhipu", "glm-4.5", { model: "glm-5.3-flash", thinking: { type: "enabled" }, reasoning_effort: "low" }],
+    ["gemini", "gemini-3.7-flash", { generationConfig: { thinkingConfig: { thinkingLevel: "low" } } }],
+  ])("migrates saved %s / %s before sending a translation request", async (provider, model, expected) => {
+    Object.assign(selectedAI, { provider, model });
+    const chunk = provider === "anthropic"
+      ? { type: "content_block_delta", delta: { type: "text_delta", text: "translated" } }
+      : provider === "gemini"
+      ? { candidates: [{ content: { parts: [{ text: "translated" }] }, finishReason: "STOP" }] }
+      : { choices: [{ delta: { content: "translated" }, finish_reason: "stop" }] };
+    const fetchMock = vi.fn(async () => new Response(`data: ${JSON.stringify(chunk)}\n\n`, {
+      status: 200,
+      headers: { "Content-Type": "text/event-stream" },
+    }));
+    vi.stubGlobal("fetch", fetchMock);
+    let result = "";
+    for await (const token of streamAIText("system", "user", {
+      disableThinking: true,
+      temperature: 0,
+      maxRetries: 0,
+    })) result += token;
+    expect(result).toBe("translated");
+    const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
+    expect(body).toMatchObject(expected);
+    if (provider !== "zhipu") expect(body).not.toHaveProperty("temperature");
   });
 });

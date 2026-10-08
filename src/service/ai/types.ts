@@ -2,6 +2,8 @@
  * AI 适配器公共类型。
  */
 
+import type { AIRequestProfile } from "../model-registry";
+
 /** 构建 API 请求的输入参数 */
 export interface AIRequest {
   model: string;
@@ -13,7 +15,9 @@ export interface AIRequest {
   temperature?: number;
   disableThinking?: boolean;
   maxOutputTokensField?: "max_tokens" | "max_completion_tokens";
-  thinkingControl?: "none" | "deepseek" | "qwen" | "openai" | "thinking";
+  thinkingControl?: AIRequestProfile["thinkingControl"];
+  minimumReasoningEffort?: AIRequestProfile["minimumReasoningEffort"];
+  translationThinkingType?: AIRequestProfile["translationThinkingType"];
   instructionRole?: "system" | "developer";
 }
 

@@ -19,6 +19,10 @@ function buildBody(params: AIRequest): string {
     max_tokens: params.maxOutputTokens ?? 16384,
   };
   if (typeof params.temperature === "number") body.temperature = params.temperature;
+  if (params.disableThinking && params.thinkingControl === "anthropic") {
+    body.thinking = { type: params.translationThinkingType ?? "adaptive" };
+    body.output_config = { effort: "low" };
+  }
   return JSON.stringify(body);
 }
 

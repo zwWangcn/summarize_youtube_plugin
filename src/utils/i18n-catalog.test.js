@@ -1,5 +1,6 @@
 import { readFileSync } from "node:fs";
 import { describe, expect, it } from "vitest";
+import { PROVIDERS } from "../service/model-registry";
 
 const localeCodes = ["en", "zh_CN", "zh_TW", "ja", "ko"];
 const readJson = (url) => JSON.parse(readFileSync(url, "utf8"));
@@ -24,5 +25,16 @@ describe("Chrome UI locale catalogs", () => {
   it("uses English as the manifest fallback locale", () => {
     const manifest = readJson(new URL("../manifest.json", import.meta.url));
     expect(manifest.default_locale).toBe("en");
+  });
+
+  it("provides descriptions for every selectable model in all five languages", () => {
+    for (const locale of localeCodes) {
+      const catalog = readJson(new URL(`../../_locales/${locale}/messages.json`, import.meta.url));
+      for (const provider of PROVIDERS) {
+        for (const model of provider.models) {
+          expect(catalog[model.descriptionKey]?.message).toBeTruthy();
+        }
+      }
+    }
   });
 });

@@ -16,12 +16,16 @@ function buildBody(params: AIRequest): string {
   };
   if (typeof params.temperature === "number") body.temperature = params.temperature;
   body[params.maxOutputTokensField ?? "max_tokens"] = params.maxOutputTokens ?? 16384;
-  if (params.disableThinking && (params.thinkingControl === "deepseek" || params.thinkingControl === "thinking")) {
+  if (params.disableThinking && params.thinkingControl === "deepseek") {
     body.thinking = { type: "disabled" };
   } else if (params.disableThinking && params.thinkingControl === "qwen") {
     body.enable_thinking = false;
-  } else if (params.disableThinking && params.thinkingControl === "openai") {
-    body.reasoning_effort = params.model.startsWith("gpt-5.6-") ? "none" : "minimal";
+  } else if (params.disableThinking && (
+    params.thinkingControl === "openai" || params.thinkingControl === "reasoning" || params.thinkingControl === "glm"
+  )) {
+    // 强制推理模型不能关闭思考；字幕翻译使用其最低有效档位。
+    body.reasoning_effort = params.minimumReasoningEffort ?? "low";
+    if (params.thinkingControl === "glm") body.thinking = { type: "enabled" };
   }
   return JSON.stringify(body);
 }

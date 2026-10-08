@@ -197,6 +197,8 @@ export async function* streamAIText(
         disableThinking: options.disableThinking,
         maxOutputTokensField: profile.maxOutputTokensField,
         thinkingControl: profile.thinkingControl,
+        minimumReasoningEffort: profile.minimumReasoningEffort,
+        translationThinkingType: profile.translationThinkingType,
         instructionRole: profile.instructionRole,
       });
 

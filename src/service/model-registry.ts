@@ -34,7 +34,9 @@ export interface ProviderInfo {
 export interface AIRequestProfile {
   supportsTemperature: boolean;
   maxOutputTokensField: "max_tokens" | "max_completion_tokens";
-  thinkingControl: "none" | "deepseek" | "qwen" | "openai" | "thinking";
+  thinkingControl: "none" | "deepseek" | "qwen" | "openai" | "reasoning" | "glm" | "anthropic" | "gemini";
+  minimumReasoningEffort?: "none" | "low";
+  translationThinkingType?: "disabled" | "between_tools" | "adaptive";
   instructionRole: "system" | "developer";
 }
 
@@ -62,7 +64,7 @@ export const PROVIDERS: ProviderInfo[] = [
       },
       {
         id: "deepseek-v4-pro",
-        name: "DeepSeek V4 Pro (legacy)",
+        name: "DeepSeek V4 Pro",
         provider: "deepseek",
         descriptionKey: "modelDescDeepseekV4",
         paramSize: "1.6T MoE / 49B active",
@@ -81,26 +83,26 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "GP",
     models: [
       {
-        id: "gpt-5.6-sol",
-        name: "GPT-5.6 Sol",
+        id: "gpt-6.1-sol",
+        name: "GPT-6.1 Sol",
         provider: "openai",
-        descriptionKey: "modelDescGpt56Sol",
+        descriptionKey: "modelDescGpt61Sol",
         paramSize: "—",
         contextWindow: 1_050_000,
       },
       {
-        id: "gpt-5.6-terra",
-        name: "GPT-5.6 Terra",
+        id: "gpt-6-luna",
+        name: "GPT-6 Luna",
         provider: "openai",
-        descriptionKey: "modelDescGpt56Terra",
+        descriptionKey: "modelDescGpt6Luna",
         paramSize: "—",
         contextWindow: 1_050_000,
       },
       {
-        id: "gpt-5.6-luna",
-        name: "GPT-5.6 Luna",
+        id: "gpt-6-astra",
+        name: "GPT-6 Astra",
         provider: "openai",
-        descriptionKey: "modelDescGpt56Luna",
+        descriptionKey: "modelDescGpt6Astra",
         paramSize: "—",
         contextWindow: 1_050_000,
       },
@@ -117,28 +119,36 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "CL",
     models: [
       {
-        id: "claude-sonnet-5",
-        name: "Claude Sonnet 5",
+        id: "claude-sonnet-5-5",
+        name: "Claude Sonnet 5.5",
         provider: "anthropic",
         descriptionKey: "modelDescClaudeSonnet",
         paramSize: "—",
         contextWindow: 1_000_000,
       },
       {
-        id: "claude-opus-5",
-        name: "Claude Opus 5",
+        id: "claude-opus-5-5",
+        name: "Claude Opus 5.5",
         provider: "anthropic",
         descriptionKey: "modelDescClaudeOpus",
         paramSize: "—",
         contextWindow: 1_000_000,
       },
       {
-        id: "claude-haiku-4-5-20251001",
-        name: "Claude Haiku 4.5",
+        id: "claude-haiku-5-5",
+        name: "Claude Haiku 5.5",
         provider: "anthropic",
         descriptionKey: "modelDescClaudeHaiku",
         paramSize: "—",
-        contextWindow: 200_000,
+        contextWindow: 1_000_000,
+      },
+      {
+        id: "claude-fable-5-1",
+        name: "Claude Fable 5.1",
+        provider: "anthropic",
+        descriptionKey: "modelDescClaudeFable",
+        paramSize: "—",
+        contextWindow: 1_000_000,
       },
     ],
   },
@@ -153,10 +163,18 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "GE",
     models: [
       {
-        id: "gemini-3.7-flash",
-        name: "Gemini 3.7 Flash",
+        id: "gemini-3.8-flash",
+        name: "Gemini 3.8 Flash",
         provider: "gemini",
-        descriptionKey: "modelDescGemini37Flash",
+        descriptionKey: "modelDescGemini38Flash",
+        paramSize: "—",
+        contextWindow: 1_048_576,
+      },
+      {
+        id: "gemini-3.1-pro-preview",
+        name: "Gemini 3.1 Pro (Preview)",
+        provider: "gemini",
+        descriptionKey: "modelDescGemini31Pro",
         paramSize: "—",
         contextWindow: 1_048_576,
       },
@@ -173,12 +191,12 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "KI",
     models: [
       {
-        id: "kimi-k2.6",
-        name: "Kimi K2.6",
+        id: "kimi-k3",
+        name: "Kimi K3",
         provider: "moonshot",
-        descriptionKey: "modelDescKimiK2",
-        paramSize: "~1T MoE",
-        contextWindow: 262_144,
+        descriptionKey: "modelDescKimiK3",
+        paramSize: "2.8T",
+        contextWindow: 1_000_000,
       },
     ],
   },
@@ -193,32 +211,24 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "QW",
     models: [
       {
-        id: "qwen3-max",
-        name: "Qwen3 Max",
+        id: "qwen3.8-max",
+        name: "Qwen3.8 Max",
         provider: "qwen",
         descriptionKey: "modelDescQwenMax",
         paramSize: "—",
-        contextWindow: 252_000,
+        contextWindow: 1_000_000,
       },
       {
-        id: "qwen3.5-plus",
-        name: "Qwen3.5 Plus",
+        id: "qwen3.7-plus",
+        name: "Qwen3.7 Plus",
         provider: "qwen",
         descriptionKey: "modelDescQwenPlus",
         paramSize: "—",
         contextWindow: 1_000_000,
       },
       {
-        id: "qwen3.7-flash",
-        name: "Qwen3.7 Flash",
-        provider: "qwen",
-        descriptionKey: "modelDescQwen37Flash",
-        paramSize: "—",
-        contextWindow: 1_000_000,
-      },
-      {
-        id: "qwen3.5-flash",
-        name: "Qwen3.5 Flash",
+        id: "qwen3.8-flash",
+        name: "Qwen3.8 Flash",
         provider: "qwen",
         descriptionKey: "modelDescQwenFlash",
         paramSize: "—",
@@ -237,28 +247,28 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "GL",
     models: [
       {
-        id: "glm-5.2",
-        name: "GLM-5.2",
+        id: "glm-5.3",
+        name: "GLM-5.3",
         provider: "zhipu",
-        descriptionKey: "modelDescGlm47",
+        descriptionKey: "modelDescGlm53",
         paramSize: "744B",
         contextWindow: 1_000_000,
       },
       {
-        id: "glm-4.5",
-        name: "GLM-4.5",
+        id: "glm-5.3-flash",
+        name: "GLM-5.3 Flash",
         provider: "zhipu",
-        descriptionKey: "modelDescGlm45",
-        paramSize: "355B(A) MoE",
-        contextWindow: 128_000,
+        descriptionKey: "modelDescGlm53Flash",
+        paramSize: "320B MoE / 18B active",
+        contextWindow: 1_000_000,
       },
       {
-        id: "glm-4.5-air",
-        name: "GLM-4.5 Air",
+        id: "glm-5.3-flashx",
+        name: "GLM-5.3 FlashX",
         provider: "zhipu",
-        descriptionKey: "modelDescGlm45Air",
-        paramSize: "106B(A) MoE",
-        contextWindow: 128_000,
+        descriptionKey: "modelDescGlm53FlashX",
+        paramSize: "320B MoE / 18B active",
+        contextWindow: 1_000_000,
       },
     ],
   },
@@ -273,12 +283,12 @@ export const PROVIDERS: ProviderInfo[] = [
     iconLetter: "GR",
     models: [
       {
-        id: "grok-4.3",
-        name: "Grok 4.3",
+        id: "grok-4.7",
+        name: "Grok 4.7",
         provider: "grok",
         descriptionKey: "modelDescGrok4",
         paramSize: "—",
-        contextWindow: 1_000_000,
+        contextWindow: 500_000,
       },
     ],
   },
@@ -304,18 +314,34 @@ const LEGACY_MODEL_IDS: Record<string, string> = {
   "deepseek-v4-flash-vision-exp": "deepseek-flash",
   "deepseek-chat": "deepseek-flash",
   "deepseek-reasoner": "deepseek-flash",
-  "kimi-k2.6-thinking": "kimi-k2.6",
-  "kimi-k2.5": "kimi-k2.6",
-  "grok-4.1-fast": "grok-4.3",
-  "claude-sonnet-5-20250702": "claude-sonnet-5",
-  "claude-opus-4-8-20250515": "claude-opus-5",
-  "claude-opus-4-8": "claude-opus-5",
-  "gpt-5": "gpt-5.6-sol",
-  "gpt-5-mini": "gpt-5.6-terra",
-  "gpt-4.1": "gpt-5.6-luna",
-  "gemini-2.5-pro": "gemini-3.7-flash",
-  "gemini-2.5-flash": "gemini-3.7-flash",
-  "gemini-2.5-flash-lite": "gemini-3.7-flash",
+  "kimi-k2.6-thinking": "kimi-k3",
+  "kimi-k2.6": "kimi-k3",
+  "kimi-k2.5": "kimi-k3",
+  "grok-4.1-fast": "grok-4.7",
+  "grok-4.3": "grok-4.7",
+  "claude-sonnet-5-20250702": "claude-sonnet-5-5",
+  "claude-sonnet-5": "claude-sonnet-5-5",
+  "claude-opus-4-8-20250515": "claude-opus-5-5",
+  "claude-opus-4-8": "claude-opus-5-5",
+  "claude-opus-5": "claude-opus-5-5",
+  "claude-haiku-4-5-20251001": "claude-haiku-5-5",
+  "gpt-5": "gpt-6.1-sol",
+  "gpt-5-mini": "gpt-6.1-sol",
+  "gpt-5.6-sol": "gpt-6.1-sol",
+  "gpt-5.6-terra": "gpt-6.1-sol",
+  "gpt-5.6-luna": "gpt-6-luna",
+  "gpt-4.1": "gpt-6-luna",
+  "gemini-2.5-pro": "gemini-3.1-pro-preview",
+  "gemini-2.5-flash": "gemini-3.8-flash",
+  "gemini-2.5-flash-lite": "gemini-3.8-flash",
+  "gemini-3.7-flash": "gemini-3.8-flash",
+  "qwen3-max": "qwen3.8-max",
+  "qwen3.5-plus": "qwen3.7-plus",
+  "qwen3.7-flash": "qwen3.8-flash",
+  "qwen3.5-flash": "qwen3.8-flash",
+  "glm-5.2": "glm-5.3",
+  "glm-4.5": "glm-5.3-flash",
+  "glm-4.5-air": "glm-5.3-flash",
 };
 
 /** 将曾经发布过的错误/旧模型 ID 归一化，避免升级后破坏已保存设置。 */
@@ -348,16 +374,11 @@ export function getAIRequestProfile(
   modelId: string,
 ): AIRequestProfile {
   const normalizedId = normalizeModelId(modelId);
-  const rejectsSamplingParameters = providerId === "anthropic" && (
-    normalizedId === "claude-sonnet-5" || normalizedId === "claude-opus-5"
-  );
-  const openAIReasoningModel = providerId === "openai" && (
-    normalizedId.startsWith("gpt-5.6-")
-  );
-  const kimiFixedSampling = providerId === "moonshot" && normalizedId === "kimi-k2.6";
-  const gemini37Flash = providerId === "gemini" && normalizedId === "gemini-3.7-flash";
+  const openAIReasoningModel = providerId === "openai";
+  const kimiReasoningModel = providerId === "moonshot" && normalizedId === "kimi-k3";
+  const glmReasoningModel = providerId === "zhipu" && normalizedId.startsWith("glm-5.3");
   return {
-    supportsTemperature: !rejectsSamplingParameters && !openAIReasoningModel && !gemini37Flash && !kimiFixedSampling,
+    supportsTemperature: !["anthropic", "openai", "gemini", "moonshot"].includes(providerId),
     maxOutputTokensField: providerId === "openai"
       ? "max_completion_tokens"
       : "max_tokens",
@@ -365,12 +386,27 @@ export function getAIRequestProfile(
       ? "openai"
       : providerId === "deepseek"
       ? "deepseek"
-      : kimiFixedSampling || providerId === "zhipu"
-        ? "thinking"
+      : kimiReasoningModel || providerId === "grok"
+        ? "reasoning"
+        : glmReasoningModel
+        ? "glm"
+        : providerId === "anthropic"
+        ? "anthropic"
+        : providerId === "gemini"
+        ? "gemini"
         : providerId === "qwen"
         ? "qwen"
         : "none",
     instructionRole: providerId === "openai" ? "developer" : "system",
+    minimumReasoningEffort: openAIReasoningModel
+      ? normalizedId === "gpt-6-luna" ? "none" : "low"
+      : kimiReasoningModel || glmReasoningModel || providerId === "grok"
+      ? "low"
+      : undefined,
+    translationThinkingType: providerId === "anthropic"
+      ? normalizedId === "claude-sonnet-5-5" ? "between_tools"
+        : normalizedId === "claude-haiku-5-5" ? "disabled" : "adaptive"
+      : undefined,
   };
 }
 

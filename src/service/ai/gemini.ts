@@ -26,6 +26,9 @@ function buildBody(params: AIRequest): string {
   if (typeof params.temperature === "number") {
     generationConfig.temperature = params.temperature;
   }
+  if (params.disableThinking && params.thinkingControl === "gemini") {
+    generationConfig.thinkingConfig = { thinkingLevel: "low" };
+  }
   return JSON.stringify({
     systemInstruction: {
       parts: [{ text: params.systemPrompt }],
@@ -72,8 +75,8 @@ export const geminiAdapter: ProviderAdapter = {
     const candidate = obj.candidates[0] as Record<string, unknown> | undefined;
     if (!candidate) return null;
 
-    const content = candidate.content as { parts?: Array<{ text?: string }> } | undefined;
-    const tokens = content?.parts?.map((p) => p.text ?? "").join("") ?? "";
+    const content = candidate.content as { parts?: Array<{ text?: string; thought?: boolean }> } | undefined;
+    const tokens = content?.parts?.filter((p) => !p.thought).map((p) => p.text ?? "").join("") ?? "";
 
     const rawReason = candidate.finishReason as string | undefined;
     const finishReason =

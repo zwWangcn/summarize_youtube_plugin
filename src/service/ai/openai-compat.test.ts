@@ -4,7 +4,7 @@ import { getAIRequestProfile, resolveAISelection } from "../model-registry";
 
 describe("openai-compatible request body", () => {
   const base = {
-    model: "deepseek-v4-flash",
+    model: "deepseek-flash",
     systemPrompt: "system",
     userPrompt: "user",
     apiKey: "test",
@@ -34,8 +34,8 @@ describe("openai-compatible request body", () => {
     expect(JSON.parse(request.body)).not.toHaveProperty("max_tokens");
   });
 
-  it("keeps Qwen 3.7 Flash translation requests in non-thinking mode", () => {
-    const model = "qwen3.7-flash";
+  it("keeps Qwen 3.8 Flash translation requests in non-thinking mode", () => {
+    const model = "qwen3.8-flash";
     const body = JSON.parse(openaiCompatAdapter.buildStreamRequest({
       ...base,
       ...getAIRequestProfile("qwen", model),
@@ -49,20 +49,22 @@ describe("openai-compatible request body", () => {
   it("uses OpenAI reasoning controls and developer instructions", () => {
     const request = openaiCompatAdapter.buildStreamRequest({
       ...base,
+      model: "gpt-6.1-sol",
       disableThinking: true,
       thinkingControl: "openai",
       instructionRole: "developer",
       maxOutputTokensField: "max_completion_tokens",
     });
     const body = JSON.parse(request.body);
-    expect(body.reasoning_effort).toBe("minimal");
+    expect(body.reasoning_effort).toBe("low");
     expect(body.messages[0]).toEqual({ role: "developer", content: "system" });
   });
 
-  it("uses the GPT-5.6 no-reasoning value", () => {
+  it("uses GPT-6 Luna's no-reasoning value", () => {
     const request = openaiCompatAdapter.buildStreamRequest({
       ...base,
-      model: "gpt-5.6-luna",
+      ...getAIRequestProfile("openai", "gpt-6-luna"),
+      model: "gpt-6-luna",
       disableThinking: true,
       thinkingControl: "openai",
     });
@@ -74,7 +76,7 @@ describe("openai-compatible request body", () => {
     expect(JSON.parse(request.body)).not.toHaveProperty("thinking");
   });
 
-  it.each(["moonshot", "zhipu"])("disables thinking using the %s request contract", (provider) => {
+  it.each(["moonshot", "zhipu"])("uses low reasoning for migrated %s translation requests", (provider) => {
     const selection = resolveAISelection(provider, provider === "moonshot" ? "kimi-k2.5" : "glm-5.2");
     const profile = getAIRequestProfile(provider, selection.model.id);
     const body = JSON.parse(openaiCompatAdapter.buildStreamRequest({
@@ -84,11 +86,30 @@ describe("openai-compatible request body", () => {
       temperature: profile.supportsTemperature ? 0.2 : undefined,
       disableThinking: true,
     }).body);
-    expect(body.thinking).toEqual({ type: "disabled" });
-    expect(body).not.toHaveProperty("reasoning_effort");
+    expect(body.reasoning_effort).toBe("low");
+    if (provider === "zhipu") expect(body.thinking).toEqual({ type: "enabled" });
+    else expect(body).not.toHaveProperty("thinking");
     if (provider === "moonshot") {
-      expect(body.model).toBe("kimi-k2.6");
+      expect(body.model).toBe("kimi-k3");
       expect(body).not.toHaveProperty("temperature");
     }
+  });
+
+  it.each([
+    ["openai", "gpt-6.1-sol"],
+    ["openai", "gpt-6-astra"],
+    ["grok", "grok-4.7"],
+    ["zhipu", "glm-5.3-flash"],
+    ["zhipu", "glm-5.3-flashx"],
+  ])("never disables required reasoning on %s / %s", (provider, model) => {
+    const body = JSON.parse(openaiCompatAdapter.buildStreamRequest({
+      ...base,
+      ...getAIRequestProfile(provider, model),
+      model,
+      disableThinking: true,
+    }).body);
+    expect(body.reasoning_effort).toBe("low");
+    expect(body.thinking?.type).not.toBe("disabled");
+    expect(body).not.toHaveProperty("enable_thinking");
   });
 });
