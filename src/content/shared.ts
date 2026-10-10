@@ -359,6 +359,16 @@ export async function initContentScript(
     setSummaryVisible: (visible) => currentPanel?.setDiscoveryVisible(visible),
     openPanel: () => currentPanel?.open(),
     hasApiKey: () => aiSetupStatus.hasKey,
+    isDark: isYouTubeDarkMode,
+  });
+  const themeObserver = new MutationObserver(() => {
+    const isDark = isYouTubeDarkMode();
+    currentPanel?.setTheme(isDark);
+    playerOnboarding.setTheme(isDark);
+  });
+  themeObserver.observe(document.documentElement, {
+    attributes: true,
+    attributeFilter: ["dark", "class"],
   });
   chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
     if (message.type !== "REPLAY_PLAYER_ONBOARDING" || sender.id !== chrome.runtime.id) return;

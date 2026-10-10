@@ -10,6 +10,7 @@ interface OnboardingTargets {
   setSummaryVisible: (visible: boolean) => void;
   openPanel: () => void;
   hasApiKey: () => boolean;
+  isDark: () => boolean;
 }
 
 /** A non-modal tour: it reveals the real controls without starting AI requests. */
@@ -60,6 +61,7 @@ export class PlayerOnboarding {
       this.previousFocus = document.activeElement instanceof HTMLElement ? document.activeElement : null;
       this.host = document.createElement("div");
       this.host.id = "vas-player-onboarding";
+      this.host.classList.toggle("vas-theme-light", !this.targets.isDark());
       Object.assign(this.host.style, { position: "fixed", inset: "0", zIndex: "2147483647", pointerEvents: "none" });
       const shadow = this.host.attachShadow({ mode: "open" });
       const style = document.createElement("style");
@@ -103,6 +105,10 @@ export class PlayerOnboarding {
       this.card.setAttribute("aria-label", t("onboardingLabel"));
       this.render(document.activeElement === this.host);
     }
+  }
+
+  setTheme(isDark: boolean): void {
+    this.host?.classList.toggle("vas-theme-light", !isDark);
   }
 
   private render(focus = true): void {

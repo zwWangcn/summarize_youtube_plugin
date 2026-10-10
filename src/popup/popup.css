@@ -1,25 +1,4 @@
-:root {
-  --vas-text-primary: #f5f5f7;
-  --vas-text-secondary: rgba(245, 245, 247, 0.72);
-  --vas-text-muted: rgba(245, 245, 247, 0.46);
-  --vas-bg-base: rgba(17, 12, 14, 0.92);
-  --vas-bg-elevated: rgba(31, 24, 27, 0.96);
-  --vas-bg-card: rgba(255, 255, 255, 0.055);
-  --vas-bg-input: rgba(255, 255, 255, 0.07);
-  --vas-bg-hover: rgba(255, 255, 255, 0.105);
-  --vas-bg-active: rgba(255, 75, 87, 0.11);
-  --vas-border-subtle: rgba(255, 255, 255, 0.065);
-  --vas-border: rgba(255, 255, 255, 0.11);
-  --vas-border-focus: rgba(255, 151, 157, 0.72);
-  --vas-accent: #ffb4b9;
-  --vas-accent-strong: #ff5964;
-  --vas-accent-bg: rgba(255, 61, 72, 0.09);
-  --vas-accent-border: rgba(255, 103, 112, 0.22);
-  --vas-accent-hover: rgba(255, 61, 72, 0.2);
-  --vas-accent-ring: rgba(255, 103, 112, 0.09);
-  --vas-glow-red: rgba(255, 42, 55, 0.14);
-  --vas-glow-orange: rgba(255, 113, 0, 0.06);
-}
+@import "../ui/theme.css";
 
 * {
   margin: 0;
@@ -43,10 +22,7 @@ body {
   font-size: 14px;
   line-height: 1.5;
   color: var(--vas-text-primary);
-  background:
-    radial-gradient(circle at 14% -8%, var(--vas-glow-red), transparent 38%),
-    radial-gradient(circle at 110% 72%, var(--vas-glow-orange), transparent 34%),
-    var(--vas-bg-base);
+  background: var(--vas-bg-base);
   -webkit-backdrop-filter: blur(24px) saturate(135%);
   backdrop-filter: blur(24px) saturate(135%);
 }
@@ -79,7 +55,6 @@ textarea {
   width: 38px;
   height: 38px;
   flex: 0 0 auto;
-  filter: drop-shadow(0 5px 12px rgba(255, 42, 55, 0.14));
 }
 
 .brand-copy {
@@ -135,8 +110,8 @@ textarea {
   height: 6px;
   margin-left: 4px;
   border-radius: 999px;
-  background: #fb7185;
-  box-shadow: 0 0 0 3px rgba(251, 113, 133, 0.12);
+  background: var(--vas-accent-brand);
+  box-shadow: 0 0 0 3px var(--vas-accent-ring);
   vertical-align: middle;
 }
 
@@ -212,9 +187,9 @@ textarea {
 .setup-guide {
   margin-bottom: 12px;
   padding: 12px 13px;
-  border: 1px solid var(--vas-accent-border);
+  border: 1px solid var(--vas-border);
   border-radius: 14px;
-  background: var(--vas-accent-bg);
+  background: var(--vas-bg-card);
 }
 
 .setup-guide[hidden],
@@ -244,8 +219,8 @@ textarea {
 
 .setup-guide-kicker,
 .api-key-state.is-missing {
-  color: #fecdd3;
-  background: rgba(244, 63, 94, 0.15);
+  color: var(--vas-accent);
+  background: var(--vas-accent-bg);
 }
 
 .api-key-state.is-saved {
@@ -477,8 +452,7 @@ textarea {
   border: 1px solid var(--vas-border-subtle);
   border-radius: 16px;
   background:
-    linear-gradient(180deg, rgba(29, 20, 23, 0.18), rgba(0, 0, 0, 0.38)),
-    radial-gradient(circle at 70% 25%, rgba(255, 61, 72, 0.11), transparent 42%);
+    linear-gradient(180deg, var(--vas-bg-elevated), var(--vas-bg-base));
   -webkit-backdrop-filter: blur(18px);
   backdrop-filter: blur(18px);
 }
@@ -654,9 +628,9 @@ select.input option {
 .model-info {
   margin-top: 14px;
   padding: 10px 12px;
-  border: 1px solid var(--vas-accent-border);
+  border: 1px solid var(--vas-border);
   border-radius: 13px;
-  background: var(--vas-accent-bg);
+  background: var(--vas-bg-card);
   -webkit-backdrop-filter: blur(12px);
   backdrop-filter: blur(12px);
 }
@@ -768,10 +742,10 @@ select.input option {
 .privacy-notice {
   margin-top: 12px;
   padding: 11px 12px;
-  border: 1px solid var(--vas-accent-border);
+  border: 1px solid var(--vas-border);
   border-radius: 14px;
   color: var(--vas-text-muted);
-  background: var(--vas-accent-bg);
+  background: var(--vas-bg-card);
   -webkit-backdrop-filter: blur(14px);
   backdrop-filter: blur(14px);
   font-size: 11px;
@@ -797,15 +771,30 @@ select.input option {
 .btn-primary {
   margin-top: 12px;
   padding: 9px 14px;
-  border: 1px solid var(--vas-accent-border);
-  color: var(--vas-text-primary);
-  background: var(--vas-bg-active);
+  border: 1px solid var(--vas-accent-strong);
+  color: var(--vas-accent-contrast);
+  background: var(--vas-accent-strong);
   font-weight: 620;
 }
 
 .btn-primary:hover {
   border-color: var(--vas-border-focus);
   background: var(--vas-accent-hover);
+}
+
+#saveAiBtn {
+  border-color: var(--vas-border-btn);
+  color: var(--vas-text-primary);
+  background: #343438;
+}
+
+#saveAiBtn:hover {
+  border-color: rgba(255, 255, 255, 0.28);
+  background: #424247;
+}
+
+#saveAiBtn:focus-visible {
+  outline-color: var(--vas-text-secondary);
 }
 
 .btn-primary:active,

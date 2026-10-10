@@ -15,6 +15,7 @@
  */
 
 import panelStyles from "./styles.css?inline";
+import themeTokens from "../../ui/theme.css?inline";
 import { linkifyTimestampsInDom } from "./renderer";
 import { t } from "../../utils/i18n";
 import { aiSummaryIconMarkup } from "./icons";
@@ -120,6 +121,13 @@ export class Panel {
 
   constructor(callbacks: PanelCallbacks) {
     this.callbacks = callbacks;
+    // Plain player buttons share the same tokens as our Shadow DOM surfaces.
+    if (!document.getElementById("vas-theme-tokens")) {
+      const tokens = document.createElement("style");
+      tokens.id = "vas-theme-tokens";
+      tokens.textContent = themeTokens;
+      document.head.append(tokens);
+    }
 
     // ── Create trigger button (plain DOM element, no Shadow DOM) ──
     this.trigger = this.createTrigger();
@@ -193,10 +201,10 @@ export class Panel {
       width: "36px",
       height: "36px",
       padding: "0",
-      border: "1px solid rgba(255,255,255,0.15)",
+      border: "1px solid var(--vas-border-btn)",
       borderRadius: "8px",
-      background: "rgba(0, 0, 0, 0.65)",
-      color: "#fff",
+      background: "var(--vas-bg-card)",
+      color: "var(--vas-text-primary)",
       fontFamily: '"Roboto", "Arial", sans-serif',
       fontSize: "13px",
       fontWeight: "500",
@@ -212,10 +220,10 @@ export class Panel {
     btn.title = accessibleLabel;
     btn.innerHTML = aiSummaryIconMarkup(22, "vas-trigger-icon");
     btn.addEventListener("mouseenter", () => {
-      btn.style.background = "rgba(0, 0, 0, 0.8)";
+      btn.style.background = "var(--vas-bg-elevated)";
     });
     btn.addEventListener("mouseleave", () => {
-      btn.style.background = "rgba(0, 0, 0, 0.65)";
+      btn.style.background = "var(--vas-bg-card)";
     });
     btn.addEventListener("click", () => this.open());
     return btn;

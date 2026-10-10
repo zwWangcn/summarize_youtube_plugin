@@ -2,13 +2,14 @@ import { describe, expect, it } from "vitest";
 import { aiSummaryIconMarkup, translationToggleIconMarkup } from "./icons";
 
 describe("aiSummaryIconMarkup", () => {
-  it("renders the plain monochrome mark by default", () => {
+  it("renders neutral summary lines with only the sparkle in the brand color", () => {
     const markup = aiSummaryIconMarkup(16, "test-icon");
 
     expect(markup).toContain('class="test-icon"');
     expect(markup).toContain('width="16" height="16"');
     expect(markup).toContain('data-icon="ai-summary"');
-    expect(markup).toContain('fill="currentColor"');
+    expect(markup).toContain('fill="var(--vas-accent-brand)"');
+    expect(markup).toContain('fill="none" stroke="currentColor"');
     expect(markup).toContain("M3 7.5h6M3 12h7.5M3 17h5.5");
     expect(markup).toContain('aria-hidden="true"');
     expect(markup).not.toMatch(/[★☆✦✧]/);
@@ -32,14 +33,13 @@ describe("aiSummaryIconMarkup", () => {
     expect(markup).not.toMatch(/#[0-9a-f]{3,8}/i);
   });
 
-  it("renders only the active translation mark with the themed gradient", () => {
+  it("renders only the active translation mark with the shared accent", () => {
     const markup = translationToggleIconMarkup(24, "", "translation-on");
 
     expect(markup).toContain('data-icon-variant="translation-on"');
-    expect(markup).toContain('stop-color="#ff3d4a"');
-    expect(markup).toContain('stop-color="#ff7100"');
-    expect(markup).toContain('fill="url(#vas-translation-active-gradient)"');
-    expect(markup).toContain('stroke="url(#vas-translation-active-gradient)"');
+    expect(markup).toContain('fill="var(--vas-accent-brand)"');
+    expect(markup).toContain('stroke="var(--vas-accent-brand)"');
     expect(markup).toContain('stroke="currentColor"');
+    expect(markup).not.toContain("linearGradient");
   });
 });

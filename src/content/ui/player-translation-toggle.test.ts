@@ -138,7 +138,7 @@ describe("PlayerTranslationToggle", () => {
     expect(button.innerHTML).toContain("ytp-subtitles-button-icon");
     expect(button.innerHTML).toContain('viewBox="0 0 24 24"');
     expect(button.innerHTML).toContain('data-icon-variant="translation-on"');
-    expect(button.innerHTML).toContain('fill="url(#vas-translation-active-gradient)"');
+    expect(button.innerHTML).toContain('fill="var(--vas-accent-brand)"');
     expect(button.getAttribute("aria-pressed")).toBe("true");
     expect(button.getAttribute("aria-label")).toBe("Disable bilingual subtitles");
 
