@@ -750,6 +750,8 @@ select.input option {
 
 .btn-icon {
   min-width: 48px;
+  flex-shrink: 0;
+  white-space: nowrap;
   padding: 0 10px;
   border: 1px solid var(--vas-border);
   border-radius: 12px;
@@ -867,3 +869,27 @@ select.input option {
   line-height: 1.4;
   text-align: center;
 }
+
+.api-key-explainer {
+  margin-top: 12px;
+  padding-top: 12px;
+  border-top: 1px solid var(--vas-accent-border);
+}
+.api-key-explainer strong { display: block; margin-bottom: 5px; }
+.api-key-explainer p { font-size: 12px; line-height: 1.65; }
+.guide-replay {
+  padding: 4px 8px;
+  margin-bottom: 4px;
+  border: 0;
+  border-radius: 6px;
+  background: transparent;
+  color: var(--vas-accent);
+  font-size: 12px;
+  cursor: pointer;
+}
+.guide-replay:hover { background: var(--vas-bg-hover); }
+html.setup-page,
+.setup-page body { width: 100%; height: auto; min-height: 100vh; overflow: auto; }
+.setup-page .container { max-width: 540px; height: auto; min-height: 100vh; margin: 0 auto; padding: 28px 24px 16px; }
+.setup-page .main { overflow: visible; flex: 1; }
+.setup-page .settings-tabs { margin-bottom: 8px; }

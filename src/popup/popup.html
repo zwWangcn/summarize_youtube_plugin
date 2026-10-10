@@ -194,6 +194,11 @@
             <span class="setup-guide-kicker" data-i18n="setupRequiredBadge">待配置</span>
             <h3 id="setupGuideTitle" data-i18n="setupGuideTitle">完成 3 步即可开始使用</h3>
           </div>
+          <div class="api-key-explainer">
+            <strong data-i18n="onboardingKeyTitle">API Key 是什么？</strong>
+            <p data-i18n="apiKeyExplanation">API Key 是 AI 服务商给你的专用访问密钥，让这个插件能调用 AI 来总结和翻译视频。</p>
+            <p class="hint" data-i18n="apiKeyMembershipHint">它不是登录密码，也不是 ChatGPT 等聊天产品的会员。API 通常单独计费，请在服务商后台查看余额和用量。</p>
+          </div>
           <ol class="setup-steps">
             <li data-i18n="setupStepChoose">选择 AI 服务商和模型</li>
             <li data-i18n="setupStepGetKey">前往服务商控制台创建 API Key</li>
@@ -237,6 +242,7 @@
         <section id="setupComplete" class="setup-complete" hidden>
           <strong data-i18n="setupCompleteTitle">配置完成</strong>
           <span data-i18n="setupCompleteHint">现在可以打开带字幕的 YouTube 视频进行总结或翻译。</span>
+          <a class="get-key-link" href="https://www.youtube.com/" target="_blank" rel="noopener" data-i18n="onboardingOpenYouTube">打开 YouTube ↗</a>
         </section>
 
         <section class="privacy-notice">
@@ -248,7 +254,10 @@
     </main>
 
     <div id="status" class="status" role="status" aria-live="polite"></div>
-    <footer class="footer"><p data-i18n="popupFooter">打开 YouTube 视频，在播放器中点击“AI 总结与翻译”即可使用</p></footer>
+    <footer class="footer">
+      <button id="replayOnboarding" class="guide-replay" type="button" data-i18n="onboardingReplay">重新查看使用引导</button>
+      <p data-i18n="popupFooter">打开 YouTube 视频，在播放器中点击“AI 总结与翻译”即可使用</p>
+    </footer>
   </div>
   <script type="module" src="./popup.ts"></script>
 </body>

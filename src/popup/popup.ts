@@ -235,7 +235,7 @@ async function init(): Promise<void> {
   updateApiKeyUI(currentProvider);
   // Load saved API key for this provider
   await loadApiKeyForProvider(currentProvider.id);
-  activateTab(getInitialPopupTab(Boolean(savedApiKey)));
+  activateTab(new URLSearchParams(location.search).has("setup") ? "ai" : getInitialPopupTab(Boolean(savedApiKey)));
 }
 
 function renderLocalizedUi(): void {
@@ -538,6 +538,22 @@ function updateApiKeyUI(provider: ProviderInfo): void {
 }
 
 // ── Events ───────────────────────────────────────────────────────────
+
+if (new URLSearchParams(location.search).has("setup")) {
+  document.documentElement.classList.add("setup-page");
+}
+
+document.getElementById("replayOnboarding")!.addEventListener("click", async () => {
+  try {
+    const [tab] = await chrome.tabs.query({ active: true, currentWindow: true });
+    if (!tab?.id) throw new Error("No active video tab");
+    const response = await chrome.tabs.sendMessage(tab.id, { type: "REPLAY_PLAYER_ONBOARDING" });
+    if (!response?.started) throw new Error("Open a YouTube video first");
+    window.close();
+  } catch {
+    showStatus(t("onboardingReplayHint"), "error");
+  }
+});
 
 for (const button of tabButtons) {
   button.addEventListener("click", () => {

@@ -3,6 +3,7 @@
 import { Panel, type TranscriptView } from "./ui/panel";
 import { BilingualSubtitleOverlay } from "./ui/bilingual-overlay";
 import { PlayerTranslationToggle } from "./ui/player-translation-toggle";
+import { PlayerOnboarding } from "./ui/player-onboarding";
 import {
   renderMarkdown,
   renderStreaming,
@@ -350,10 +351,26 @@ export async function initContentScript(
   const playerTranslationToggle = new PlayerTranslationToggle((enabled) => {
     setBilingualEnabled(enabled);
   });
+  const playerOnboarding = new PlayerOnboarding({
+    getPlayer: config.findInjectTarget,
+    getSummaryButton: () => currentPanel?.getTrigger() ?? null,
+    getPanelToolbar: () => currentPanel?.getPanelContainer().shadowRoot?.querySelector<HTMLElement>(".vas-toolbar") ?? null,
+    getSubtitleButton: () => playerTranslationToggle.getButton(),
+    setSummaryVisible: (visible) => currentPanel?.setDiscoveryVisible(visible),
+    openPanel: () => currentPanel?.open(),
+    hasApiKey: () => aiSetupStatus.hasKey,
+  });
+  chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
+    if (message.type !== "REPLAY_PLAYER_ONBOARDING" || sender.id !== chrome.runtime.id) return;
+    const available = extractor.isOnVideoPage() && Boolean(currentPanel);
+    if (available) playerOnboarding.start(true);
+    sendResponse({ started: available });
+  });
 
   function renderAISetupAvailability(): void {
     currentPanel?.setAIAvailable(aiSetupStatus.hasKey, aiSetupStatus.providerName);
     playerTranslationToggle.setAvailable(aiSetupStatus.hasKey);
+    playerOnboarding.refreshLocalizedText();
   }
 
   async function refreshAISetupAvailability(): Promise<void> {
@@ -520,6 +537,7 @@ export async function initContentScript(
         activeUiLanguage = nextUiLanguage;
         currentPanel?.refreshLocalizedText();
         playerTranslationToggle.refreshLocalizedText();
+        playerOnboarding.refreshLocalizedText();
         if (currentPanel?.getMode() === "transcript") {
           renderTranscriptReader(currentPanel);
         } else if (currentPanel) {
@@ -830,6 +848,7 @@ export async function initContentScript(
   }
 
   function mountPanel(target: HTMLElement): Panel {
+    playerOnboarding.destroy();
     currentPanel?.destroy();
     const panel = new Panel(callbacks);
     currentPanel = panel;
@@ -855,6 +874,7 @@ export async function initContentScript(
     playerTranslationToggle.setEnabled(bilingualEnabled);
     playerTranslationToggle.setAvailable(aiSetupStatus.hasKey);
     void panel.initPanelWidth();
+    playerOnboarding.start();
     if (bilingualEnabled && aiSetupStatus.hasKey) void activateBilingualOverlay(target);
     return panel;
   }
@@ -1801,6 +1821,7 @@ export async function initContentScript(
   }
 
   function destroyPanel(): void {
+    playerOnboarding.destroy();
     destroyBilingualOverlay();
     playerTranslationToggle.destroy();
     currentPanel?.destroy();
@@ -1832,6 +1853,7 @@ export async function initContentScript(
 
   // ── SPA navigation: inject on enter, destroy on leave ──────────────
   watchNavigation(() => {
+    playerOnboarding.destroy();
     clearTranscriptState();
     if (extractor.isOnVideoPage()) {
       restoreBilingualEnabledForCurrentVideo();
@@ -1860,6 +1882,7 @@ export async function initContentScript(
             playerTranslationToggle.mount(newTarget);
           }
           if (bilingualEnabled && aiSetupStatus.hasKey) void activateBilingualOverlay();
+          playerOnboarding.start();
         }, 800);
       }
     } else {

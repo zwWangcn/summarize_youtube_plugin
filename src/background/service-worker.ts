@@ -10,6 +10,7 @@
 import { streamAIText } from "../service/ai";
 import { getSettings } from "../service/storage";
 import { getActiveAISetupStatus } from "../service/ai-setup";
+import { claimPlayerOnboarding } from "../service/onboarding";
 import { clearExpiredCache } from "../service/summary-cache";
 import { activateUiLanguage, isUiLanguage, t } from "../utils/i18n";
 import {
@@ -90,6 +91,20 @@ chrome.runtime.onInstalled.addListener((details) => {
 // ---------------------------------------------------------------------------
 chrome.runtime.onMessage.addListener((message, sender, sendResponse) => {
   switch (message.type) {
+    case "CLAIM_PLAYER_ONBOARDING": {
+      if (sender.id !== chrome.runtime.id) break;
+      claimPlayerOnboarding()
+        .then((show) => sendResponse({ show }))
+        .catch(() => sendResponse({ show: false }));
+      return true;
+    }
+    case "OPEN_AI_SETUP": {
+      if (sender.id !== chrome.runtime.id) break;
+      chrome.tabs.create({ url: chrome.runtime.getURL("src/popup/popup.html?setup=1") })
+        .then(() => sendResponse({ opened: true }))
+        .catch(() => sendResponse({ opened: false }));
+      return true;
+    }
     case "GET_API_KEY_STATUS": {
       // Only respond to messages from this extension (content scripts / popup),
       // not from other extensions or web pages sharing the runtime.

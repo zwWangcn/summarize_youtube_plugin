@@ -35,6 +35,10 @@ export class PlayerTranslationToggle {
     this.updateButton();
   }
 
+  getButton(): HTMLButtonElement | null {
+    return this.button;
+  }
+
   destroy(): void {
     this.observer?.disconnect();
     this.observer = null;

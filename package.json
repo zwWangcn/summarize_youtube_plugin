@@ -1,6 +1,6 @@
 {
   "name": "summarize-youtube-extension",
-  "version": "1.3.3",
+  "version": "1.3.4",
   "description": "Chrome extension for AI-powered YouTube summaries, caption translation, and bilingual subtitles",
   "type": "module",
   "license": "MIT",

@@ -437,6 +437,7 @@
   color: #92400e;
   background: rgba(245, 158, 11, 0.1);
 }
+.vas-btn-setup { display: block; margin-top: 8px; }
 .vas-error {
   padding: 12px 16px;
   margin: 8px 16px;

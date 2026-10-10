@@ -18,6 +18,7 @@ import panelStyles from "./styles.css?inline";
 import { linkifyTimestampsInDom } from "./renderer";
 import { t } from "../../utils/i18n";
 import { aiSummaryIconMarkup } from "./icons";
+import { openAISetup } from "../../service/onboarding";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -104,6 +105,7 @@ export class Panel {
   private boundPlayerShow: (() => void) | null = null;
   private boundPlayerHide: (() => void) | null = null;
   private playerHideTimer: ReturnType<typeof setTimeout> | null = null;
+  private discoveryVisible = false;
 
   // Resize
   private resizeHandle!: HTMLDivElement;
@@ -237,6 +239,7 @@ export class Panel {
     };
 
     const hide = () => {
+      if (this.discoveryVisible) return;
       this.playerHideTimer = setTimeout(() => {
         this.trigger.style.opacity = "0";
         this.trigger.style.pointerEvents = "none";
@@ -254,8 +257,18 @@ export class Panel {
     this.boundPlayerHide = hide;
 
     // 初始状态：隐藏
-    this.trigger.style.opacity = "0";
-    this.trigger.style.pointerEvents = "none";
+    this.trigger.style.opacity = this.discoveryVisible ? "1" : "0";
+    this.trigger.style.pointerEvents = this.discoveryVisible ? "auto" : "none";
+  }
+
+  /** Keep the entry visible while the first-use tour points to it. */
+  setDiscoveryVisible(visible: boolean): void {
+    this.discoveryVisible = visible;
+    if (this.playerHideTimer) clearTimeout(this.playerHideTimer);
+    this.playerHideTimer = null;
+    const show = visible || Boolean(this.boundPlayer?.matches(":hover"));
+    this.trigger.style.opacity = show ? "1" : "0";
+    this.trigger.style.pointerEvents = show ? "auto" : "none";
   }
 
   /** 清理 bindToPlayer 绑定的事件监听器。 */
@@ -301,7 +314,10 @@ export class Panel {
         </label>
         <button class="vas-btn vas-btn-copy" title="${t("copy")}" style="display:none">${t("copy")}</button>
       </div>
-      <div class="vas-setup-notice" role="status" style="display:none"></div>
+      <div class="vas-setup-notice" style="display:none">
+        <span class="vas-setup-message" role="status"></span>
+        <button class="vas-btn vas-btn-setup">${t("onboardingSetup")}</button>
+      </div>
       <div class="vas-transcript-tools" style="display:none">
         <div class="vas-view-switch" role="group" aria-label="${t("captionLanguageAria")}">
           <button class="vas-view-option vas-view-source vas-active">${t("sourceView")}</button>
@@ -673,7 +689,15 @@ export class Panel {
   }
 
   private renderAIAvailability(): void {
-    this.setupNoticeEl.textContent = t("aiSetupRequiredPanel", this.aiProviderName);
+    this.setupNoticeEl.querySelector<HTMLElement>(".vas-setup-message")!.textContent = t("aiSetupRequiredPanel", this.aiProviderName);
+    const button = this.setupNoticeEl.querySelector<HTMLButtonElement>(".vas-btn-setup")!;
+    button.textContent = t("onboardingSetup");
+    button.onclick = () => {
+      button.disabled = true;
+      void openAISetup().catch(() => {
+        this.setupNoticeEl.querySelector<HTMLElement>(".vas-setup-message")!.textContent = t("onboardingSetupFallback");
+      }).finally(() => { button.disabled = false; });
+    };
     this.setupNoticeEl.style.display = this.aiAvailable ? "none" : "block";
   }
 
