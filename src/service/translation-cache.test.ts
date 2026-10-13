@@ -61,7 +61,7 @@ describe("section translation cache", () => {
       targetEnd: 2,
       segments: [translated(0, 0, 3, "第一段")],
     });
-    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(9);
+    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(10);
     await setCachedTranslationSection(identity, {
       chunkId: 2,
       targetStart: 5,
@@ -84,6 +84,15 @@ describe("section translation cache", () => {
     });
 
     expect(await getCachedTranslation({ ...identity, modelId: "other-model" })).toBeNull();
+  });
+
+  it("does not reuse translations made with the previous segmentation pipeline", async () => {
+    store["vas-translation-section:youtube:video-1:en:zh-CN:openai:gpt-test:9:0"] = {
+      ...identity, pipelineVersion: 9,
+      section: { chunkId: 0, targetStart: 0, targetEnd: 0,
+        segments: [translated(0, 0, 1, "旧分段译文")], timestamp: Date.now() },
+    };
+    expect(await getCachedTranslation(identity)).toBeNull();
   });
 
   it("isolates caches by target language", async () => {

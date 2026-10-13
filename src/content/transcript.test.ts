@@ -570,6 +570,60 @@ describe("YouTube JSON3 caption parsing", () => {
         { offset: 19, start: 701.75 },
         { offset: 23, start: 701.95 },
       ],
+      timingRuns: [
+        { offset: 0, endOffset: 18, start: 700 },
+        { offset: 19, endOffset: 22, start: 701.75 },
+        { offset: 23, endOffset: 45, start: 701.95 },
+      ],
     });
+  });
+
+  it("maps repeated words, whitespace, line breaks, and emoji by their source positions", () => {
+    const parsed = parseJson3Captions(JSON.stringify({ events: [{
+      tStartMs: 0, dDurationMs: 2000,
+      segs: [
+        { utf8: "  go\t", tOffsetMs: 0 },
+        { utf8: "go", tOffsetMs: 200 },
+        { utf8: "  \n\n😀 ", tOffsetMs: 400 },
+        { utf8: "go", tOffsetMs: 600 },
+        { utf8: "\t go  ", tOffsetMs: 800 },
+      ],
+    }] }), "en")!;
+    expect(parsed.segments[0].text).toBe("go go\n😀 go go");
+    expect(parsed.segments[0].timingRuns).toEqual([
+      { offset: 0, endOffset: 2, start: 0 },
+      { offset: 3, endOffset: 5, start: 0.2 },
+      { offset: 6, endOffset: 8, start: 0.4 },
+      { offset: 9, endOffset: 11, start: 0.6 },
+      { offset: 12, endOffset: 14, start: 0.8 },
+    ]);
+  });
+
+  it("retains untimed lexical spans and does not interpret null offsets as zero", () => {
+    const parsed = parseJson3Captions(JSON.stringify({ events: [{
+      tStartMs: 0, dDurationMs: 2000,
+      segs: [{ utf8: "one ", tOffsetMs: 0 }, { utf8: "two ", tOffsetMs: null },
+        { utf8: "three " }, { utf8: "four", tOffsetMs: 1500 }],
+    }] }), "en")!;
+    expect(parsed.segments[0].timingRuns).toEqual([
+      { offset: 0, endOffset: 3, start: 0 },
+      { offset: 4, endOffset: 7 },
+      { offset: 8, endOffset: 13 },
+      { offset: 14, endOffset: 18, start: 1.5 },
+    ]);
+    expect(parsed.segments[0].timingMarkers).toHaveLength(2);
+  });
+
+  it("does not manufacture a timestamp from an empty run inside a word", () => {
+    const parsed = parseJson3Captions(JSON.stringify({ events: [{
+      tStartMs: 0, dDurationMs: 2000,
+      segs: [{ utf8: "pre", tOffsetMs: 0 }, { utf8: "", tOffsetMs: 500 },
+        { utf8: "fix", tOffsetMs: 1000 }],
+    }] }), "en")!;
+    expect(parsed.segments[0].text).toBe("prefix");
+    expect(parsed.segments[0].timingMarkers).toEqual([
+      { offset: 0, start: 0 }, { offset: 3, start: 1 },
+    ]);
+    expect(parsed.segments[0].timingRuns).toHaveLength(2);
   });
 });

@@ -6,6 +6,7 @@ export type TranscriptSplitReason =
   | "start-of-transcript"
   | "terminal-punctuation"
   | "long-pause"
+  | "timing-gap"
   | "sentence-boundary-model"
   | "clause-boundary"
   | "sound-label"
@@ -20,6 +21,8 @@ export interface TranscriptSegment {
   text: string;
   /** Exact word/run starts from YouTube JSON3, indexed into normalized `text`. */
   timingMarkers?: TranscriptTimingMarker[];
+  /** Original JSON3 text spans, including runs without a timestamp. */
+  timingRuns?: TranscriptTimingRun[];
   /** Inclusive indexes of the original YouTube caption events covered by this cue. */
   sourceStartId?: number;
   sourceEndId?: number;
@@ -27,11 +30,39 @@ export interface TranscriptSegment {
   splitReason?: TranscriptSplitReason;
   /** Local candidate score before path-wide length/duration penalties. */
   splitScore?: number;
+  splitDiagnostics?: TranscriptSplitDiagnostics;
 }
 
 export interface TranscriptTimingMarker {
   offset: number;
   start: number;
+}
+
+export interface TranscriptTimingRun {
+  offset: number;
+  endOffset: number;
+  /** A real source timestamp; omitted when JSON3 does not provide one. */
+  start?: number;
+}
+
+export interface TranscriptTimingGap {
+  interval: number;
+  baseline: number;
+  threshold: number;
+  strength: number;
+  confidence: number;
+  bonus: number;
+}
+
+export interface TranscriptSplitDiagnostics {
+  /** Score before the word-timing bonus, including cue-edge signals and penalties. */
+  textScore: number;
+  timeBonus: number;
+  grammarPenalty: number;
+  segmentPenalty: number;
+  timingGap?: TranscriptTimingGap;
+  /** Feasible neighboring cuts; offsets index the complete flattened transcript. */
+  alternatives: Array<{ offset: number; score: number; localPathDelta: number }>;
 }
 
 export interface Transcript {

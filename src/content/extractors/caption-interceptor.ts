@@ -13,8 +13,8 @@
 import type {
   Transcript,
   TranscriptSegment,
-  TranscriptTimingMarker,
 } from "../transcript";
+import { normalizeCaptionRuns } from "../caption-text";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -53,40 +53,21 @@ export function parseJson3Captions(
     }
     const runs = (ev.segs as unknown[]).map((seg) => {
       const value = seg && typeof seg === "object" ? seg as Record<string, unknown> : {};
+      const offsetMs = value.tOffsetMs;
       return {
         text: typeof value.utf8 === "string" ? value.utf8 : "",
-        offsetMs: Number(value.tOffsetMs),
+        ...(typeof offsetMs === "number" && Number.isFinite(offsetMs) && offsetMs >= 0
+          ? { start: (startMs + offsetMs) / 1000 }
+          : {}),
       };
     });
-    const rawText = runs.map(({ text }) => text).join("");
-    const normalize = (text: string) => text
-      .split("\n")
-      .map((line) => line.trim().replace(/\s+/g, " "))
-      .filter(Boolean)
-      .join("\n");
-    const text = normalize(rawText);
+    const { text, timingMarkers, timingRuns } = normalizeCaptionRuns(runs);
     if (text) {
-      const timingMarkers: TranscriptTimingMarker[] = [];
-      let rawOffset = 0;
-      for (const run of runs) {
-        const runText = normalize(run.text);
-        if (runText && Number.isFinite(run.offsetMs) && run.offsetMs >= 0) {
-          const approximateOffset = normalize(rawText.slice(0, rawOffset)).length;
-          const foundOffset = text.indexOf(runText, Math.max(0, approximateOffset - 1));
-          const offset = foundOffset >= 0 ? foundOffset : Math.min(text.length - 1, approximateOffset);
-          const start = (startMs + run.offsetMs) / 1000;
-          const previous = timingMarkers.at(-1);
-          if (!previous || previous.offset !== offset || previous.start !== start) {
-            timingMarkers.push({ offset, start });
-          }
-        }
-        rawOffset += run.text.length;
-      }
       segments.push({
         start: startMs / 1000,
         duration: durationMs / 1000,
         text,
-        ...(timingMarkers.length ? { timingMarkers } : {}),
+        ...(timingMarkers.length ? { timingMarkers, timingRuns } : {}),
       });
     }
   }

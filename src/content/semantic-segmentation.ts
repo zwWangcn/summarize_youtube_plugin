@@ -2,12 +2,16 @@ import type {
   Transcript,
   TranscriptSegment,
   TranscriptSplitReason,
+  TranscriptSplitDiagnostics,
+  TranscriptTimingGap,
   TranscriptTimingMarker,
 } from "./transcript";
 import {
   detectSentenceBoundaries,
   type SentenceBoundaryHint,
 } from "./sentence-boundary-detector";
+import { normalizeCaptionText } from "./caption-text";
+import { buildTimingGapEvidence } from "./caption-timing";
 
 const STRONG_PAUSE_SECONDS = 0.6;
 const MEDIUM_PAUSE_SECONDS = 0.25;
@@ -37,6 +41,7 @@ const ENGLISH_FORBIDDEN_WORDS = new Set([
   "if", "in", "into", "it", "nor", "of", "on", "onto", "or", "over", "she", "so", "some",
   "than", "that", "the", "these", "they", "this", "those", "through", "to", "under", "we",
   "when", "which", "while", "who", "with", "within", "without", "yet", "you",
+  "my", "your", "his", "her", "its", "our", "their",
 ]);
 const CJK_FORBIDDEN_END_RE = /(?:[的地得把被给和与及或而但因若在向从于对将]|から|まで|より|ので|のに|なら|そして|しかし|また|は|が|を|に|へ|と|で|の|も|て)$/u;
 const KOREAN_FORBIDDEN_END_RE = /(?:은|는|이|가|을|를|에|에서|와|과|의|로|으로|그리고|하지만)$/u;
@@ -50,6 +55,9 @@ const ENGLISH_GERUND_COMPLEMENT_VERBS = new Set([
 ]);
 const ENGLISH_RELATIVE_HEADS = new Set(["place", "reason", "thing", "things", "time", "way"]);
 const ENGLISH_CLAUSE_START_RE = /^(?:(?:although|because|but|if|so|then|though|unless|when|whereas|while|who|which)\b|(?:i|you|he|she|it|we|they|this|that|there|here)(?:['’](?:d|ll|m|re|s|ve)|\s+(?:am|are|can|could|did|do|does|had|has|have|is|may|might|must|shall|should|was|were|will|would)\b))/iu;
+const ENGLISH_COORDINATE_CLAUSE_RE = /^(?:and|or|but|yet)\s+(?:i|you|he|she|it|we|they|this|that|there)(?:['’](?:d|ll|m|re|s|ve)|\s+(?:am|are|can|could|did|do|does|had|has|have|is|may|might|must|shall|should|was|were|will|would)\b)/iu;
+const ENGLISH_DETERMINER_RE = /^(?:a|an|every|some|the|this|that|these|those|my|your|his|her|its|our|their)$/iu;
+const ENGLISH_MODAL_VERB_END_RE = /\b(?:can|could|may|might|must|shall|should|will|would|to)\s+[\p{L}'’]+$/iu;
 const SOUND_LABEL_PATTERN = "\\[(?:music(?:\\s+playing)?|applause|laughter|laughing|cheering|booing|音乐|音樂|掌声|笑声|笑聲|音楽|拍手|笑い|음악|박수|웃음)\\]";
 const SOUND_LABEL_RE = new RegExp(SOUND_LABEL_PATTERN, "giu");
 const SOUND_LABEL_ONLY_RE = new RegExp(
@@ -73,11 +81,13 @@ interface CandidateSignals {
   speakerChange: boolean;
   clauseBoundary: boolean;
   awkwardBoundary: boolean;
+  phraseDependency: boolean;
   soundLabelBoundary: boolean;
   forbiddenEnding: boolean;
   insideQuote: boolean;
   insideStructuralDelimiter: boolean;
   fallbackBoundary: boolean;
+  timingGap?: TranscriptTimingGap;
 }
 
 interface SplitCandidate {
@@ -88,6 +98,8 @@ interface SplitCandidate {
   rightCueIndex: number;
   signals: CandidateSignals;
   score: number;
+  timeBonus: number;
+  grammarPenalty: number;
   reason: TranscriptSplitReason;
 }
 
@@ -98,13 +110,7 @@ interface CandidateSeed {
   soundLabelBoundary?: boolean;
 }
 
-function normalizedText(text: string): string {
-  return text
-    .split("\n")
-    .map((line) => line.trim().replace(/\s+/g, " "))
-    .filter(Boolean)
-    .join("\n");
-}
+const normalizedText = normalizeCaptionText;
 
 function displayWidth(text: string): number {
   let width = 0;
@@ -305,6 +311,10 @@ function hasForbiddenEnding(textBefore: string, languageCode: string): boolean {
   const language = languageCode.toLowerCase().split(/[-_]/u)[0];
   if (language === "zh" || language === "ja") return CJK_FORBIDDEN_END_RE.test(trimmed);
   if (language === "ko") return KOREAN_FORBIDDEN_END_RE.test(trimmed);
+  if (language !== "en") return false;
+  // Punctuation can close a clause whose final word also acts as a function word.
+  // Definite dependencies (such as a determiner before its noun) are checked below.
+  if (WEAK_PUNCTUATION_RE.test(textBefore.trimEnd())) return false;
   const word = trimmed.match(WORD_END_RE)?.[0].toLowerCase();
   return Boolean(word && ENGLISH_FORBIDDEN_WORDS.has(word));
 }
@@ -331,7 +341,7 @@ function looksLikeClauseBoundary(
 ): boolean {
   if (languageCode.toLowerCase().split(/[-_]/u)[0] !== "en") return false;
   const after = textAfter.trimStart();
-  if (ENGLISH_CLAUSE_START_RE.test(after)) return true;
+  if (ENGLISH_CLAUSE_START_RE.test(after) || ENGLISH_COORDINATE_CLAUSE_RE.test(after)) return true;
   return WEAK_PUNCTUATION_RE.test(textBefore) && /^(?:a|an|the|this|that|these|those)\b/iu.test(after);
 }
 
@@ -340,21 +350,44 @@ function looksLikeAwkwardBoundary(
   textAfter: string,
   languageCode: string,
 ): boolean {
-  if (hasForbiddenEnding(textBefore, languageCode)) return true;
   if (languageCode.toLowerCase().split(/[-_]/u)[0] !== "en") return false;
   const leftWord = edgeWord(textBefore.replace(/[,;:]+$/u, ""), true);
   const rightWord = edgeWord(textAfter, false);
   if (!leftWord || !rightWord) return false;
+  if (ENGLISH_DETERMINER_RE.test(leftWord) && !ENGLISH_FORBIDDEN_WORDS.has(rightWord)) return true;
+  // A comma is evidence against an unfinished auxiliary, e.g. "it has, but ...".
+  if (WEAK_PUNCTUATION_RE.test(textBefore.trimEnd())) return false;
   if (ENGLISH_AUXILIARY_ENDINGS.has(leftWord) || /(?:n't|['’](?:d|ll|m|re|s|ve))$/iu.test(leftWord)) {
     return true;
   }
-  if (/^(?:a|an|every|some|the|this|that|these|those)$/iu.test(rightWord) && /(?:ed|ing)$/iu.test(leftWord)) {
+  if (ENGLISH_DETERMINER_RE.test(rightWord) && (
+    /(?:ed|ing)$/iu.test(leftWord) || ENGLISH_MODAL_VERB_END_RE.test(textBefore.trimEnd())
+  )) {
     return true;
   }
   if (ENGLISH_RELATIVE_HEADS.has(leftWord) && /^(?:he|i|it|she|they|we|you)$/iu.test(rightWord)) {
     return true;
   }
   return ENGLISH_GERUND_COMPLEMENT_VERBS.has(leftWord) && /ing$/iu.test(rightWord);
+}
+
+function looksLikePhraseDependency(textBefore: string, textAfter: string, languageCode: string): boolean {
+  if (languageCode.toLowerCase().split(/[-_]/u)[0] !== "en" ||
+    WEAK_PUNCTUATION_RE.test(textBefore.trimEnd()) || TERMINAL_PUNCTUATION_RE.test(textBefore.trimEnd())) {
+    return false;
+  }
+  const leftWord = edgeWord(textBefore, true);
+  const rightWord = edgeWord(textAfter, false);
+  if (!leftWord || !rightWord || ENGLISH_COORDINATE_CLAUSE_RE.test(textAfter.trimStart())) return false;
+  // Unknown verbs still fit structural slots: "you gain from ..." / "can respec ...".
+  if (/^(?:from|of|with|into|onto)$/iu.test(rightWord) &&
+    /\b(?:i|you|he|she|it|we|they)\s+[\p{L}'’]+$/iu.test(textBefore.trimEnd())) return true;
+  // Keep a preposition's gerund and its following complement together when possible.
+  if (/\b(?:from|by|without|after|before|while)\s+[\p{L}]+ing$/iu.test(textBefore.trimEnd()) &&
+    !ENGLISH_FORBIDDEN_WORDS.has(rightWord) && !ENGLISH_CLAUSE_START_RE.test(textAfter.trimStart())) return true;
+  // A noun followed by a relative clause, without knowing the noun itself.
+  return /\b(?:a|an|the|my|your|his|her|its|our|their)\s+[\p{L}]+$/iu.test(textBefore.trimEnd()) &&
+    /^(?:i|you|he|she|it|we|they)\s+[\p{L}'’]+\b/iu.test(textAfter.trimStart());
 }
 
 interface DelimiterState {
@@ -396,6 +429,20 @@ function delimiterStateAtOffsets(text: string, offsets: number[]): Map<number, D
   return result;
 }
 
+function grammarPenalty(signals: CandidateSignals): number {
+  if (signals.terminalPunctuation || signals.soundLabelBoundary) return 0;
+  // Forbidden endings and awkward dependencies can describe the same risk.
+  return Math.max(signals.forbiddenEnding ? 5 : 0, signals.awkwardBoundary ? 8 : 0,
+    signals.phraseDependency ? 4 : 0);
+}
+
+function timeBonus(signals: CandidateSignals): number {
+  // Keep the larger timing reward rather than adding two descriptions of one gap.
+  const cuePauseBonus = signals.pauseSeconds >= STRONG_PAUSE_SECONDS ? 3
+    : signals.pauseSeconds >= MEDIUM_PAUSE_SECONDS ? 1.5 : 0;
+  return Math.max(0, (signals.timingGap?.bonus ?? 0) - cuePauseBonus);
+}
+
 function candidateScore(signals: CandidateSignals): number {
   const hasStrongSignal = signals.terminalPunctuation ||
     signals.pauseSeconds >= STRONG_PAUSE_SECONDS ||
@@ -412,13 +459,11 @@ function candidateScore(signals: CandidateSignals): number {
   if (signals.speakerChange) score += 5;
   if (signals.soundLabelBoundary) score += 10;
   if (signals.clauseBoundary) score += 0.5;
-  if (signals.forbiddenEnding && !signals.terminalPunctuation) score -= 5;
-  if (signals.awkwardBoundary && !signals.terminalPunctuation && !signals.soundLabelBoundary) {
-    score -= 8;
-  }
+  score -= grammarPenalty(signals);
   if (signals.insideQuote && !signals.terminalPunctuation && !signals.soundLabelBoundary) score -= 3;
   if (signals.insideStructuralDelimiter && !signals.soundLabelBoundary) score -= 8;
-  return score;
+  // This bounded bonus does not turn off the ordinary cut cost.
+  return score + timeBonus(signals);
 }
 
 function candidateReason(signals: CandidateSignals): TranscriptSplitReason {
@@ -429,6 +474,7 @@ function candidateReason(signals: CandidateSignals): TranscriptSplitReason {
   if (signals.modelSource) return "sentence-boundary-model";
   if (signals.clauseBoundary) return "clause-boundary";
   if (signals.weakPunctuation) return "weak-punctuation";
+  if (timeBonus(signals) > 0) return "timing-gap";
   return "forced-best-candidate";
 }
 
@@ -451,6 +497,7 @@ function buildCandidates(
 
   const offsets = [...seeds.keys()].sort((a, b) => a - b);
   const delimiterStates = delimiterStateAtOffsets(text, offsets);
+  const timingEvidence = buildTimingGapEvidence(cues);
   const candidates: SplitCandidate[] = [{
     offset: 0,
     leftEnd: cues[0].start,
@@ -464,6 +511,7 @@ function buildCandidates(
       speakerChange: false,
       clauseBoundary: false,
       awkwardBoundary: false,
+      phraseDependency: false,
       soundLabelBoundary: false,
       forbiddenEnding: false,
       insideQuote: false,
@@ -471,6 +519,8 @@ function buildCandidates(
       fallbackBoundary: false,
     },
     score: 0,
+    timeBonus: 0,
+    grammarPenalty: 0,
     reason: "start-of-transcript",
   }];
 
@@ -496,10 +546,12 @@ function buildCandidates(
       speakerChange: timing.leftCueIndex !== timing.rightCueIndex && SPEAKER_MARKER_RE.test(textAfter),
       clauseBoundary: looksLikeClauseBoundary(textBefore, textAfter, languageCode),
       awkwardBoundary: looksLikeAwkwardBoundary(textBefore, textAfter, languageCode),
+      phraseDependency: looksLikePhraseDependency(textBefore, textAfter, languageCode),
       soundLabelBoundary: seed.soundLabelBoundary ?? false,
       forbiddenEnding: hasForbiddenEnding(textBefore, languageCode),
       ...delimiterState,
       fallbackBoundary: seed.fallbackBoundary ?? false,
+      timingGap: timingEvidence.get(offset),
     };
     let score = candidateScore(signals);
     // A bare period rejected by the conservative boundary detector is commonly an
@@ -514,6 +566,8 @@ function buildCandidates(
       ...timing,
       signals,
       score,
+      timeBonus: timeBonus(signals),
+      grammarPenalty: grammarPenalty(signals),
       reason: candidateReason(signals),
     });
   }
@@ -532,6 +586,7 @@ function buildCandidates(
       speakerChange: false,
       clauseBoundary: false,
       awkwardBoundary: false,
+      phraseDependency: false,
       soundLabelBoundary: false,
       forbiddenEnding: false,
       insideQuote: false,
@@ -539,6 +594,8 @@ function buildCandidates(
       fallbackBoundary: false,
     },
     score: 0,
+    timeBonus: 0,
+    grammarPenalty: 0,
     reason: "end-of-transcript",
   });
   return candidates;
@@ -626,6 +683,40 @@ function roundedDuration(start: number, end: number): number {
   return Math.max(0.1, Math.round((Math.max(start, end) - start) * 1000) / 1000);
 }
 
+function splitDiagnostics(
+  widthPrefix: number[],
+  candidates: SplitCandidate[],
+  leftIndex: number,
+  rightIndex: number,
+  nextIndex?: number,
+): TranscriptSplitDiagnostics {
+  const left = candidates[leftIndex];
+  const right = candidates[rightIndex];
+  const round = (value: number) => Math.round(value * 1000) / 1000;
+  const penalty = segmentPenalty(widthPrefix, left, right);
+  const alternatives: TranscriptSplitDiagnostics["alternatives"] = [];
+  if (nextIndex !== undefined) {
+    const next = candidates[nextIndex];
+    const chosenScore = right.score - penalty - segmentPenalty(widthPrefix, right, next);
+    for (const direction of [-1, 1]) {
+      for (let index = rightIndex + direction; index > leftIndex && index < nextIndex; index += direction) {
+        const alternative = candidates[index];
+        const alternativeScore = alternative.score - segmentPenalty(widthPrefix, left, alternative) -
+          segmentPenalty(widthPrefix, alternative, next);
+        if (!Number.isFinite(alternativeScore)) continue;
+        alternatives.push({ offset: alternative.offset, score: round(alternative.score),
+          localPathDelta: round(alternativeScore - chosenScore) });
+        break;
+      }
+    }
+  }
+  return {
+    textScore: round(right.score - right.timeBonus), timeBonus: round(right.timeBonus),
+    grammarPenalty: right.grammarPenalty, segmentPenalty: round(penalty),
+    ...(right.signals.timingGap ? { timingGap: right.signals.timingGap } : {}), alternatives,
+  };
+}
+
 /**
  * Construct semantic translation units while mapping every selected boundary back to
  * immutable YouTube timing. Candidate generation and global selection are intentionally
@@ -697,6 +788,8 @@ export async function segmentTranscriptSemantically(
   }
   const segments: TranscriptSegment[] = [];
 
+  const widthPrefix = displayWidthPrefix(text);
+
   for (let index = 1; index < path.length; index += 1) {
     const left = candidates[path[index - 1]];
     const right = candidates[path[index]];
@@ -712,6 +805,7 @@ export async function segmentTranscriptSemantically(
       sourceEndId: lastCue.sourceEndId,
       splitReason: right.reason,
       splitScore: Math.round(right.score * 100) / 100,
+      splitDiagnostics: splitDiagnostics(widthPrefix, candidates, path[index - 1], path[index], path[index + 1]),
     });
   }
 
