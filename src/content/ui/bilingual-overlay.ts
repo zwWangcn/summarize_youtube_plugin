@@ -1,5 +1,6 @@
 import {
   getSubtitleContainerCssValues,
+  getSubtitlePositionCssValues,
   getSubtitleTypographyCssValues,
   type SubtitleStyleSettings,
 } from "../../service/subtitle-style";
@@ -93,20 +94,34 @@ export class BilingualSubtitleOverlay {
         --vas-caption-background: rgba(8, 8, 8, .76);
         --vas-caption-shadow: 0 2px 12px rgba(0, 0, 0, .22);
         --vas-caption-max-width: 100%;
+        --vas-caption-left: 50%;
+        --vas-caption-top: 89%;
+        --vas-caption-transform: translate(-50%, -89%);
         font-family: Roboto, Arial, sans-serif;
+      }
+      .position-area {
+        position: absolute;
+        inset: 12px 4%;
+        pointer-events: none;
       }
       .wrap {
         position: absolute;
-        left: 50%;
-        bottom: max(72px, 11%);
-        transform: translateX(-50%);
-        width: min(92%, 1120px);
+        left: var(--vas-caption-left);
+        top: var(--vas-caption-top);
+        transform: var(--vas-caption-transform);
+        width: max-content;
+        max-width: min(var(--vas-caption-max-width), 1120px);
+        max-height: 100%;
+        overflow-y: auto;
+        scrollbar-width: thin;
         display: flex;
         justify-content: center;
-        pointer-events: none;
+        pointer-events: auto;
       }
       .card {
-        max-width: var(--vas-caption-max-width);
+        box-sizing: border-box;
+        min-width: 0;
+        max-width: 100%;
         padding: 7px 13px 8px;
         border-radius: 7px;
         background: var(--vas-caption-background);
@@ -156,7 +171,7 @@ export class BilingualSubtitleOverlay {
       .retry:focus-visible { outline: 2px solid #fff; outline-offset: 2px; }
       .hidden { display: none; }
       @media (max-width: 640px) {
-        .wrap { bottom: max(56px, 10%); width: 96%; }
+        .position-area { inset: 8px 2%; }
         .card { padding: 5px 9px 6px; }
       }
     `;
@@ -164,6 +179,8 @@ export class BilingualSubtitleOverlay {
 
     const wrap = document.createElement("div");
     wrap.className = "wrap";
+    const positionArea = document.createElement("div");
+    positionArea.className = "position-area";
     this.card = document.createElement("div");
     this.card.className = "card hidden";
     this.sourceEl = document.createElement("div");
@@ -187,7 +204,8 @@ export class BilingualSubtitleOverlay {
     });
     this.card.append(this.sourceEl, this.translationEl, this.statusEl, this.retryEl);
     wrap.appendChild(this.card);
-    this.shadow.appendChild(wrap);
+    positionArea.appendChild(wrap);
+    this.shadow.appendChild(positionArea);
     player.appendChild(this.host);
 
     this.onSelectionChange = () => this.handleSelectionChange();
@@ -215,6 +233,7 @@ export class BilingualSubtitleOverlay {
   setStyle(settings: SubtitleStyleSettings): void {
     const values = getSubtitleTypographyCssValues(settings);
     const container = getSubtitleContainerCssValues(settings);
+    const position = getSubtitlePositionCssValues(settings);
     this.host.style.setProperty("--vas-source-font-size", values.sourceFontSize);
     this.host.style.setProperty("--vas-translation-font-size", values.translationFontSize);
     this.host.style.setProperty("--vas-source-color", values.sourceColor);
@@ -222,6 +241,9 @@ export class BilingualSubtitleOverlay {
     this.host.style.setProperty("--vas-caption-background", container.background);
     this.host.style.setProperty("--vas-caption-shadow", container.boxShadow);
     this.host.style.setProperty("--vas-caption-max-width", container.maxWidth);
+    this.host.style.setProperty("--vas-caption-left", position.left);
+    this.host.style.setProperty("--vas-caption-top", position.top);
+    this.host.style.setProperty("--vas-caption-transform", position.transform);
   }
 
   setCue(cue: BilingualOverlayCue | null): void {

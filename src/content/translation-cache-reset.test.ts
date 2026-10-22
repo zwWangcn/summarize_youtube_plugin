@@ -1,0 +1,345 @@
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { PanelCallbacks } from "./ui/panel";
+import type { TranslatedSegment } from "../service/transcript-translation";
+
+const ui = vi.hoisted(() => ({
+  callbacks: null as PanelCallbacks | null,
+  panel: {} as Record<string, ReturnType<typeof vi.fn>>,
+  root: false,
+  translations: {} as Record<number, TranslatedSegment>,
+  toggle: null as ((enabled: boolean) => void) | null,
+  overlayText: "",
+  overlayStyle: null as unknown,
+}));
+
+// Exercise the real content-script orchestration and persistent cache, with UI
+// boundaries mocked so cancellation/storage races can be controlled precisely.
+vi.mock("./ui/panel", () => ({
+  Panel: class {
+    constructor(callbacks: PanelCallbacks) {
+      ui.callbacks = callbacks;
+      let mode = "idle";
+      const content = { scrollTop: 0, addEventListener: vi.fn(), querySelector: () => null };
+      const panel: typeof ui.panel = {};
+      for (const name of [
+        "destroy", "setTranslationAvailable", "setTranslationCacheClearing", "setTitle",
+        "setTheme", "setAIAvailable", "injectTrigger", "bindToPlayer", "initPanelWidth",
+        "setLoadingMessage", "open", "setTranscriptView", "setTranslationActionsBusy",
+        "setTranscriptRange", "setCurrentSectionTranslated", "setAllSectionsTranslated",
+        "setTranslationProgress", "showWarning", "showError",
+      ]) panel[name] = vi.fn();
+      panel.injectPanel = vi.fn(() => { ui.root = true; });
+      panel.getMode = vi.fn(() => mode);
+      panel.setMode = vi.fn((value) => { mode = value; });
+      panel.reset = vi.fn(() => { mode = "idle"; });
+      panel.getContentElement = vi.fn(() => content);
+      panel.getTrigger = vi.fn(() => ({ parentNode: {} }));
+      ui.panel = panel;
+      return panel;
+    }
+  },
+}));
+vi.mock("./ui/player-translation-toggle", () => ({
+  PlayerTranslationToggle: class {
+    constructor(toggle: (enabled: boolean) => void) { ui.toggle = toggle; }
+    mount() {}
+    setEnabled() {}
+    setAvailable() {}
+    destroy() {}
+  },
+}));
+vi.mock("./ui/bilingual-overlay", () => ({
+  BilingualSubtitleOverlay: class {
+    setLearningMode() {}
+    setTranslationOnly() {}
+    setStyle(style: unknown) { ui.overlayStyle = style; }
+    setSourceReady() {}
+    destroy() {}
+    setCue(cue: { translationText?: string } | null) {
+      ui.overlayText = cue?.translationText ?? "";
+    }
+  },
+}));
+vi.mock("./ui/player-onboarding", () => ({
+  PlayerOnboarding: class {
+    start() {}
+    destroy() {}
+  },
+}));
+vi.mock("./ui/renderer", () => ({
+  renderMarkdown: vi.fn(), renderStreaming: vi.fn(),
+  renderTranscriptSections: vi.fn((_content, _transcript, options) => {
+    ui.translations = { ...options.translations };
+  }),
+}));
+vi.mock("./semantic-segmentation", () => ({
+  segmentTranscriptSemantically: vi.fn(async (transcript) => transcript),
+}));
+vi.mock("../service/storage", () => ({
+  CUSTOM_PROMPT_STORAGE_PREFIX: "vas-custom-prompt:",
+  getCustomPromptProfile: vi.fn(async () => null),
+  getSettings: vi.fn(async () => ({
+    provider: "deepseek", model: "deepseek-flash", outputLanguage: "zh-CN",
+    uiLanguage: "zh-CN", translationChunkPreset: "balanced",
+    bilingualSubtitlesDefaultEnabled: false,
+  })),
+}));
+vi.mock("../utils/i18n", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../utils/i18n")>(),
+  activateUiLanguage: vi.fn(), t: (key: string) => key,
+}));
+vi.mock("../service/ai-client", () => ({
+  getActiveAIIdentity: vi.fn(async () => ({ providerId: "deepseek", modelId: "deepseek-flash" })),
+  summarizeTextStream: vi.fn(), translateSummaryStream: vi.fn(), streamAIText: vi.fn(),
+}));
+vi.mock("../service/transcript-translation", async (importOriginal) => ({
+  ...await importOriginal<typeof import("../service/transcript-translation")>(),
+  translateTranscriptChunk: vi.fn(),
+}));
+
+import { initContentScript } from "./shared";
+import { translateTranscriptChunk } from "../service/transcript-translation";
+import { getCachedTranslation, setCachedTranslationSection } from "../service/translation-cache";
+
+const identity = {
+  videoId: "video-1", sourceLanguage: "en", providerId: "deepseek",
+  modelId: "deepseek-flash", targetLanguage: "zh-CN" as const,
+};
+const translated = [{
+  cueId: 0, sourceStartId: 0, sourceEndId: 0, start: 0, duration: 4, text: "旧译文",
+}];
+const section = { chunkId: 0, targetStart: 0, targetEnd: 0, segments: translated };
+
+function deferred<T>() {
+  let resolve!: (value: T) => void;
+  const promise = new Promise<T>((done) => { resolve = done; });
+  return { promise, resolve };
+}
+
+async function flush() {
+  // All external operations in this harness are explicitly controlled promises.
+  for (let index = 0; index < 40; index++) await Promise.resolve();
+}
+
+describe("translation cache reset orchestration", () => {
+  let store: Record<string, unknown>;
+  let videoId: string;
+
+  beforeEach(async () => {
+    vi.useFakeTimers();
+    vi.clearAllMocks();
+    vi.spyOn(console, "info").mockImplementation(() => {});
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    ui.root = false;
+    ui.translations = {};
+    ui.overlayText = "";
+    ui.overlayStyle = null;
+    store = {};
+    videoId = "video-1";
+    const location = { href: "https://www.youtube.com/watch?v=video-1" };
+    vi.stubGlobal("window", { location, addEventListener: vi.fn() });
+    vi.stubGlobal("history", {
+      pushState: vi.fn((_state, _unused, url) => { location.href = String(url); }),
+      replaceState: vi.fn(),
+    });
+    vi.stubGlobal("MutationObserver", class { observe() {} disconnect() {} });
+    vi.stubGlobal("requestAnimationFrame", vi.fn());
+    vi.stubGlobal("document", {
+      getElementById: (id: string) => id === "vas-root" && ui.root ? {} : null,
+      querySelector: () => null, body: {},
+      documentElement: { hasAttribute: () => false, classList: { contains: () => false } },
+    });
+    vi.stubGlobal("chrome", {
+      i18n: { getUILanguage: () => "en" },
+      runtime: {
+        sendMessage: vi.fn(async () => ({ providerId: "deepseek", providerName: "DeepSeek", hasKey: true })),
+        onMessage: { addListener: vi.fn() },
+      },
+      storage: {
+        onChanged: { addListener: vi.fn() },
+        local: {
+          get: vi.fn(async () => ({ ...store })),
+          set: vi.fn(async (values) => { Object.assign(store, values); }),
+          remove: vi.fn(async (keys: string | string[]) => {
+            for (const key of Array.isArray(keys) ? keys : [keys]) delete store[key];
+          }),
+        },
+      },
+    });
+    await initContentScript({
+      getTranscript: async () => ({
+        languageCode: "en", isAutoGenerated: false,
+        segments: [{ start: 0, duration: 4, text: "They have a private sector." }],
+      }),
+      getVideoTitle: () => videoId, getVideoId: () => videoId, isOnVideoPage: () => true,
+    }, { findInjectTarget: () => ({ matches: () => true, querySelector: () => null }) as unknown as HTMLElement });
+  });
+
+  afterEach(() => {
+    vi.clearAllTimers();
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it("clears disk and memory, then allows a fresh translation", async () => {
+    await setCachedTranslationSection(identity, section);
+    await ui.callbacks!.onTranscript(true);
+    expect(ui.translations[0].text).toBe("旧译文");
+
+    ui.callbacks!.onClearTranslationCache!();
+    await flush();
+    expect(await getCachedTranslation(identity)).toBeNull();
+    expect(ui.translations).toEqual({});
+    expect(ui.panel.setTranslationProgress).toHaveBeenCalledWith("translationCacheCleared");
+
+    vi.mocked(translateTranscriptChunk).mockResolvedValueOnce([{ ...translated[0], text: "新译文" }]);
+    ui.callbacks!.onTranslateCurrent!(false);
+    await flush();
+    expect(ui.translations[0].text).toBe("新译文");
+    expect((await getCachedTranslation(identity))?.sections["0"].segments[0].text).toBe("新译文");
+  });
+
+  it("aborts an active request and ignores late output while clearing", async () => {
+    await ui.callbacks!.onTranscript(true);
+    const response = deferred<TranslatedSegment[]>();
+    vi.mocked(translateTranscriptChunk).mockReturnValueOnce(response.promise);
+    ui.callbacks!.onTranslateCurrent!(false);
+    await flush();
+    const args = vi.mocked(translateTranscriptChunk).mock.calls[0];
+
+    ui.callbacks!.onClearTranslationCache!();
+    expect(args[4]?.aborted).toBe(true);
+    ui.callbacks!.onTranslateAll!(true);
+    args[3]?.(translated, false);
+    response.resolve(translated);
+    await flush();
+
+    expect(translateTranscriptChunk).toHaveBeenCalledTimes(1);
+    expect(ui.translations).toEqual({});
+    expect(await getCachedTranslation(identity)).toBeNull();
+  });
+
+  it("automatically retranslates enabled bilingual captions after clearing", async () => {
+    await setCachedTranslationSection(identity, section);
+    await ui.callbacks!.onTranscript(true);
+    ui.toggle!(true);
+    await flush();
+    expect(ui.overlayText).toBe("旧译文");
+    vi.mocked(translateTranscriptChunk).mockResolvedValueOnce([{ ...translated[0], text: "新的双语字幕" }]);
+
+    ui.callbacks!.onClearTranslationCache!();
+    await flush();
+
+    expect(translateTranscriptChunk).toHaveBeenCalledTimes(1);
+    expect(ui.overlayText).toBe("新的双语字幕");
+    expect(ui.translations[0].text).toBe("新的双语字幕");
+  });
+
+  it("keeps a running translation and its timing when subtitle styling changes mid-stream", async () => {
+    await ui.callbacks!.onTranscript(true);
+    const response = deferred<TranslatedSegment[]>();
+    vi.mocked(translateTranscriptChunk).mockReturnValueOnce(response.promise);
+    ui.toggle!(true);
+    await flush();
+    const request = vi.mocked(translateTranscriptChunk).mock.calls[0];
+    request[3]?.(translated, false);
+    expect(ui.overlayText).toBe("旧译文");
+    const onSettingsChange = vi.mocked(chrome.storage.onChanged.addListener).mock.calls[0][0];
+
+    // Repeated slider updates arrive while the model is still streaming.
+    for (const scale of [90, 110, 125]) {
+      onSettingsChange({
+        subtitleStyle: { newValue: {
+          preset: "custom", translationFontScale: scale, backgroundOpacity: 45, maxWidth: 80,
+        } },
+      }, "sync");
+      await flush();
+      expect(request[4]?.aborted).toBe(false);
+      expect(ui.overlayText).toBe("旧译文");
+    }
+    expect(ui.overlayStyle).toMatchObject({ translationFontScale: 125, maxWidth: 80 });
+
+    const final = [{ ...translated[0], text: "他们有私营部门。" }];
+    response.resolve(final);
+    await flush();
+
+    expect(translateTranscriptChunk).toHaveBeenCalledTimes(1);
+    expect(ui.overlayText).toBe("他们有私营部门。");
+    expect(ui.translations[0]).toEqual(final[0]);
+    expect((await getCachedTranslation(identity))?.sections["0"].segments).toEqual(final);
+  });
+
+  it("does not restore an old cache read that completes after clearing", async () => {
+    await setCachedTranslationSection(identity, section);
+    const oldSnapshot = { ...store };
+    const read = deferred<Record<string, unknown>>();
+    vi.mocked(chrome.storage.local.get).mockImplementationOnce(async () => read.promise);
+    const opening = ui.callbacks!.onTranscript(true);
+    await flush();
+    ui.callbacks!.onClearTranslationCache!();
+    await flush();
+    read.resolve(oldSnapshot);
+    await opening;
+    await ui.callbacks!.onTranscript(true);
+    expect(ui.translations).toEqual({});
+    expect(await getCachedTranslation(identity)).toBeNull();
+  });
+
+  it("waits for an already-started write so it cannot resurrect cleared translations", async () => {
+    await ui.callbacks!.onTranscript(true);
+    const write = deferred<void>();
+    vi.mocked(chrome.storage.local.set).mockImplementationOnce(async (values) => {
+      await write.promise;
+      Object.assign(store, values);
+    });
+    vi.mocked(translateTranscriptChunk).mockResolvedValueOnce(translated);
+    ui.callbacks!.onTranslateCurrent!(false);
+    await flush();
+    expect(chrome.storage.local.set).toHaveBeenCalledTimes(1);
+
+    ui.callbacks!.onClearTranslationCache!();
+    await flush();
+    expect(chrome.storage.local.remove).not.toHaveBeenCalled();
+    write.resolve();
+    await flush();
+
+    expect(await getCachedTranslation(identity)).toBeNull();
+    expect(ui.translations).toEqual({});
+  });
+
+  it("reports removal failure and retains the cached translation", async () => {
+    await setCachedTranslationSection(identity, section);
+    await ui.callbacks!.onTranscript(true);
+    vi.mocked(chrome.storage.local.remove).mockRejectedValueOnce(new Error("storage unavailable"));
+    ui.callbacks!.onClearTranslationCache!();
+    await flush();
+    expect(ui.panel.showWarning).toHaveBeenCalledWith("translationCacheClearFailed");
+    expect(ui.translations[0].text).toBe("旧译文");
+    expect(await getCachedTranslation(identity)).not.toBeNull();
+    expect(ui.panel.setTranslationCacheClearing).toHaveBeenLastCalledWith(false);
+  });
+
+  it("does not clear a new video's memory when navigating during removal", async () => {
+    await setCachedTranslationSection(identity, section);
+    await setCachedTranslationSection({ ...identity, videoId: "video-2" }, {
+      ...section, segments: [{ ...translated[0], text: "第二个视频" }],
+    });
+    await ui.callbacks!.onTranscript(true);
+    const removal = deferred<void>();
+    vi.mocked(chrome.storage.local.remove).mockImplementationOnce(async (keys) => {
+      await removal.promise;
+      for (const key of Array.isArray(keys) ? keys : [keys]) delete store[key];
+    });
+    ui.callbacks!.onClearTranslationCache!();
+    await flush();
+    videoId = "video-2";
+    history.pushState(null, "", "https://www.youtube.com/watch?v=video-2");
+    await ui.callbacks!.onTranscript(true);
+    expect(ui.translations[0].text).toBe("第二个视频");
+    removal.resolve();
+    await flush();
+    expect(ui.translations[0].text).toBe("第二个视频");
+    expect(await getCachedTranslation({ ...identity, videoId: "video-2" })).not.toBeNull();
+  });
+});

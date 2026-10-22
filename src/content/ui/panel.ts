@@ -41,6 +41,7 @@ export interface PanelCallbacks {
   onTranscriptViewChange?: (view: TranscriptView) => void;
   onTranslateCurrent?: (forceRefresh: boolean) => void;
   onTranslateAll?: (forceRefresh: boolean) => void;
+  onClearTranslationCache?: () => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -77,6 +78,7 @@ export class Panel {
   private translationViewBtn: HTMLButtonElement;
   private translateCurrentBtn: HTMLButtonElement;
   private translateAllBtn: HTMLButtonElement;
+  private clearTranslationCacheBtn: HTMLButtonElement;
   private transcriptRangeEl: HTMLElement;
   private translationProgressEl: HTMLElement;
   private copyBtn: HTMLButtonElement;
@@ -88,6 +90,7 @@ export class Panel {
   private aiAvailable = true;
   private aiProviderName = "AI";
   private translationActionsBusy = false;
+  private translationCacheClearing = false;
   private allSectionsTranslated = false;
   private summaryTranslationVisible = false;
   private summaryTranslationBusy = false;
@@ -166,6 +169,8 @@ export class Panel {
     this.translationViewBtn = this.panel.querySelector(".vas-view-translation")!;
     this.translateCurrentBtn = this.panel.querySelector(".vas-translate-current")!;
     this.translateAllBtn = this.panel.querySelector(".vas-translate-all")!;
+    this.clearTranslationCacheBtn = this.panel.querySelector(".vas-clear-translation-cache")!;
+    if (!callbacks.onClearTranslationCache) this.clearTranslationCacheBtn.style.display = "none";
     this.transcriptRangeEl = this.panel.querySelector(".vas-transcript-range")!;
     this.translationProgressEl = this.panel.querySelector(".vas-translation-progress")!;
     this.copyBtn = this.panel.querySelector(".vas-btn-copy")!;
@@ -335,6 +340,7 @@ export class Panel {
         <span class="vas-transcript-tools-spacer"></span>
         <button class="vas-btn vas-translate-current">${t("translateSection")}</button>
         <button class="vas-btn vas-translate-all">${t("translateAll")}</button>
+        <button class="vas-btn vas-clear-translation-cache" title="${t("clearTranslationCacheTitle")}">${t("clearTranslationCache")}</button>
         <span class="vas-translation-progress"></span>
       </div>
       <div class="vas-error" style="display:none"></div>
@@ -384,6 +390,9 @@ export class Panel {
     });
     this.translateAllBtn.addEventListener("click", () => {
       this.callbacks.onTranslateAll?.(this.allSectionsTranslated);
+    });
+    this.clearTranslationCacheBtn.addEventListener("click", () => {
+      this.callbacks.onClearTranslationCache?.();
     });
     // Copy button
     this.copyBtn.addEventListener("click", () => this.copyContent());
@@ -521,6 +530,7 @@ export class Panel {
     this.timestampToggle.style.display = "none";
     this.copyBtn.style.display = "none";
     this.setTranslationActionsBusy(false);
+    this.setTranslationCacheClearing(false);
     this.hideSummaryTranslationAction();
     this.setCachedView(false);
     this.loadingMessageKey = "starting";
@@ -642,6 +652,8 @@ export class Panel {
     this.copyBtn.title = t("copy");
     this.sourceViewBtn.textContent = t("sourceView");
     this.translationViewBtn.textContent = t("translationView");
+    this.clearTranslationCacheBtn.textContent = t("clearTranslationCache");
+    this.clearTranslationCacheBtn.title = t("clearTranslationCacheTitle");
     this.translateAllBtn.textContent = t(
       this.allSectionsTranslated ? "retranslateAll" : "translateAll",
     );
@@ -778,8 +790,15 @@ export class Panel {
 
   setTranslationActionsBusy(busy: boolean): void {
     this.translationActionsBusy = busy;
-    this.translateCurrentBtn.disabled = busy || !this.aiAvailable;
-    this.translateAllBtn.disabled = busy || !this.aiAvailable;
+    this.translateCurrentBtn.disabled = busy || this.translationCacheClearing || !this.aiAvailable;
+    this.translateAllBtn.disabled = busy || this.translationCacheClearing || !this.aiAvailable;
+  }
+
+  setTranslationCacheClearing(clearing: boolean): void {
+    // Remain clickable during translation so the user can cancel a bad result.
+    this.translationCacheClearing = clearing;
+    this.clearTranslationCacheBtn.disabled = clearing;
+    this.setTranslationActionsBusy(this.translationActionsBusy);
   }
 
   setTranslationProgress(text: string): void {

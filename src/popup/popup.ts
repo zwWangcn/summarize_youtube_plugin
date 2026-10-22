@@ -46,6 +46,9 @@ import {
 import {
   DEFAULT_SUBTITLE_STYLE,
   getSubtitleContainerCssValues,
+  getSubtitlePositionCssValues,
+  getSubtitlePositionPreset,
+  SUBTITLE_POSITION_PRESETS,
   normalizeSubtitleStyle,
   type SubtitleStyleSettings,
 } from "../service/subtitle-style";
@@ -98,6 +101,11 @@ const backgroundOpacityInput = document.getElementById("backgroundOpacity") as H
 const subtitleMaxWidthInput = document.getElementById("subtitleMaxWidth") as HTMLInputElement;
 const backgroundOpacityValue = document.getElementById("backgroundOpacityValue") as HTMLOutputElement;
 const subtitleMaxWidthValue = document.getElementById("subtitleMaxWidthValue") as HTMLOutputElement;
+const subtitlePositionPreset = document.getElementById("subtitlePositionPreset") as HTMLSelectElement;
+const subtitlePositionX = document.getElementById("subtitlePositionX") as HTMLInputElement;
+const subtitlePositionY = document.getElementById("subtitlePositionY") as HTMLInputElement;
+const subtitlePositionXValue = document.getElementById("subtitlePositionXValue") as HTMLOutputElement;
+const subtitlePositionYValue = document.getElementById("subtitlePositionYValue") as HTMLOutputElement;
 const customPromptSelect = document.getElementById("customPromptSelect") as HTMLSelectElement;
 const newPromptBtn = document.getElementById("newPromptBtn") as HTMLButtonElement;
 const editPromptBtn = document.getElementById("editPromptBtn") as HTMLButtonElement;
@@ -325,6 +333,12 @@ function renderSubtitleTypography(): void {
   previewCaptionCard.style.background = container.background;
   previewCaptionCard.style.boxShadow = container.boxShadow;
   previewCaptionCard.style.maxWidth = container.maxWidth;
+  subtitlePositionPreset.value = getSubtitlePositionPreset(subtitleStyle);
+  subtitlePositionX.value = String(subtitleStyle.positionX);
+  subtitlePositionY.value = String(subtitleStyle.positionY);
+  subtitlePositionXValue.value = `${subtitleStyle.positionX}%`;
+  subtitlePositionYValue.value = `${subtitleStyle.positionY}%`;
+  Object.assign(previewCaptionCard.style, getSubtitlePositionCssValues(subtitleStyle));
 }
 
 async function saveSubtitleStyle(): Promise<void> {
@@ -352,6 +366,8 @@ function updateSubtitleTypography(): void {
     translationColor: translationColorInput.value,
     backgroundOpacity: Number(backgroundOpacityInput.value),
     maxWidth: Number(subtitleMaxWidthInput.value),
+    positionX: Number(subtitlePositionX.value),
+    positionY: Number(subtitlePositionY.value),
   });
   renderSubtitleTypography();
   if (subtitleStyleSaveTimer) clearTimeout(subtitleStyleSaveTimer);
@@ -618,10 +634,21 @@ for (const input of [
   translationColorInput,
   backgroundOpacityInput,
   subtitleMaxWidthInput,
+  subtitlePositionX,
+  subtitlePositionY,
 ]) {
   input.addEventListener("input", updateSubtitleTypography);
   input.addEventListener("change", () => void saveSubtitleStyle());
 }
+
+subtitlePositionPreset.addEventListener("change", () => {
+  const key = subtitlePositionPreset.value;
+  if (!Object.hasOwn(SUBTITLE_POSITION_PRESETS, key)) return;
+  const position = SUBTITLE_POSITION_PRESETS[key as keyof typeof SUBTITLE_POSITION_PRESETS];
+  subtitleStyle = normalizeSubtitleStyle({ ...subtitleStyle, ...position });
+  renderSubtitleTypography();
+  void saveSubtitleStyle();
+});
 
 customPromptSelect.addEventListener("change", () => {
   closePromptEditor();

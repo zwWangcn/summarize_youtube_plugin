@@ -167,3 +167,12 @@ export async function invalidateTranslationSection(
 ): Promise<void> {
   await chrome.storage.local.remove(sectionStorageKey(identity, chunkId));
 }
+
+/** Clear every language/model/pipeline variant for this video, including stale sections. */
+export async function clearVideoTranslationCache(videoId: string): Promise<void> {
+  if (!videoId) return;
+  const all = await chrome.storage.local.get(null);
+  const prefix = `${STORAGE_PREFIX}youtube:${encodeURIComponent(videoId)}:`;
+  const keys = Object.keys(all).filter((key) => key.startsWith(prefix));
+  if (keys.length) await chrome.storage.local.remove(keys);
+}

@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 import {
   DEFAULT_SUBTITLE_STYLE,
   SUBTITLE_STYLE_PRESETS,
+  SUBTITLE_POSITION_PRESETS,
+  getSubtitlePositionPreset,
+  getSubtitlePositionCssValues,
   getSubtitleContainerCssValues,
   getSubtitleTypographyCssValues,
   normalizeSubtitleStyle,
@@ -40,6 +43,8 @@ describe("subtitle style settings", () => {
       backgroundOpacity: 42,
       maxWidth: 100,
       bottomOffset: 20,
+      positionX: 50,
+      positionY: 80,
     });
   });
 
@@ -107,5 +112,26 @@ describe("subtitle style settings", () => {
 
   it("removes the background shadow at zero opacity", () => {
     expect(getSubtitleContainerCssValues({ backgroundOpacity: 0 }).boxShadow).toBe("none");
+  });
+
+  it("loads legacy vertical offsets and bounds new coordinates independently", () => {
+    expect(normalizeSubtitleStyle({ bottomOffset: 20 })).toMatchObject({ positionX: 50, positionY: 80 });
+    expect(normalizeSubtitleStyle({ positionX: -5, positionY: 120 })).toMatchObject({ positionX: 0, positionY: 100 });
+    expect(normalizeSubtitleStyle({ positionX: 33.6, positionY: Number.NaN })).toMatchObject({ positionX: 34, positionY: 89 });
+  });
+
+  it("recognizes preset coordinates and marks freely adjusted positions as custom", () => {
+    for (const [name, position] of Object.entries(SUBTITLE_POSITION_PRESETS)) {
+      expect(getSubtitlePositionPreset(position)).toBe(name);
+    }
+    expect(getSubtitlePositionPreset({ positionX: 32, positionY: 63 })).toBe("custom");
+  });
+
+  it("positions both edges and the center within the available travel space", () => {
+    for (const [x, y] of [[0, 0], [100, 100], [50, 50]]) {
+      expect(getSubtitlePositionCssValues({ positionX: x, positionY: y })).toEqual({
+        left: `${x}%`, top: `${y}%`, transform: `translate(${-x}%, ${-y}%)`,
+      });
+    }
   });
 });

@@ -149,6 +149,8 @@ describe("settings and API key storage", () => {
       backgroundOpacity: 76,
       maxWidth: 100,
       bottomOffset: 11,
+      positionX: 50,
+      positionY: 89,
     });
     expect(syncStore.subtitleStyle).toBeUndefined();
   });
@@ -166,6 +168,8 @@ describe("settings and API key storage", () => {
         backgroundOpacity: 120,
         maxWidth: 20,
         bottomOffset: 20,
+        positionX: 30,
+        positionY: 60,
       },
     });
     expect(syncStore.subtitleStyle).toMatchObject({
@@ -174,6 +178,8 @@ describe("settings and API key storage", () => {
       translationColor: "#FFFFFF",
       backgroundOpacity: 95,
       maxWidth: 40,
+      positionX: 30,
+      positionY: 60,
     });
     expect((await getSettings()).subtitleStyle).toEqual(syncStore.subtitleStyle);
   });

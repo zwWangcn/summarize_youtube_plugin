@@ -10,6 +10,22 @@ export interface SubtitleStyleSettings {
   backgroundOpacity: number;
   maxWidth: number;
   bottomOffset: number;
+  positionX: number;
+  positionY: number;
+}
+
+export const SUBTITLE_POSITION_PRESETS = {
+  bottom: { positionX: 50, positionY: 89 },
+  raised: { positionX: 50, positionY: 72 },
+  center: { positionX: 50, positionY: 50 },
+  top: { positionX: 50, positionY: 8 },
+} as const;
+
+export function getSubtitlePositionPreset(value: unknown): string {
+  const { positionX, positionY } = normalizeSubtitleStyle(value);
+  return Object.entries(SUBTITLE_POSITION_PRESETS).find(([, position]) =>
+    position.positionX === positionX && position.positionY === positionY,
+  )?.[0] ?? "custom";
 }
 
 type BuiltInSubtitleStylePreset = Exclude<SubtitleStylePreset, "custom">;
@@ -28,6 +44,8 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     backgroundOpacity: 76,
     maxWidth: 100,
     bottomOffset: 11,
+    positionX: 50,
+    positionY: 89,
   },
   cinema: {
     preset: "cinema",
@@ -39,6 +57,8 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     backgroundOpacity: 88,
     maxWidth: 95,
     bottomOffset: 14,
+    positionX: 50,
+    positionY: 86,
   },
   minimal: {
     preset: "minimal",
@@ -50,6 +70,8 @@ export const SUBTITLE_STYLE_PRESETS: Record<
     backgroundOpacity: 35,
     maxWidth: 85,
     bottomOffset: 11,
+    positionX: 50,
+    positionY: 89,
   },
 };
 
@@ -100,6 +122,7 @@ export function normalizeSubtitleStyle(value: unknown): SubtitleStyleSettings {
   const presetDefaults = preset === "custom"
     ? DEFAULT_SUBTITLE_STYLE
     : SUBTITLE_STYLE_PRESETS[preset];
+  const bottomOffset = normalizeInteger(input.bottomOffset, presetDefaults.bottomOffset, 8, 35);
 
   return {
     preset,
@@ -128,12 +151,21 @@ export function normalizeSubtitleStyle(value: unknown): SubtitleStyleSettings {
       95,
     ),
     maxWidth: normalizeInteger(input.maxWidth, presetDefaults.maxWidth, 40, 100),
-    bottomOffset: normalizeInteger(
-      input.bottomOffset,
-      presetDefaults.bottomOffset,
-      8,
-      35,
-    ),
+    bottomOffset,
+    positionX: normalizeInteger(input.positionX, 50, 0, 100),
+    positionY: normalizeInteger(input.positionY, 100 - bottomOffset, 0, 100),
+  };
+}
+
+/** Percentages describe travel within the available space, keeping the box in view. */
+export function getSubtitlePositionCssValues(value: unknown): {
+  left: string; top: string; transform: string;
+} {
+  const { positionX, positionY } = normalizeSubtitleStyle(value);
+  return {
+    left: `${positionX}%`,
+    top: `${positionY}%`,
+    transform: `translate(${-positionX}%, ${-positionY}%)`,
   };
 }
 

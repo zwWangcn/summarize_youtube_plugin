@@ -1,6 +1,7 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import {
   getCachedTranslation,
+  clearVideoTranslationCache,
   invalidateTranslationSection,
   setCachedTranslationSection,
   type TranslationCacheIdentity,
@@ -84,6 +85,59 @@ describe("section translation cache", () => {
     });
 
     expect(await getCachedTranslation({ ...identity, modelId: "other-model" })).toBeNull();
+  });
+
+  it("clears all variants for a video while preserving other videos, summaries and settings", async () => {
+    const section = {
+      chunkId: 0, targetStart: 0, targetEnd: 0,
+      segments: [translated(0, 0, 1, "译文")],
+    };
+    await setCachedTranslationSection(identity, section);
+    await setCachedTranslationSection({ ...identity, targetLanguage: "ja" }, section);
+    await setCachedTranslationSection({ ...identity, sourceLanguage: "fr", modelId: "other" }, section);
+    await setCachedTranslationSection({ ...identity, videoId: "video-10" }, section);
+    // Include corrupt and obsolete pipeline versions, which normal cache reads ignore.
+    const staleKey = "vas-translation-section:youtube:video-1:en:zh-CN:openai:gpt-test:1:0";
+    store[staleKey] = { invalid: true };
+    const unrelated = {
+      "vas-summary:youtube:video-1:zh-CN": { text: "summary" },
+      "vas-settings": { model: "test" },
+      "vas-api-key-openai": "test-key",
+    };
+    Object.assign(store, unrelated);
+
+    await clearVideoTranslationCache("video-1");
+
+    expect(await getCachedTranslation(identity)).toBeNull();
+    expect(await getCachedTranslation({ ...identity, targetLanguage: "ja" })).toBeNull();
+    expect(await getCachedTranslation({ ...identity, sourceLanguage: "fr", modelId: "other" })).toBeNull();
+    expect(store[staleKey]).toBeUndefined();
+    expect(await getCachedTranslation({ ...identity, videoId: "video-10" })).not.toBeNull();
+    expect(store).toMatchObject(unrelated);
+  });
+
+  it("matches encoded video IDs exactly", async () => {
+    const section = {
+      chunkId: 0, targetStart: 0, targetEnd: 0,
+      segments: [translated(0, 0, 1, "译文")],
+    };
+    await setCachedTranslationSection({ ...identity, videoId: "video:1" }, section);
+    await setCachedTranslationSection({ ...identity, videoId: "video" }, section);
+    await clearVideoTranslationCache("video:1");
+    expect(await getCachedTranslation({ ...identity, videoId: "video:1" })).toBeNull();
+    expect(await getCachedTranslation({ ...identity, videoId: "video" })).not.toBeNull();
+  });
+
+  it("does not clear anything for an empty ID and propagates storage failures", async () => {
+    await clearVideoTranslationCache("");
+    expect(chrome.storage.local.get).not.toHaveBeenCalled();
+    await setCachedTranslationSection(identity, {
+      chunkId: 0, targetStart: 0, targetEnd: 0,
+      segments: [translated(0, 0, 1, "译文")],
+    });
+    vi.mocked(chrome.storage.local.remove).mockRejectedValueOnce(new Error("storage unavailable"));
+    await expect(clearVideoTranslationCache(identity.videoId)).rejects.toThrow("storage unavailable");
+    expect(await getCachedTranslation(identity)).not.toBeNull();
   });
 
   it("does not reuse translations made with the previous segmentation pipeline", async () => {

@@ -77,11 +77,37 @@
 
         <section class="subtitle-preview" data-i18n-aria-label="subtitlePreviewAria">
           <span class="preview-label" data-i18n="subtitlePreviewLabel">实时预览</span>
-          <div class="preview-caption-card">
-            <p id="sourcePreview" class="preview-source" data-i18n="subtitlePreviewSource">Every idea starts with a question.</p>
-            <p id="translationPreview" class="preview-translation" data-i18n="subtitlePreviewTranslation">每个想法都始于一个问题。</p>
+          <div class="preview-position-area">
+            <div class="preview-caption-card">
+              <p id="sourcePreview" class="preview-source" data-i18n="subtitlePreviewSource">Every idea starts with a question.</p>
+              <p id="translationPreview" class="preview-translation" data-i18n="subtitlePreviewTranslation">每个想法都始于一个问题。</p>
+            </div>
           </div>
         </section>
+
+        <div class="settings-card position-style-card">
+          <section class="style-group" aria-labelledby="subtitlePositionTitle">
+            <h3 id="subtitlePositionTitle" data-i18n="subtitlePositionTitle">字幕位置</h3>
+            <label class="label" for="subtitlePositionPreset" data-i18n="subtitlePositionPresetLabel">预设位置</label>
+            <select id="subtitlePositionPreset" class="input">
+              <option value="bottom" data-i18n="subtitlePositionBottom">底部居中</option>
+              <option value="raised" data-i18n="subtitlePositionRaised">底部偏上</option>
+              <option value="center" data-i18n="subtitlePositionCenter">正中</option>
+              <option value="top" data-i18n="subtitlePositionTop">顶部居中</option>
+              <option value="custom" data-i18n="subtitlePositionCustom">自定义</option>
+            </select>
+            <div class="range-heading">
+              <label for="subtitlePositionX" data-i18n="subtitlePositionHorizontal">水平位置（左 → 右）</label>
+              <output id="subtitlePositionXValue" for="subtitlePositionX">50%</output>
+            </div>
+            <input id="subtitlePositionX" class="range-input" type="range" min="0" max="100" step="1" value="50" />
+            <div class="range-heading">
+              <label for="subtitlePositionY" data-i18n="subtitlePositionVertical">垂直位置（上 → 下）</label>
+              <output id="subtitlePositionYValue" for="subtitlePositionY">89%</output>
+            </div>
+            <input id="subtitlePositionY" class="range-input" type="range" min="0" max="100" step="1" value="89" />
+          </section>
+        </div>
 
         <div class="settings-card typography-card">
           <section class="style-group" aria-labelledby="sourceStyleTitle">

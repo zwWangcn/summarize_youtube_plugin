@@ -34,6 +34,7 @@ import {
   getCachedTranslation,
   setCachedTranslationSection,
   invalidateTranslationSection,
+  clearVideoTranslationCache,
   type TranslationCacheIdentity,
 } from "../service/translation-cache";
 import {
@@ -316,6 +317,8 @@ export async function initContentScript(
   let translatedCues: Record<number, TranslatedSegment> = {};
   let partialTranslatedCues: Record<number, TranslatedSegment> = {};
   let translationIdentityKey = "";
+  let translationCacheRevision = 0;
+  let translationCacheReset: { videoId: string; task: Promise<void> } | null = null;
   let transcriptView: TranscriptView = "source";
   let activeChunkId = 0;
   let loadedChunkStart = 0;
@@ -810,8 +813,19 @@ export async function initContentScript(
   async function ensureTranslationCache(
     expectedVersion: number = transcriptStateVersion,
   ): Promise<TranslationCacheIdentity> {
+    if (translationCacheReset?.videoId === extractor.getVideoId()) {
+      await translationCacheReset.task;
+    }
+    const cacheRevision = translationCacheRevision;
+    const assertCurrent = () => {
+      if (expectedVersion !== transcriptStateVersion || cacheRevision !== translationCacheRevision) {
+        throw new DOMException("The operation was aborted", "AbortError");
+      }
+    };
+    assertCurrent();
     const transcript = transcriptData!;
     const ai = await getActiveAIIdentity();
+    assertCurrent();
     const identity: TranslationCacheIdentity = {
       videoId: extractor.getVideoId(),
       sourceLanguage: transcript.languageCode,
@@ -826,9 +840,7 @@ export async function initContentScript(
       translatedCues = {};
       partialTranslatedCues = {};
       const cached = await getCachedTranslation(identity);
-      if (expectedVersion !== transcriptStateVersion) {
-        throw new DOMException("The operation was aborted", "AbortError");
-      }
+      assertCurrent();
       for (const section of Object.values(cached?.sections ?? {})) {
         const chunk = transcriptChunks[section.chunkId];
         if (
@@ -873,6 +885,7 @@ export async function initContentScript(
       { passive: false },
     );
     panel.setTranslationAvailable(true);
+    panel.setTranslationCacheClearing(translationCacheReset?.videoId === extractor.getVideoId());
     const title = extractor.getVideoTitle();
     if (title) panel.setTitle(title);
     panel.setTheme(isYouTubeDarkMode());
@@ -960,6 +973,58 @@ export async function initContentScript(
     syncBilingualOverlay();
   }
 
+  function resetVideoTranslationCache(): void {
+    const videoId = extractor.getVideoId();
+    if (!videoId || !transcriptData || translationCacheReset) return;
+    const stateVersion = transcriptStateVersion;
+    const pendingWorker = translationTask;
+    const reset = { videoId, task: Promise.resolve() };
+    // Block prefetch before aborting: worker cleanup also renders the overlay.
+    translationCacheReset = reset;
+    translationCacheRevision += 1;
+    translationJobs = [];
+    fullTranslationRequested = false;
+    translationAbort?.abort();
+    currentPanel?.setTranslationCacheClearing(true);
+    translationProgressMessage = { key: "clearingTranslationCache" };
+    currentPanel?.setTranslationProgress(localizedText(translationProgressMessage));
+    const isCurrent = () => stateVersion === transcriptStateVersion &&
+      videoId === extractor.getVideoId();
+
+    reset.task = (async () => {
+      try {
+        // A storage write already started by the old worker must finish BEFORE
+        // removal, or its completion could resurrect the translation we cleared.
+        await pendingWorker?.catch((error) => {
+          console.debug("[vas] Translation worker stopped during cache reset:", error);
+        });
+        await clearVideoTranslationCache(videoId);
+        if (!isCurrent()) return;
+        translatedCues = {};
+        partialTranslatedCues = {};
+        translationIdentityKey = "";
+        autoTranslationErrors = {};
+        autoTranslationBlockedMessage = "";
+        translationProgressMessage = { key: "translationCacheCleared" };
+      } catch (error) {
+        console.debug("[vas] Translation cache reset failed:", error);
+        if (isCurrent()) {
+          translationProgressMessage = { key: "translationCacheClearFailed" };
+          currentPanel?.showWarning(t("translationCacheClearFailed"));
+        }
+      } finally {
+        if (translationCacheReset === reset) translationCacheReset = null;
+        if (isCurrent()) {
+          currentPanel?.setTranslationCacheClearing(false);
+          currentPanel?.setTranslationProgress(localizedText(translationProgressMessage));
+          // Enabled bilingual captions request fresh translations at playback;
+          // the reader offers Translate section / Translate all again.
+          renderTranslationConsumers();
+        }
+      }
+    })();
+  }
+
   async function processTranslationJob(
     job: TranslationJob,
     controller: AbortController,
@@ -1034,7 +1099,8 @@ export async function initContentScript(
         await persistTranslationRangeSafely(identity, range.start, range.end);
       } catch (error) {
         clearPartialRange(range.start, range.end);
-        if ((error as Error)?.name !== "AbortError" && latestPartial.length) {
+        if (!controller.signal.aborted && stateVersion === transcriptStateVersion &&
+          (error as Error)?.name !== "AbortError" && latestPartial.length) {
           commitTranslatedSegments(latestPartial);
           await persistTranslationRangeSafely(identity, range.start, range.end);
         }
@@ -1047,6 +1113,7 @@ export async function initContentScript(
   }
 
   function enqueueTranslationJob(job: TranslationJob): void {
+    if (translationCacheReset?.videoId === extractor.getVideoId()) return;
     if (!transcriptData || job.targetStart > job.targetEnd) return;
     job.customInstruction ??= activeCustomPromptInstruction;
     const alreadyCurrent = currentTranslationJob &&
@@ -1080,6 +1147,7 @@ export async function initContentScript(
   }
 
   function startTranslationWorker(): void {
+    if (translationCacheReset?.videoId === extractor.getVideoId()) return;
     if (translationTask || !transcriptData) return;
     const stateVersion = transcriptStateVersion;
     const panel = getPanel();
@@ -1164,6 +1232,7 @@ export async function initContentScript(
     forceRefresh: boolean,
     isFullTranslation: boolean,
   ): void {
+    if (translationCacheReset?.videoId === extractor.getVideoId()) return;
     if (!aiSetupStatus.hasKey) {
       panel.setAIAvailable(false, aiSetupStatus.providerName);
       return;
@@ -1197,6 +1266,7 @@ export async function initContentScript(
   }
 
   function maybeQueueOverlayPrefetch(currentCueId: number): void {
+    if (translationCacheReset?.videoId === extractor.getVideoId()) return;
     if (!transcriptData || isTranscriptInOutputLanguage(transcriptData.languageCode, outputLanguage)) return;
     if (fullTranslationRequested) return;
     if (autoTranslationBlockedMessage) return;
@@ -1789,6 +1859,8 @@ export async function initContentScript(
         true,
       );
     },
+
+    onClearTranslationCache: () => resetVideoTranslationCache(),
 
     onClose: () => {
       summaryAbort?.abort();
