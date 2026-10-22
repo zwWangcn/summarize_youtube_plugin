@@ -67,15 +67,19 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 - `"anthropic-messages"` → `anthropicAdapter`
 - `"gemini"` → `geminiAdapter`
 
-### 字幕提取的三路径架构
+### 字幕提取的四路径架构
 
-YouTube 字幕提取有三条路径，按优先级依次尝试：
+YouTube 字幕提取有四条路径，按优先级依次尝试：
 
-1. **Interceptor 缓存**（快速路径，3s 超时）：Service Worker 将拦截器注入到 MAIN world，patch `fetch` / `XMLHttpRequest`，piggyback YouTube 播放器的 timedtext 请求（带 POT 签名）。先检查缓存——命中则直接返回；若未命中且 CC 处于关闭状态，主动调用 `player.toggleSubtitlesOn()` 静默开启字幕，等待播放器自然请求 timedtext 后由拦截器捕获，捕获完成后恢复 CC 原状态。通过 DOM `CustomEvent`（`vas-caption-captured`）跨 isolated-world 边界传回内容脚本。
+1. **Interceptor 缓存**（无等待快速路径）：manifest 在 document_start 安装 MAIN-world 脚本，包装 `fetch` / `XMLHttpRequest`，观察播放器的 timedtext 响应。通过 DOM `CustomEvent`（`vas-caption-captured`）交给隔离世界缓存；命中即返回，不操作播放器。
 
-2. **InnerTube ANDROID**（主路径，参考 youtube-transcript-api）：POST `youtubei/v1/player` 使用 ANDROID 客户端上下文（`clientName: "ANDROID"`, `clientVersion: "20.10.38"`），绕过 YouTube WEB 客户端的 POT 限制。从响应中获取带有效签名的 `baseUrl`，直接 fetch XML timedtext → 解析。此路径完全静默，无需 CC 按钮、无需播放器操作、无需 MAIN world 注入。
+2. **InnerTube ANDROID**（静默路径）：POST `youtubei/v1/player` 使用 ANDROID 客户端上下文（`clientName: "ANDROID"`, `clientVersion: "20.10.38"`），从响应获取字幕 `baseUrl`；优先解析 JSON3，再回退 XML。接口可用性取决于 YouTube，不能假定持续不受令牌限制。
 
-3. **直接 fetch**（回退）：从 `ytInitialPlayerResponse` 中提取字幕 URL 后 fetch。可能因 YouTube POT 机制返回空，作为最后兜底。
+3. **直接 fetch**（静默回退）：从当前视频的 `ytInitialPlayerResponse` 提取字幕 URL，尝试 JSON3/XML。静默路径的每次网络请求有 4 秒超时。
+
+4. **播放器加载兜底**：`player-captions.ts` 请求 MAIN-world 的 `caption-main.ts`，最多等待 8 秒让当前视频播放器和字幕轨道就绪；复用最近响应，或通过 `loadModule('captions')` / `setOption('captions', 'track', ...)` 触发播放器取字幕。最多两次触发，每次等待约 3 秒；结束后恢复原 CC 状态，保留用户期间的主动更改，导航时取消旧请求。桥接总等待上限为 16 秒，不含先行静默请求。详见 `docs/caption-loading.md`。
+
+同一视频的总结与双语字幕共享在途获取；失败后清除在途状态，允许重试。捕获只接受匹配的视频、语言和轨道类型，拒绝 `tlang` 翻译轨道和空字幕。
 
 ### SPA 导航感知（shared.ts）
 
@@ -130,8 +134,9 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 | `src/content/ui/renderer.ts` | Markdown/流式渲染（marked + DOMPurify） |
 | `src/content/ui/styles.css` | Shadow DOM 暗色主题样式 |
 | `src/content/ui/bilingual-overlay.ts` | 播放器内双语字幕、选区冻结和原生 CC 临时隐藏 |
-| `src/content/extractors/youtube.ts` | YouTube 字幕提取（ytInitialPlayerResponse → XML → 文本） |
-| `src/content/caption-main.ts` | document_start 注入 YouTube MAIN world 的 fetch/XHR 观察器 |
+| `src/content/extractors/youtube.ts` | 四路径字幕获取、JSON3/XML 解析与在途请求合并 |
+| `src/content/caption-main.ts` | document_start MAIN-world fetch/XHR 观察器及播放器加载兜底 |
+| `src/content/extractors/player-captions.ts` | 隔离世界到 MAIN-world 的有界请求桥接及导航取消 |
 | `src/content/extractors/caption-interceptor.ts` | 隔离世界中的字幕事件接收和有界内存缓存 |
 | `src/content/semantic-segmentation.ts` | 候选切点评分、动态规划选路与原始时间轴映射 |
 | `src/content/sentence-boundary-detector.ts` | SentenceX WASM 初始化、UTF-16 边界转换及 Intl 回退 |

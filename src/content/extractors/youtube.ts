@@ -1,14 +1,14 @@
 /**
  * YouTube 字幕提取器。
  *
- * 从页面中的 ytInitialPlayerResponse 提取字幕轨道信息，
- * 然后 fetch XML 字幕并解析为 [MM:SS] text 格式。
+ * 优先使用已捕获字幕和静默请求；失败后等待播放器就绪并触发字幕加载。
  */
 
 import { UserError } from "../../utils/errors";
 import { t } from "../../utils/i18n";
 import { getCachedCaptionedText, parseJson3Captions } from "./caption-interceptor";
 import type { Transcript, TranscriptSegment } from "../transcript";
+import { loadPlayerCaptions } from "./player-captions";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -151,7 +151,7 @@ async function fetchAndParseCaptions(
   const json3Url = new URL(parsedUrl);
   json3Url.searchParams.set("fmt", "json3");
   try {
-    const json3Response = await fetch(json3Url.toString());
+    const json3Response = await fetch(json3Url.toString(), { signal: AbortSignal.timeout(4_000) });
     if (json3Response.ok) {
       const json3Text = await json3Response.text();
       const json3Transcript = parseJson3Captions(
@@ -166,7 +166,7 @@ async function fetchAndParseCaptions(
   }
 
   parsedUrl.searchParams.delete("fmt");
-  const resp = await fetch(parsedUrl.toString());
+  const resp = await fetch(parsedUrl.toString(), { signal: AbortSignal.timeout(4_000) });
 
   if (!resp.ok) {
     throw new UserError(
@@ -267,12 +267,11 @@ function getApiKey(): string {
 /**
  * 通过 InnerTube ANDROID 客户端获取字幕 —— 参考 youtube-transcript-api 方案。
  *
- * YouTube WEB 客户端的 timedtext 请求需要 POT (Proof of Origin Token)，
- * 但 ANDROID 客户端不受此限制。此方法：
+ * 尝试使用 ANDROID 上下文获取字幕 URL；可用性取决于 YouTube。
  *   1. POST youtubei/v1/player（ANDROID 上下文）→ 获取带有效签名的 baseUrl
  *   2. GET baseUrl → 返回 XML timedtext → 解析
  *
- * 这是目前最可靠的静默字幕获取方式，无需 CC 按钮、拦截器或播放器操作。
+ * 这条静默路径失败时，由播放器实际加载字幕的路径兜底。
  */
 async function fetchCaptionsViaInnerTube(
   videoId: string,
@@ -284,6 +283,7 @@ async function fetchCaptionsViaInnerTube(
     `https://www.youtube.com/youtubei/v1/player?key=${apiKey}`,
     {
       method: "POST",
+      signal: AbortSignal.timeout(4_000),
       headers: {
         "Content-Type": "application/json",
         "Accept-Language": "en-US",
@@ -317,38 +317,74 @@ async function fetchCaptionsViaInnerTube(
   return fetchAndParseCaptions(track.baseUrl, track.languageCode, track.kind === "asr");
 }
 
-/** 获取当前页面的视频字幕文本。 */
-export async function getTranscript(): Promise<Transcript> {
+const pendingTranscripts = new Map<string, Promise<Transcript>>();
+
+/** 总结与双语字幕共享在途获取；失败后允许下一次重新请求。 */
+export function getTranscript(): Promise<Transcript> {
   const videoId = getVideoIdFromUrl();
-  if (!videoId) throw new UserError(t("errorNotYoutubeVideo"), "YT_NOT_VIDEO");
+  if (!videoId) return Promise.reject(new UserError(t("errorNotYoutubeVideo"), "YT_NOT_VIDEO"));
+  const pending = pendingTranscripts.get(videoId);
+  if (pending) return pending;
+  const request = loadTranscript(videoId).finally(() => {
+    if (pendingTranscripts.get(videoId) === request) pendingTranscripts.delete(videoId);
+  });
+  pendingTranscripts.set(videoId, request);
+  return request;
+}
+
+async function loadTranscript(videoId: string): Promise<Transcript> {
+  const assertCurrent = () => {
+    if (getVideoIdFromUrl() !== videoId) throw new DOMException("Navigation changed", "AbortError");
+  };
 
   // 1. 无等待快速路径：播放器恰好已经请求过字幕。
   const cached = getCachedCaptionedText(videoId, LANG_PRIORITY);
   if (cached) return cached;
 
-  // 2. 主路径：InnerTube ANDROID（最可靠，静默）
+  // 2. 静默路径：InnerTube ANDROID。
   try {
     const transcript = await fetchCaptionsViaInnerTube(videoId);
-    if (getVideoIdFromUrl() !== videoId) throw new DOMException("Navigation changed", "AbortError");
+    assertCurrent();
     return transcript;
   } catch (e) {
-    if ((e as Error)?.name === "AbortError") throw e;
+    assertCurrent();
     console.debug("[vas] InnerTube 失败，回退到直接 fetch:", e instanceof Error ? e.message : String(e));
   }
 
-  // 3. 最终回退：直接 fetch ytInitialPlayerResponse 中的 baseUrl
-  const info = getVideoInfo();
-  if (!info) throw new UserError(t("errorNotYoutubeVideo"), "YT_NOT_VIDEO");
-  if (!info.captionTracks.length) throw new UserError(t("errorNoCaptions"), "YT_NO_CAPTIONS");
+  // 3. 静默回退：直接 fetch 页面中的 baseUrl。
+  try {
+    const info = getVideoInfo();
+    if (!info) throw new UserError(t("errorPageNotReady"), "YT_PAGE_NOT_READY");
+    if (!info.captionTracks.length) throw new UserError(t("errorNoCaptions"), "YT_NO_CAPTIONS");
 
-  const track = pickCaptionTrack(info.captionTracks);
-  if (!track) {
-    const available = info.captionTracks.map((t) => t.languageCode).join(", ");
-    throw new UserError(t("errorNoPreferredYoutubeCaptions"), "YT_NO_PREF_LANG", `available: ${available}`);
+    const track = pickCaptionTrack(info.captionTracks);
+    if (!track) {
+      const available = info.captionTracks.map((t) => t.languageCode).join(", ");
+      throw new UserError(t("errorNoPreferredYoutubeCaptions"), "YT_NO_PREF_LANG", `available: ${available}`);
+    }
+
+    const transcript = await fetchAndParseCaptions(track.baseUrl, track.languageCode, track.kind === "asr");
+    assertCurrent();
+    return transcript;
+  } catch (error) {
+    assertCurrent();
+    console.debug("[vas] 静默字幕获取失败，等待播放器加载:", error instanceof Error ? error.message : String(error));
   }
 
-  const transcript = await fetchAndParseCaptions(track.baseUrl, track.languageCode, track.kind === "asr");
-  if (getVideoIdFromUrl() !== videoId) throw new DOMException("Navigation changed", "AbortError");
+  // 4. 初次调用太早时等播放器初始化；借用播放器的真实字幕请求兜底。
+  // 再读缓存，避免静默请求期间已到达的响应导致不必要的字幕切换。
+  const captured = getCachedCaptionedText(videoId, LANG_PRIORITY);
+  if (captured) return captured;
+  const body = await loadPlayerCaptions(videoId, LANG_PRIORITY);
+  assertCurrent();
+  const url = new URL(body.url);
+  const languageCode = url.searchParams.get("lang") || "unknown";
+  const isAutoGenerated = url.searchParams.get("kind") === "asr";
+  const transcript = parseJson3Captions(body.text, languageCode, isAutoGenerated) ??
+    parseTimedText(body.text, languageCode, isAutoGenerated);
+  if (!transcript.segments.length) {
+    throw new UserError(t("errorYoutubeCaptionUnavailable"), "YT_EMPTY_CAPTIONS");
+  }
   return transcript;
 }
 
