@@ -26,6 +26,27 @@ if (!mainWindow[FLAG]) {
   mainWindow[FLAG] = true;
 
   const recentCaptions = new Map<string, { url: string; text: string; timestamp: number }>();
+  // Observe starts as well as bodies so a slow native request is never
+  // mistaken for a missing request and triggered again by the extension.
+  const captionRequests = new Map<object, { url: string; startedAt: number; pending: boolean }>();
+  let rateLimitedUntil = 0;
+  const startRequest = (url: string): object => {
+    const token = {};
+    captionRequests.set(token, { url, startedAt: Date.now(), pending: true });
+    if (captionRequests.size > 32) captionRequests.delete(captionRequests.keys().next().value!);
+    return token;
+  };
+  const finishRequest = (token: object, status: number, retryAfter: string | null = null) => {
+    const request = captionRequests.get(token);
+    if (!request || !request.pending) return;
+    request.pending = false;
+    if (status !== 429) return;
+    const seconds = retryAfter?.trim() ? Number(retryAfter) : NaN;
+    const delay = Number.isFinite(seconds) && seconds >= 0
+      ? seconds * 1000 : retryAfter ? Date.parse(retryAfter) - Date.now() : NaN;
+    rateLimitedUntil = Math.max(rateLimitedUntil, Date.now() +
+      (Number.isFinite(delay) && delay > 0 ? delay : 60_000));
+  };
   const captureListeners = new Set<(url: string, text: string) => void>();
   const captionUrl = (value: string): URL | null => {
     try {
@@ -74,11 +95,16 @@ if (!mainWindow[FLAG]) {
       : input instanceof URL
         ? input.toString()
         : input.url;
+    const token = captionUrl(url) ? startRequest(url) : null;
     return originalFetch(input, init).then((response) => {
+      if (token) finishRequest(token, response.status, response.headers?.get("Retry-After"));
       if (response.ok && isTimedText(url)) {
         void response.clone().text().then((text) => notify(url, text)).catch(() => {});
       }
       return response;
+    }, (error) => {
+      if (token) finishRequest(token, 0);
+      throw error;
     });
   }) as typeof window.fetch;
 
@@ -106,7 +132,13 @@ if (!mainWindow[FLAG]) {
   ): void {
     const url = (this as unknown as Record<string, unknown>).__vas_url as string | undefined;
     if (url && isTimedText(url)) {
+      const token = captionUrl(url) ? startRequest(url) : null;
+      const finish = () => {
+        if (token) finishRequest(token, this.status, this.getResponseHeader?.("Retry-After"));
+      };
+      this.addEventListener("loadend", finish, { once: true });
       this.addEventListener("load", function () {
+        finish();
         try {
           if (this.status === 200 && typeof this.responseText === "string") {
             notify(url, this.responseText);
@@ -159,7 +191,8 @@ if (!mainWindow[FLAG]) {
         throw new DOMException("Navigation changed", "AbortError");
       }
     };
-    const reply = (body: { url: string; text: string } | { error: string }) => {
+    type Failure = { error: string; retryAfterSeconds?: number };
+    const reply = (body: { url: string; text: string } | Failure) => {
       document.dispatchEvent(new CustomEvent("vas-player-caption-result", {
         detail: { requestId: request.requestId, videoId: request.videoId, ...body },
       }));
@@ -169,7 +202,7 @@ if (!mainWindow[FLAG]) {
       await Promise.resolve();
       let restore: (() => void) | undefined;
       let navigationTimer: ReturnType<typeof setInterval> | undefined;
-      let result: { url: string; text: string } | { error: string };
+      let result: { url: string; text: string } | Failure;
       try {
         assertCurrent();
         const deadline = Date.now() + 8_000;
@@ -211,7 +244,13 @@ if (!mainWindow[FLAG]) {
         if (cached) {
           result = cached;
         } else {
+          const assertNotLimited = () => {
+            if (Date.now() < rateLimitedUntil) throw new Error("rate-limited");
+          };
+          assertNotLimited();
           const original = { ...target.getOption("captions", "track") };
+          const originalIsTarget = original.languageCode === track.languageCode &&
+            (original.kind || "") === (track.kind || "") && !original.translationLanguage;
           let userChanged = false;
           let changed = false;
           const onClick = (event: Event) => {
@@ -229,9 +268,12 @@ if (!mainWindow[FLAG]) {
             try {
               // Never apply the old video's preference to a new SPA video or
               // override a caption choice the user made during this probe.
-              if (!changed || userChanged || currentVideoId() !== request.videoId ||
+              if (!changed || userChanged ||
+                currentVideoId() !== request.videoId ||
                 target.getPlayerResponse()?.videoDetails?.videoId !== request.videoId) return;
               const current = target.getOption("captions", "track");
+              if (originalIsTarget && current && current.languageCode === original.languageCode &&
+                (current.kind || "") === (original.kind || "") && !current.translationLanguage) return;
               if (!current?.languageCode || (current.languageCode === track.languageCode &&
                 (current.kind || "") === (track.kind || ""))) {
                 target.setOption("captions", "track", original);
@@ -250,28 +292,63 @@ if (!mainWindow[FLAG]) {
           };
           captureListeners.add(onCapture);
           try {
-            // Two bounded attempts handle an initial track selection before
-            // YouTube's caption module has finished initializing.
-            for (let attempt = 0; attempt < 2 && !captured; attempt++) {
-              assertCurrent();
-              if (userChanged) throw new Error("user-changed-captions");
-              changed = true;
-              target.setOption("captions", "track", {});
-              await wait(150, signal);
-              assertCurrent();
-              if (userChanged) throw new Error("user-changed-captions");
-              target.loadModule("captions");
-              target.setOption("captions", "track", { languageCode: track.languageCode, ...(track.kind ? { kind: track.kind } : {}) });
-              const captureDeadline = Date.now() + 3_000;
-              while (!captured && Date.now() < captureDeadline) {
+            const matchingRequests = () => [...captionRequests.values()].filter((item) =>
+              matches(item.url) && (item.pending || Date.now() - item.startedAt < 30_000));
+            const waitForCapture = async (ms: number) => {
+              const deadline = Date.now() + ms;
+              while (!captured && Date.now() < deadline) {
+                assertCurrent();
+                assertNotLimited();
                 if (userChanged) throw new Error("user-changed-captions");
                 const current = target.getOption("captions", "track");
-                if (current?.languageCode && (current.languageCode !== track.languageCode ||
+                if (!changed && ((current?.languageCode || "") !== (original.languageCode || "") ||
+                  (current?.kind || "") !== (original.kind || ""))) {
+                  userChanged = true;
+                  throw new Error("user-changed-captions");
+                }
+                if (changed && current?.languageCode && (current.languageCode !== track.languageCode ||
                   (current.kind || "") !== (track.kind || ""))) {
                   userChanged = true;
                   throw new Error("user-changed-captions");
                 }
                 await wait(50, signal);
+              }
+            };
+            // Give the player's initial CC request a chance to start. If it is
+            // already pending, wait for it instead of clearing/reselecting CC.
+            await waitForCapture(300);
+            const existing = matchingRequests().length > 0;
+            if (!captured && existing) {
+              await waitForCapture(6_000);
+            } else {
+              // A second selection is allowed only if the first produced NO
+              // network request (caption module not ready). Never retry an
+              // empty/failed/slow response by toggling the track again.
+              for (let attempt = 0; attempt < 2 && !captured; attempt++) {
+                assertCurrent();
+                assertNotLimited();
+                if (userChanged) throw new Error("user-changed-captions");
+                changed = true;
+                target.setOption("captions", "track", {});
+                await wait(150, signal);
+                assertCurrent();
+                if (userChanged) throw new Error("user-changed-captions");
+                target.loadModule("captions");
+                // Module loading can start the saved track asynchronously.
+                await wait(150, signal);
+                assertCurrent();
+                assertNotLimited();
+                if (userChanged) throw new Error("user-changed-captions");
+                if (!captured && !matchingRequests().length) {
+                  target.setOption("captions", "track", originalIsTarget ? original : {
+                    languageCode: track.languageCode, ...(track.kind ? { kind: track.kind } : {}),
+                  });
+                }
+                await waitForCapture(3_000);
+                if (matchingRequests().length) {
+                  if (!captured) await waitForCapture(3_000);
+                  break;
+                }
               }
             }
             assertCurrent();
@@ -283,6 +360,9 @@ if (!mainWindow[FLAG]) {
         }
       } catch (error) {
         result = { error: (error as Error)?.name === "AbortError" ? "navigation" : (error as Error)?.message || "unavailable" };
+        if (result.error === "rate-limited") {
+          result.retryAfterSeconds = Math.max(1, Math.ceil((rateLimitedUntil - Date.now()) / 1000));
+        }
       } finally {
         clearInterval(navigationTimer);
         restore?.();

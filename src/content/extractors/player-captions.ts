@@ -35,6 +35,12 @@ export function loadPlayerCaptions(
       if (result?.requestId !== requestId || result.videoId !== videoId) return;
       if (new URL(window.location.href).searchParams.get("v") !== videoId) return abort();
       if (result.error) {
+        if (result.error === "rate-limited") {
+          const seconds = typeof result.retryAfterSeconds === "number" && Number.isFinite(result.retryAfterSeconds)
+            ? Math.max(1, Math.ceil(result.retryAfterSeconds)) : 60;
+          finish(new UserError(t("errorYoutubeRateLimited", String(seconds)), "YT_RATE_LIMITED", "HTTP 429"));
+          return;
+        }
         finish(result.error === "navigation"
           ? new DOMException("Navigation changed", "AbortError")
           : new UserError(

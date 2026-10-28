@@ -7,7 +7,7 @@
  *
  * 主世界的拦截器通过 DOM CustomEvent 把捕获的字幕数据传回内容脚本。
  *
- * 该缓存只是无等待的快速路径；主动获取由 InnerTube/直接 fetch 完成。
+ * 该缓存是无等待的快速路径；主动获取复用 MAIN world 播放器请求。
  */
 
 import type {

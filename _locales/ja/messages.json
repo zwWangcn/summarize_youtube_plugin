@@ -1,4 +1,5 @@
 {
+  "errorYoutubeRateLimited": {"message": "YouTube が字幕リクエストを制限しています。約 $1 秒待ってから再試行してください。"},
   "extensionName": { "message": "YouTube AI 要約・翻訳" },
   "extensionDescription": { "message": "好みの AI で YouTube 動画を要約し、字幕翻訳と二言語字幕を利用できます" },
   "popupSubtitle": { "message": "動画を要約し、字幕を翻訳" },

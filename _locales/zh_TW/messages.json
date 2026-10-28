@@ -1,4 +1,5 @@
 {
+  "errorYoutubeRateLimited": {"message": "YouTube 暫時限制字幕請求，請等待約 $1 秒後重試。"},
   "extensionName": { "message": "YouTube AI 總結與翻譯" },
   "extensionDescription": { "message": "使用多家 AI 模型總結 YouTube 影片、翻譯字幕並顯示雙語字幕" },
   "popupSubtitle": { "message": "一鍵總結影片、翻譯字幕" },

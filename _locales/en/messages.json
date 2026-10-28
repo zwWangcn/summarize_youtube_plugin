@@ -1,4 +1,5 @@
 {
+  "errorYoutubeRateLimited": {"message": "YouTube is limiting caption requests. Please wait about $1 seconds before retrying."},
   "extensionName": { "message": "YouTube AI Summary & Translation" },
   "extensionDescription": { "message": "Summarize YouTube videos, translate captions, and watch with bilingual subtitles using your choice of AI" },
   "popupSubtitle": { "message": "Summarize videos and translate captions" },
