@@ -38,8 +38,8 @@ if (!mainWindow[FLAG]) {
   };
   const finishRequest = (token: object, status: number, retryAfter: string | null = null) => {
     const request = captionRequests.get(token);
-    if (!request || !request.pending) return;
-    request.pending = false;
+    if (request && !request.pending) return;
+    if (request) request.pending = false;
     if (status !== 429) return;
     const seconds = retryAfter?.trim() ? Number(retryAfter) : NaN;
     const delay = Number.isFinite(seconds) && seconds >= 0
@@ -98,8 +98,10 @@ if (!mainWindow[FLAG]) {
     const token = captionUrl(url) ? startRequest(url) : null;
     return originalFetch(input, init).then((response) => {
       if (token) finishRequest(token, response.status, response.headers?.get("Retry-After"));
-      if (response.ok && isTimedText(url)) {
-        void response.clone().text().then((text) => notify(url, text)).catch(() => {});
+      if (response.ok && isTimedText(url) && (!token || captionRequests.has(token))) {
+        void response.clone().text().then((text) => {
+          if (!token || captionRequests.has(token)) notify(url, text);
+        }).catch(() => {});
       }
       return response;
     }, (error) => {
@@ -140,7 +142,8 @@ if (!mainWindow[FLAG]) {
       this.addEventListener("load", function () {
         finish();
         try {
-          if (this.status === 200 && typeof this.responseText === "string") {
+          if (this.status === 200 && typeof this.responseText === "string" &&
+            (!token || captionRequests.has(token))) {
             notify(url, this.responseText);
           }
         } catch {
@@ -153,7 +156,7 @@ if (!mainWindow[FLAG]) {
 
   // The isolated world cannot call movie_player methods. Keep this bridge
   // self-contained so the built MAIN-world entry remains a classic script.
-  let active: { requestId: string; controller: AbortController } | null = null;
+  let active: { requestId: string; videoId: string; controller: AbortController } | null = null;
   const currentVideoId = () => new URL(location.href).searchParams.get("v");
   const wait = (ms: number, signal: AbortSignal): Promise<void> => new Promise((resolve, reject) => {
     const abort = () => {
@@ -172,19 +175,31 @@ if (!mainWindow[FLAG]) {
     if (event.detail?.requestId === active?.requestId) active?.controller.abort();
   }) as EventListener);
 
+  document.addEventListener("vas-player-caption-clear", ((event: CustomEvent) => {
+    const videoId = event.detail?.videoId;
+    if (typeof videoId !== "string" || !videoId || videoId.length > 100) return;
+    if (active?.videoId === videoId) active.controller.abort();
+    for (const [key, body] of recentCaptions) {
+      if (captionUrl(body.url)?.searchParams.get("v") === videoId) recentCaptions.delete(key);
+    }
+    for (const [token, body] of captionRequests) {
+      if (captionUrl(body.url)?.searchParams.get("v") === videoId) captionRequests.delete(token);
+    }
+    // Rate limiting is not a cache: clearing must never bypass a 429 cooldown.
+  }) as EventListener);
+
   document.addEventListener("vas-player-caption-request", ((event: CustomEvent) => {
     const request = event.detail;
     if (
       typeof request?.requestId !== "string" || request.requestId.length > 100 ||
-      typeof request.videoId !== "string" || request.videoId !== currentVideoId() ||
-      !Array.isArray(request.preferredLanguages)
+      typeof request.videoId !== "string" || request.videoId !== currentVideoId()
     ) return;
     // The isolated extractor shares requests. Cancel obsolete probes before
     // starting another so two requests can never toggle the player together.
     const previous = active;
     previous?.controller.abort();
     const controller = new AbortController();
-    active = { requestId: request.requestId, controller };
+    active = { requestId: request.requestId, videoId: request.videoId, controller };
     const { signal } = controller;
     const assertCurrent = () => {
       if (signal.aborted || currentVideoId() !== request.videoId) {
@@ -227,11 +242,11 @@ if (!mainWindow[FLAG]) {
         assertCurrent();
         if (!player || !tracks.length) throw new Error(matchedPlayer ? "no-captions" : "not-ready");
         const target = player;
-        const preferred = request.preferredLanguages.slice(0, 16)
-          .filter((language: unknown): language is string => typeof language === "string");
-        const findTrack = (language: string) => tracks.find((track) => track.languageCode === language && track.kind !== "asr") ??
-          tracks.find((track) => track.languageCode === language);
-        const track = preferred.map(findTrack).find(Boolean) ?? tracks[0];
+        // Human captions first. English only breaks ties between human
+        // tracks; otherwise preserve YouTube's returned order, including ASR.
+        const manualTracks = tracks.filter((track) => track.kind !== "asr");
+        const track = manualTracks.find((item) =>
+          item.languageCode?.split("-")[0].toLowerCase() === "en") ?? manualTracks[0] ?? tracks[0];
         const matches = (value: string) => {
           const url = captionUrl(value);
           return url !== null && url.searchParams.get("v") === request.videoId &&
@@ -240,7 +255,7 @@ if (!mainWindow[FLAG]) {
         };
         // Retain responses that arrived before the isolated script registered.
         const cached = [...recentCaptions.values()].find((body) =>
-          Date.now() - body.timestamp < 30_000 && matches(body.url));
+          Date.now() - body.timestamp < 5 * 60_000 && matches(body.url));
         if (cached) {
           result = cached;
         } else {

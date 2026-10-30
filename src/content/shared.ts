@@ -83,6 +83,7 @@ import { resolveAISelection } from "../service/model-registry";
 // ---------------------------------------------------------------------------
 export interface Extractor {
   getTranscript: () => Promise<Transcript>;
+  clearTranscriptCache?: (videoId: string) => void | Promise<void>;
   getVideoTitle: () => string;
   getVideoId: () => string;
   isOnVideoPage: () => boolean;
@@ -976,7 +977,7 @@ export async function initContentScript(
   function resetVideoTranslationCache(): void {
     const videoId = extractor.getVideoId();
     if (!videoId || !transcriptData || translationCacheReset) return;
-    const stateVersion = transcriptStateVersion;
+    let stateVersion = transcriptStateVersion;
     const pendingWorker = translationTask;
     const reset = { videoId, task: Promise.resolve() };
     // Block prefetch before aborting: worker cleanup also renders the overlay.
@@ -991,6 +992,7 @@ export async function initContentScript(
     const isCurrent = () => stateVersion === transcriptStateVersion &&
       videoId === extractor.getVideoId();
 
+    let cacheCleared = false;
     reset.task = (async () => {
       try {
         // A storage write already started by the old worker must finish BEFORE
@@ -999,7 +1001,23 @@ export async function initContentScript(
           console.debug("[vas] Translation worker stopped during cache reset:", error);
         });
         await clearVideoTranslationCache(videoId);
+        await extractor.clearTranscriptCache?.(videoId);
         if (!isCurrent()) return;
+        clearTranscriptState();
+        stateVersion = transcriptStateVersion;
+        cacheCleared = true;
+        const panel = currentPanel!;
+        panel.reset();
+        panel.setMode("loading");
+        panel.setLoadingMessage("fetchingTranscript");
+        const transcript = await ensureTranscript(panel, stateVersion);
+        if (!isCurrent()) return;
+        transcriptChunks = buildConfiguredTranslationChunks(transcript);
+        activeChunkId = findChunkAtTime(getCurrentPlaybackTime());
+        loadedChunkStart = Math.max(0, activeChunkId - 1);
+        loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
+        panel.setMode("transcript");
+        panel.setTranslationAvailable(!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage));
         translatedCues = {};
         partialTranslatedCues = {};
         translationIdentityKey = "";
@@ -1009,8 +1027,11 @@ export async function initContentScript(
       } catch (error) {
         console.debug("[vas] Translation cache reset failed:", error);
         if (isCurrent()) {
-          translationProgressMessage = { key: "translationCacheClearFailed" };
-          currentPanel?.showWarning(t("translationCacheClearFailed"));
+          translationProgressMessage = { key: cacheCleared ? "translationCacheCleared" : "translationCacheClearFailed" };
+          if (cacheCleared) {
+            currentPanel?.reset();
+            currentPanel?.showError(error instanceof Error ? error.message : t("errorYoutubeCaptionUnavailable"));
+          } else currentPanel?.showWarning(t("translationCacheClearFailed"));
         }
       } finally {
         if (translationCacheReset === reset) translationCacheReset = null;
@@ -1020,6 +1041,7 @@ export async function initContentScript(
           // Enabled bilingual captions request fresh translations at playback;
           // the reader offers Translate section / Translate all again.
           renderTranslationConsumers();
+          if (cacheCleared && transcriptData && bilingualEnabled) void activateBilingualOverlay();
         }
       }
     })();

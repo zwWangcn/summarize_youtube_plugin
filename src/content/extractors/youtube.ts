@@ -6,14 +6,9 @@
 
 import { UserError } from "../../utils/errors";
 import { t } from "../../utils/i18n";
-import { getCachedCaptionedText, parseJson3Captions } from "./caption-interceptor";
+import { parseJson3Captions } from "./caption-interceptor";
 import type { Transcript, TranscriptSegment } from "../transcript";
-import { loadPlayerCaptions } from "./player-captions";
-
-// ---------------------------------------------------------------------------
-// Language priority
-// ---------------------------------------------------------------------------
-const LANG_PRIORITY = ["ja", "en", "zh-Hans", "zh-HK", "zh-TW", "zh"];
+import { clearPlayerCaptionCache, loadPlayerCaptions } from "./player-captions";
 
 // ---------------------------------------------------------------------------
 // Extract ytInitialPlayerResponse from page
@@ -119,8 +114,12 @@ function decodeHtmlEntities(text: string): string {
 // Public API
 // ---------------------------------------------------------------------------
 
-const completedTranscripts = new Map<string, Transcript>();
 const pendingTranscripts = new Map<string, Promise<Transcript>>();
+
+export function clearTranscriptCache(videoId: string): void {
+  clearPlayerCaptionCache(videoId);
+  pendingTranscripts.delete(videoId);
+}
 
 /** 总结与双语字幕共享在途获取；失败后允许下一次重新请求。 */
 export function getTranscript(): Promise<Transcript> {
@@ -128,15 +127,9 @@ export function getTranscript(): Promise<Transcript> {
   if (!videoId) return Promise.reject(new UserError(t("errorNotYoutubeVideo"), "YT_NOT_VIDEO"));
   const pending = pendingTranscripts.get(videoId);
   if (pending) return pending;
-  const cached = getCachedCaptionedText(videoId, LANG_PRIORITY) ?? completedTranscripts.get(videoId);
-  if (cached) return Promise.resolve(cached);
-  const request = loadTranscript(videoId).then((transcript) => {
-    completedTranscripts.set(videoId, transcript);
-    if (completedTranscripts.size > 5) {
-      completedTranscripts.delete(completedTranscripts.keys().next().value!);
-    }
-    return transcript;
-  }).finally(() => {
+  // MAIN world selects against the complete track list before checking its
+  // cache. A video-only / any-language shortcut could return the wrong track.
+  const request = loadTranscript(videoId).finally(() => {
     if (pendingTranscripts.get(videoId) === request) pendingTranscripts.delete(videoId);
   });
   pendingTranscripts.set(videoId, request);
@@ -148,13 +141,9 @@ async function loadTranscript(videoId: string): Promise<Transcript> {
     if (getVideoIdFromUrl() !== videoId) throw new DOMException("Navigation changed", "AbortError");
   };
 
-  // 1. 无等待快速路径：播放器恰好已经请求过字幕。
-  const cached = getCachedCaptionedText(videoId, LANG_PRIORITY);
-  if (cached) return cached;
-
   // Reuse the player's signed request and its in-flight response. Do not issue
   // separate ANDROID / JSON3 / XML probes before asking the player to load.
-  const body = await loadPlayerCaptions(videoId, LANG_PRIORITY);
+  const body = await loadPlayerCaptions(videoId);
   assertCurrent();
   const url = new URL(body.url);
   const languageCode = url.searchParams.get("lang") || "unknown";

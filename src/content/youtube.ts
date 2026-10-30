@@ -8,14 +8,11 @@
  */
 
 import { initContentScript, findYouTubeTarget, type Extractor } from "./shared";
-import { getTranscript, getVideoTitle, getVideoIdFromUrl, isYouTubeVideoPage } from "./extractors/youtube";
-import { initCaptionInterceptor } from "./extractors/caption-interceptor";
-
-// Install caption interceptor — piggybacks YouTube player's timedtext requests
-initCaptionInterceptor();
+import { clearTranscriptCache, getTranscript, getVideoTitle, getVideoIdFromUrl, isYouTubeVideoPage } from "./extractors/youtube";
 
 const extractor: Extractor = {
   getTranscript,
+  clearTranscriptCache,
   getVideoTitle,
   getVideoId: getVideoIdFromUrl,
   isOnVideoPage: isYouTubeVideoPage,

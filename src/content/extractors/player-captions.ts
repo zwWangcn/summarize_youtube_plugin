@@ -7,9 +7,18 @@ export interface PlayerCaptionBody {
   text: string;
 }
 
+const activeLoads = new Map<string, { videoId: string; cancel: () => void }>();
+
+/** Clear only this video's source captions, including obsolete in-flight loads. */
+export function clearPlayerCaptionCache(videoId: string): void {
+  for (const load of activeLoads.values()) {
+    if (load.videoId === videoId) load.cancel();
+  }
+  document.dispatchEvent(new CustomEvent("vas-player-caption-clear", { detail: { videoId } }));
+}
+
 export function loadPlayerCaptions(
   videoId: string,
-  preferredLanguages: readonly string[],
 ): Promise<PlayerCaptionBody> {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
@@ -18,6 +27,7 @@ export function loadPlayerCaptions(
     const finish = (error?: Error, body?: PlayerCaptionBody) => {
       if (settled) return;
       settled = true;
+      activeLoads.delete(requestId);
       clearTimeout(timeout);
       clearInterval(navigationCheck);
       document.removeEventListener("vas-player-caption-result", onResult);
@@ -72,11 +82,12 @@ export function loadPlayerCaptions(
     const navigationCheck = setInterval(() => {
       if (new URL(window.location.href).searchParams.get("v") !== videoId) abort();
     }, 200);
+    activeLoads.set(requestId, { videoId, cancel: abort });
     document.addEventListener("vas-player-caption-result", onResult);
     document.addEventListener("yt-navigate-start", abort);
     window.addEventListener("pagehide", abort);
     document.dispatchEvent(new CustomEvent("vas-player-caption-request", {
-      detail: { requestId, videoId, preferredLanguages: [...preferredLanguages] },
+      detail: { requestId, videoId },
     }));
   });
 }
