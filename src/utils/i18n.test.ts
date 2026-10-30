@@ -19,12 +19,20 @@ describe("output language locale mapping", () => {
     ["es-419", "es"],
     ["fr-FR", "fr"],
     ["de-DE", "de"],
+    ["it-IT", "it"],
+    ["pt-BR", "pt"],
+    ["pt-PT", "pt"],
+    ["ru-RU", "ru"],
+    ["vi-VN", "vi"],
+    ["th-TH", "th"],
+    ["id-ID", "id"],
+    ["PT_br", "pt"],
   ] as const)("maps %s to %s", (locale, expected) => {
     expect(outputLanguageFromLocale(locale)).toBe(expected);
   });
 
   it("falls back unsupported locales to Simplified Chinese", () => {
-    expect(outputLanguageFromLocale("pt-BR")).toBe("zh-CN");
+    expect(outputLanguageFromLocale("pl-PL")).toBe("zh-CN");
   });
 
   it("keeps output language codes unique", () => {

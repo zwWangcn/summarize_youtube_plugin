@@ -50,6 +50,17 @@ describe("settings and API key storage", () => {
     });
   });
 
+  it.each(["it", "pt", "ru", "vi", "th", "id"] as const)(
+    "preserves saved %s output independently of the UI language and Chrome locale",
+    async (outputLanguage) => {
+      const { getSettings, setSettings } = await import("./storage");
+      await setSettings({ outputLanguage, uiLanguage: "ja" });
+      uiLanguage = "en-US";
+      expect(await getSettings()).toMatchObject({ outputLanguage, uiLanguage: "ja" });
+      expect(syncStore.outputLanguage).toBe(outputLanguage);
+    },
+  );
+
   it("initializes and persists the output language from the Chrome UI locale", async () => {
     const { getSettings } = await import("./storage");
     expect((await getSettings()).outputLanguage).toBe("ja");

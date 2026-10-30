@@ -24,7 +24,7 @@ A Chrome extension for YouTube. Use your own AI API key to summarize videos, rea
 
 - Generate structured video summaries with one click
 - Watch summaries appear in real time without waiting for the entire response
-- Support for Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, and German
+- Support for 14 summary and translation output languages: Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, German, Italian, Portuguese, Russian, Vietnamese, Thai, and Indonesian
 - Summaries are saved locally for convenient access when you revisit the same video
 
 ### Read and Translate Captions

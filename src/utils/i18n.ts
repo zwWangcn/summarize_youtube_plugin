@@ -7,6 +7,12 @@ export const OUTPUT_LANGUAGES = [
   { code: "es", nativeName: "Español", englishName: "Spanish" },
   { code: "fr", nativeName: "Français", englishName: "French" },
   { code: "de", nativeName: "Deutsch", englishName: "German" },
+  { code: "it", nativeName: "Italiano", englishName: "Italian" },
+  { code: "pt", nativeName: "Português", englishName: "Portuguese" },
+  { code: "ru", nativeName: "Русский", englishName: "Russian" },
+  { code: "vi", nativeName: "Tiếng Việt", englishName: "Vietnamese" },
+  { code: "th", nativeName: "ไทย", englishName: "Thai" },
+  { code: "id", nativeName: "Bahasa Indonesia", englishName: "Indonesian" },
 ] as const;
 
 export const UI_LANGUAGES = [
@@ -171,9 +177,9 @@ export function outputLanguageFromLocale(locale: string): OutputLanguage {
   const normalized = locale.trim().toLowerCase().replaceAll("_", "-");
   if (/^zh-(tw|hk|mo|hant)(?:-|$)/.test(normalized)) return "zh-TW";
   if (/^zh(?:-|$)/.test(normalized)) return "zh-CN";
-  for (const code of ["en", "ja", "ko", "es", "fr", "de"] as const) {
-    if (normalized === code || normalized.startsWith(`${code}-`)) return code;
-  }
+  const matched = OUTPUT_LANGUAGES.find(({ code }) =>
+    normalized === code || normalized.startsWith(`${code}-`));
+  if (matched) return matched.code;
   return "zh-CN";
 }
 
