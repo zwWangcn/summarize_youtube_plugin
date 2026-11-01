@@ -1,3 +1,4 @@
+import { normalizeCaptionLanguage } from "../utils/caption-language";
 /**
  * Popup 逻辑 — 管理分页设置、多供应商 AI 模型和 API Key。
  */
@@ -67,6 +68,8 @@ import {
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
 const uiLanguageSelect = document.getElementById("uiLanguage") as HTMLSelectElement;
+const preferredCaptionLanguageInput = document.getElementById("preferredCaptionLanguage") as HTMLInputElement;
+const captionLanguageOptions = document.getElementById("captionLanguageOptions") as HTMLDataListElement;
 const outputLanguageSelect = document.getElementById("outputLanguage") as HTMLSelectElement;
 const learningModeInput = document.getElementById("learningMode") as HTMLInputElement;
 const bilingualDefaultInput = document.getElementById("bilingualDefault") as HTMLInputElement;
@@ -206,6 +209,10 @@ async function init(): Promise<void> {
     opt.value = language.code;
     opt.textContent = language.nativeName;
     outputLanguageSelect.appendChild(opt);
+    const sourceOption = document.createElement("option");
+    sourceOption.value = language.code;
+    sourceOption.label = language.nativeName;
+    captionLanguageOptions.appendChild(sourceOption);
   }
 
   // Apply saved settings
@@ -215,6 +222,7 @@ async function init(): Promise<void> {
   persistedProviderId = savedProvider;
   persistedModelId = savedModel;
   outputLanguageSelect.value = settings.outputLanguage;
+  preferredCaptionLanguageInput.value = settings.preferredCaptionLanguage;
   learningModeInput.checked = settings.learningModeEnabled;
   bilingualDefaultInput.checked = settings.bilingualSubtitlesDefaultEnabled;
   translationOnlyInput.checked = settings.translationOnlyEnabled;
@@ -287,6 +295,7 @@ function activateTab(tabId: PopupTabId, focus: boolean = false): void {
 async function saveAutomaticSettings(
   partial: Partial<Pick<
     Settings,
+    | "preferredCaptionLanguage"
     | "outputLanguage"
     | "learningModeEnabled"
     | "translationOnlyEnabled"
@@ -583,6 +592,12 @@ for (const button of tabButtons) {
     activateTab(next, true);
   });
 }
+
+preferredCaptionLanguageInput.addEventListener("change", () => {
+  const preferredCaptionLanguage = normalizeCaptionLanguage(preferredCaptionLanguageInput.value);
+  preferredCaptionLanguageInput.value = preferredCaptionLanguage;
+  void saveAutomaticSettings({ preferredCaptionLanguage });
+});
 
 outputLanguageSelect.addEventListener("change", () => {
   void saveAutomaticSettings({

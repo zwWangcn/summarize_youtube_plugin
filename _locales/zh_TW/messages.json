@@ -1,4 +1,6 @@
 {
+  "preferredCaptionLanguageLabel": {"message": "優先取得的字幕語言"},
+  "preferredCaptionLanguageHint": {"message": "先符合音軌語言；無法符合時優先使用此語言，仍無符合則取第一條字幕。可選擇建議或輸入代碼，如 en、ja、ar。與摘要和翻譯語言無關。"},
   "errorYoutubeRateLimited": {"message": "YouTube 暫時限制字幕請求，請等待約 $1 秒後重試。"},
   "extensionName": { "message": "YouTube AI 總結與翻譯" },
   "extensionDescription": { "message": "使用多家 AI 模型總結 YouTube 影片、翻譯字幕並顯示雙語字幕" },

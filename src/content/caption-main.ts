@@ -12,14 +12,69 @@ interface PlayerTrack {
   [key: string]: unknown;
 }
 
+interface CaptionRenderer {
+  captionTracks?: PlayerTrack[];
+  audioTracks?: { audioTrackId?: string; captionTrackIndices?: number[]; defaultCaptionTrackIndex?: number }[];
+  defaultAudioTrackIndex?: number;
+}
+
 interface CaptionPlayer extends HTMLElement {
+  getAudioTrack?(): { id?: string; audioTrackId?: string; languageCode?: string; language?: string } | null;
   getPlayerResponse(): {
     videoDetails?: { videoId?: string };
-    captions?: { playerCaptionsTracklistRenderer?: { captionTracks?: PlayerTrack[] } };
+    captions?: { playerCaptionsTracklistRenderer?: CaptionRenderer };
   };
   getOption(module: string, option: string): PlayerTrack | undefined;
   setOption(module: string, option: string, track: PlayerTrack): void;
   loadModule(module: string): void;
+}
+
+// No language recognition: inspect only explicit player/audio metadata.
+function audioLanguage(player: CaptionPlayer, renderer: CaptionRenderer): string | null {
+  const fromId = (value: unknown): string | null => {
+    if (typeof value !== "string") return null;
+    const code = value.split(".")[0];
+    return !["und", "mul", "zxx"].includes(code.toLowerCase()) &&
+      /^[a-z]{2,3}(?:-[a-z0-9]{2,8})*$/i.test(code) ? code : null;
+  };
+  let selected: ReturnType<NonNullable<CaptionPlayer["getAudioTrack"]>> | undefined;
+  try { selected = player.getAudioTrack?.(); } catch { /* API may not be ready. */ }
+  const explicit = fromId(selected?.languageCode) ?? fromId(selected?.language);
+  if (explicit) return explicit;
+  const selectedId = selected?.id ?? selected?.audioTrackId;
+  // The literal "default" is an unresolved placeholder, not a language.
+  const resolvedId = selectedId && selectedId !== "default" ? selectedId : null;
+  const selectedLanguage = fromId(resolvedId);
+  if (selectedLanguage) return selectedLanguage;
+  const audioTracks = renderer.audioTracks ?? [];
+  const audio = resolvedId
+    ? audioTracks.find((item) => item.audioTrackId === resolvedId)
+    : Number.isInteger(renderer.defaultAudioTrackIndex)
+      ? audioTracks[renderer.defaultAudioTrackIndex!]
+      : audioTracks.length === 1 ? audioTracks[0] : undefined;
+  const language = fromId(audio?.audioTrackId);
+  if (language) return language;
+  // Only infer from associated caption indices if they unambiguously identify
+  // one language. A translated default caption alone does not prove audio language.
+  const codes = (audio?.captionTrackIndices ?? [])
+    .filter((index) => Number.isInteger(index) && index >= 0)
+    .map((index) => renderer.captionTracks?.[index]?.languageCode).filter((code): code is string => !!code);
+  if (codes.length && codes.every((code) => code.toLowerCase() === codes[0].toLowerCase())) return codes[0];
+  return null;
+}
+
+function chooseCaptionTrack(tracks: PlayerTrack[], audio: string | null, preferred: unknown): PlayerTrack {
+  const normalize = (code: string) => code.toLowerCase().replaceAll("_", "-");
+  const match = (language: unknown) => {
+    if (typeof language !== "string" || !language || language.length > 35) return undefined;
+    const code = normalize(language);
+    const exact = tracks.filter((track) => normalize(track.languageCode!) === code);
+    // Chinese script variants must not be treated as interchangeable.
+    const candidates = exact.length ? exact : code.split("-")[0] === "zh" ? [] :
+      tracks.filter((track) => normalize(track.languageCode!).split("-")[0] === code.split("-")[0]);
+    return candidates.find((track) => track.kind !== "asr") ?? candidates[0];
+  };
+  return match(audio) ?? match(preferred) ?? tracks[0];
 }
 
 if (!mainWindow[FLAG]) {
@@ -223,6 +278,7 @@ if (!mainWindow[FLAG]) {
         const deadline = Date.now() + 8_000;
         let player: CaptionPlayer | null = null;
         let tracks: PlayerTrack[] = [];
+        let renderer: CaptionRenderer = {};
         let matchedPlayer = false;
         while (Date.now() < deadline) {
           assertCurrent();
@@ -230,8 +286,9 @@ if (!mainWindow[FLAG]) {
           try {
             const response = player?.getPlayerResponse();
             matchedPlayer = response?.videoDetails?.videoId === request.videoId;
+            renderer = matchedPlayer ? response?.captions?.playerCaptionsTracklistRenderer ?? {} : {};
             tracks = matchedPlayer
-              ? (response?.captions?.playerCaptionsTracklistRenderer?.captionTracks ?? [])
+              ? (renderer.captionTracks ?? [])
                 .filter((track) => typeof track.languageCode === "string" && track.languageCode)
               : [];
             if (tracks.length && typeof player?.getOption === "function" &&
@@ -242,11 +299,7 @@ if (!mainWindow[FLAG]) {
         assertCurrent();
         if (!player || !tracks.length) throw new Error(matchedPlayer ? "no-captions" : "not-ready");
         const target = player;
-        // Human captions first. English only breaks ties between human
-        // tracks; otherwise preserve YouTube's returned order, including ASR.
-        const manualTracks = tracks.filter((track) => track.kind !== "asr");
-        const track = manualTracks.find((item) =>
-          item.languageCode?.split("-")[0].toLowerCase() === "en") ?? manualTracks[0] ?? tracks[0];
+        const track = chooseCaptionTrack(tracks, audioLanguage(target, renderer), request.preferredCaptionLanguage);
         const matches = (value: string) => {
           const url = captionUrl(value);
           return url !== null && url.searchParams.get("v") === request.videoId &&

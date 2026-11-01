@@ -1,3 +1,4 @@
+import { normalizeCaptionLanguage } from "../utils/caption-language";
 /** YouTube 内容脚本的 UI、字幕、翻译和 SPA 生命周期编排。 */
 
 import { Panel, type TranscriptView } from "./ui/panel";
@@ -82,7 +83,7 @@ import { resolveAISelection } from "../service/model-registry";
 // Types
 // ---------------------------------------------------------------------------
 export interface Extractor {
-  getTranscript: () => Promise<Transcript>;
+  getTranscript: (preferredCaptionLanguage?: string) => Promise<Transcript>;
   clearTranscriptCache?: (videoId: string) => void | Promise<void>;
   getVideoTitle: () => string;
   getVideoId: () => string;
@@ -312,6 +313,7 @@ export async function initContentScript(
   });
 
   // ── Shared state ───────────────────────────────────────────────────
+  let preferredCaptionLanguage = normalizeCaptionLanguage(initialSettings.preferredCaptionLanguage);
   let transcriptData: Transcript | null = null;
   let transcriptVideoId = "";
   let transcriptChunks: TranslationChunk[] = [];
@@ -544,6 +546,15 @@ export async function initContentScript(
         syncBilingualOverlay();
       }
     }
+    if (changes.preferredCaptionLanguage) {
+      const next = normalizeCaptionLanguage(changes.preferredCaptionLanguage.newValue);
+      if (next !== preferredCaptionLanguage) {
+        preferredCaptionLanguage = next;
+        clearTranscriptState();
+        currentPanel?.reset();
+        if (bilingualEnabled) void activateBilingualOverlay();
+      }
+    }
     const nextUiLanguage = changes.uiLanguage?.newValue;
     if (isUiLanguage(nextUiLanguage) && nextUiLanguage !== activeUiLanguage) {
       void activateUiLanguage(nextUiLanguage).then((activated) => {
@@ -629,7 +640,7 @@ export async function initContentScript(
   ): Promise<Transcript> {
     const videoId = extractor.getVideoId();
     if (transcriptData && transcriptVideoId === videoId) return transcriptData;
-    const transcript = await buildAlignedTranscript(await extractor.getTranscript());
+    const transcript = await buildAlignedTranscript(await extractor.getTranscript(preferredCaptionLanguage));
     if (expectedVersion !== transcriptStateVersion) {
       throw new DOMException("The operation was aborted", "AbortError");
     }

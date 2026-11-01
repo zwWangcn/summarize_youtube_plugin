@@ -12,6 +12,10 @@ class FakePlayer extends EventTarget {
   readyAt = 0;
   tracks: Track[] = [{ languageCode: "en", kind: "asr" }];
   track: Track = {};
+  audio: { id?: string; languageCode?: string } | null = null;
+  audioTracks: { audioTrackId?: string; captionTrackIndices?: number[] }[] = [];
+  defaultAudioTrackIndex: number | undefined;
+  getAudioTrack = vi.fn(() => this.audio);
   readonly classes = new Set<string>();
   readonly classList = {
     add: (name: string) => this.classes.add(name),
@@ -24,6 +28,7 @@ class FakePlayer extends EventTarget {
     videoDetails: { videoId: this.videoId },
     captions: { playerCaptionsTracklistRenderer: {
       captionTracks: Date.now() >= this.readyAt ? this.tracks : [],
+      audioTracks: this.audioTracks, defaultAudioTrackIndex: this.defaultAudioTrackIndex,
     } },
   }));
   getOption = vi.fn(() => this.track);
@@ -86,25 +91,44 @@ describe("cold-load player caption fallback", () => {
     vi.restoreAllMocks();
   });
 
-  it.each([
-    { label: "English manual beats Japanese manual and English ASR", tracks: [
-      { languageCode: "ja" }, { languageCode: "en", kind: "asr" }, { languageCode: "en" },
-    ], expected: { languageCode: "en" } },
-    { label: "one manual beats an English ASR track", tracks: [
-      { languageCode: "en", kind: "asr" }, { languageCode: "ja" },
-    ], expected: { languageCode: "ja" } },
-    { label: "first manual wins without English", tracks: [
-      { languageCode: "de", kind: "asr" }, { languageCode: "fr" }, { languageCode: "ja" },
-    ], expected: { languageCode: "fr" } },
-    { label: "regional English manual beats other manual languages", tracks: [
-      { languageCode: "ja" }, { languageCode: "en-US" },
-    ], expected: { languageCode: "en-US" } },
-    { label: "ASR-only preserves order even with English available", tracks: [
-      { languageCode: "de", kind: "asr" }, { languageCode: "en", kind: "asr" },
-    ], expected: { languageCode: "de", kind: "asr" } },
-  ])("selects captions: $label", async ({ tracks, expected }) => {
+  it.each<{
+    label: string; tracks: Track[]; expected: Track; preference?: string;
+    audio?: { id?: string; languageCode?: string };
+    metadata?: { audioTrackId?: string; captionTrackIndices?: number[] }[];
+    defaultIndex?: number;
+  }>([
+    { label: "audio English ASR beats Arabic manual", audio: { id: "en.4" }, preference: "ar",
+      tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
+    { label: "current audio beats a different default audio", audio: { id: "en.4" },
+      metadata: [{ audioTrackId: "ar.1" }], defaultIndex: 0,
+      tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
+    { label: "default audio metadata works without player API data", metadata: [{ audioTrackId: "en.4" }], defaultIndex: 0,
+      tracks: [{ languageCode: "ar", kind: "asr" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
+    { label: "opaque audio id uses unambiguous caption association", audio: { id: "original" },
+      metadata: [{ audioTrackId: "original", captionTrackIndices: [1] }],
+      tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
+    { label: "same audio language prefers manual", audio: { languageCode: "en" },
+      tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }, { languageCode: "en" }], expected: { languageCode: "en" } },
+    { label: "no audio uses specified Japanese over English manual", preference: "ja",
+      tracks: [{ languageCode: "en" }, { languageCode: "ja", kind: "asr" }], expected: { languageCode: "ja", kind: "asr" } },
+    { label: "missing audio captions fall back to preference", audio: { id: "fr.1" }, preference: "ja",
+      tracks: [{ languageCode: "ar" }, { languageCode: "ja" }], expected: { languageCode: "ja" } },
+    { label: "no matching preference uses the actual first track even if ASR", preference: "en",
+      tracks: [{ languageCode: "de", kind: "asr" }, { languageCode: "fr" }], expected: { languageCode: "de", kind: "asr" } },
+    { label: "English region variant matches", audio: { languageCode: "en-US" },
+      tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
+    { label: "ambiguous metadata falls back to user preference", preference: "ja",
+      metadata: [{ captionTrackIndices: [0, 1] }],
+      tracks: [{ languageCode: "ar" }, { languageCode: "ja" }], expected: { languageCode: "ja" } },
+    { label: "unresolved current audio does not incorrectly use the default audio", audio: { id: "opaque-current" }, preference: "ja",
+      metadata: [{ audioTrackId: "en.1" }], defaultIndex: 0,
+      tracks: [{ languageCode: "ar" }, { languageCode: "en" }, { languageCode: "ja" }], expected: { languageCode: "ja" } },
+  ])("selects captions: $label", async ({ tracks, expected, preference, audio, metadata, defaultIndex }) => {
     const { player, window, getTranscript, originalFetch } = await install();
     player.tracks = tracks;
+    player.audio = audio ?? null;
+    player.audioTracks = metadata ?? [];
+    player.defaultAudioTrackIndex = defaultIndex;
     player.setOption.mockImplementation((_module, _option, track) => {
       player.track = track;
       if (!track.languageCode) return;
@@ -114,7 +138,7 @@ describe("cold-load player caption fallback", () => {
       else url.searchParams.delete("kind");
       void window.fetch(url.toString());
     });
-    const request = getTranscript();
+    const request = getTranscript(preference);
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await request).toMatchObject({
       languageCode: expected.languageCode, isAutoGenerated: expected.kind === "asr",
@@ -122,6 +146,29 @@ describe("cold-load player caption fallback", () => {
     expect(player.setOption.mock.calls[1][2]).toMatchObject(expected);
     expect(originalFetch).toHaveBeenCalledTimes(1);
     expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("reselects cached captions when the active audio changes", async () => {
+    const { player, window, getTranscript, originalFetch } = await install();
+    player.tracks = [{ languageCode: "ar", kind: "asr" }, { languageCode: "en", kind: "asr" }];
+    await window.fetch(CAPTION_URL.replace("lang=en", "lang=ar"));
+    await window.fetch(CAPTION_URL);
+    await vi.advanceTimersByTimeAsync(0);
+    player.audio = { id: "en.4" };
+    expect(await getTranscript()).toMatchObject({ languageCode: "en" });
+    player.audio = { id: "ar.4" };
+    expect(await getTranscript()).toMatchObject({ languageCode: "ar" });
+    expect(player.setOption).not.toHaveBeenCalled();
+    expect(originalFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("falls back to the user's language when the audio API throws", async () => {
+    const { player, window, getTranscript } = await install();
+    player.getAudioTrack.mockImplementation(() => { throw new Error("not ready"); });
+    player.tracks = [{ languageCode: "ar", kind: "asr" }, { languageCode: "en", kind: "asr" }];
+    await window.fetch(CAPTION_URL);
+    await vi.advanceTimersByTimeAsync(0);
+    expect(await getTranscript("en")).toMatchObject({ languageCode: "en" });
   });
 
   it("ignores a cached wrong language or ASR track and reuses only the selected manual track", async () => {

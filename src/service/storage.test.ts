@@ -61,6 +61,21 @@ describe("settings and API key storage", () => {
     },
   );
 
+  it("defaults the source preference to English independently of output language", async () => {
+    const { getSettings, setSettings } = await import("./storage");
+    expect((await getSettings()).preferredCaptionLanguage).toBe("en");
+    await setSettings({ preferredCaptionLanguage: "ar", outputLanguage: "zh-CN", uiLanguage: "ja" });
+    expect(await getSettings()).toMatchObject({
+      preferredCaptionLanguage: "ar", outputLanguage: "zh-CN", uiLanguage: "ja",
+    });
+    await setSettings({ outputLanguage: "fr" });
+    expect((await getSettings()).preferredCaptionLanguage).toBe("ar");
+    await setSettings({ preferredCaptionLanguage: " PT_br " });
+    expect((await getSettings()).preferredCaptionLanguage).toBe("pt-BR");
+    syncStore.preferredCaptionLanguage = "invalid language";
+    expect((await getSettings()).preferredCaptionLanguage).toBe("en");
+  });
+
   it("initializes and persists the output language from the Chrome UI locale", async () => {
     const { getSettings } = await import("./storage");
     expect((await getSettings()).outputLanguage).toBe("ja");

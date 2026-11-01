@@ -1,3 +1,4 @@
+import { normalizeCaptionLanguage } from "../../utils/caption-language";
 /**
  * YouTube 字幕提取器。
  *
@@ -118,32 +119,36 @@ const pendingTranscripts = new Map<string, Promise<Transcript>>();
 
 export function clearTranscriptCache(videoId: string): void {
   clearPlayerCaptionCache(videoId);
-  pendingTranscripts.delete(videoId);
+  for (const key of pendingTranscripts.keys()) {
+    if (key.startsWith(`${videoId}:`)) pendingTranscripts.delete(key);
+  }
 }
 
 /** 总结与双语字幕共享在途获取；失败后允许下一次重新请求。 */
-export function getTranscript(): Promise<Transcript> {
+export function getTranscript(preferredCaptionLanguage = "en"): Promise<Transcript> {
   const videoId = getVideoIdFromUrl();
   if (!videoId) return Promise.reject(new UserError(t("errorNotYoutubeVideo"), "YT_NOT_VIDEO"));
-  const pending = pendingTranscripts.get(videoId);
+  const preference = normalizeCaptionLanguage(preferredCaptionLanguage);
+  const key = `${videoId}:${preference}`;
+  const pending = pendingTranscripts.get(key);
   if (pending) return pending;
   // MAIN world selects against the complete track list before checking its
   // cache. A video-only / any-language shortcut could return the wrong track.
-  const request = loadTranscript(videoId).finally(() => {
-    if (pendingTranscripts.get(videoId) === request) pendingTranscripts.delete(videoId);
+  const request = loadTranscript(videoId, preference).finally(() => {
+    if (pendingTranscripts.get(key) === request) pendingTranscripts.delete(key);
   });
-  pendingTranscripts.set(videoId, request);
+  pendingTranscripts.set(key, request);
   return request;
 }
 
-async function loadTranscript(videoId: string): Promise<Transcript> {
+async function loadTranscript(videoId: string, preferredCaptionLanguage: string): Promise<Transcript> {
   const assertCurrent = () => {
     if (getVideoIdFromUrl() !== videoId) throw new DOMException("Navigation changed", "AbortError");
   };
 
   // Reuse the player's signed request and its in-flight response. Do not issue
   // separate ANDROID / JSON3 / XML probes before asking the player to load.
-  const body = await loadPlayerCaptions(videoId);
+  const body = await loadPlayerCaptions(videoId, preferredCaptionLanguage);
   assertCurrent();
   const url = new URL(body.url);
   const languageCode = url.searchParams.get("lang") || "unknown";

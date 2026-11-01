@@ -19,6 +19,7 @@ export function clearPlayerCaptionCache(videoId: string): void {
 
 export function loadPlayerCaptions(
   videoId: string,
+  preferredCaptionLanguage = "en",
 ): Promise<PlayerCaptionBody> {
   return new Promise((resolve, reject) => {
     const requestId = crypto.randomUUID();
@@ -87,7 +88,7 @@ export function loadPlayerCaptions(
     document.addEventListener("yt-navigate-start", abort);
     window.addEventListener("pagehide", abort);
     document.dispatchEvent(new CustomEvent("vas-player-caption-request", {
-      detail: { requestId, videoId },
+      detail: { requestId, videoId, preferredCaptionLanguage },
     }));
   });
 }

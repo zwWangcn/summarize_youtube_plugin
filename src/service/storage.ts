@@ -1,3 +1,4 @@
+import { normalizeCaptionLanguage } from "../utils/caption-language";
 /**
  * Chrome Storage 封装。
  *
@@ -37,6 +38,8 @@ export interface Settings {
   model: string;
   /** YouTube 总结和字幕翻译的目标语言 */
   outputLanguage: OutputLanguage;
+  /** 无可匹配音轨语言时优先获取的字幕原文语言。 */
+  preferredCaptionLanguage: string;
   /** 扩展自身界面使用的固定语言，不影响总结和字幕翻译语言。 */
   uiLanguage: UiLanguage;
   /** 学习模式下仅在悬停字幕时显示译文。 */
@@ -54,6 +57,7 @@ export interface Settings {
 }
 
 const DEFAULTS: Omit<Settings, "outputLanguage" | "uiLanguage"> = {
+  preferredCaptionLanguage: "en",
   provider: "deepseek",
   model: "deepseek-flash",
   learningModeEnabled: false,
@@ -167,6 +171,7 @@ export async function getSettings(): Promise<Settings> {
   }
   return {
     ...result,
+    preferredCaptionLanguage: normalizeCaptionLanguage(result.preferredCaptionLanguage),
     subtitleStyle: normalizeSubtitleStyle(result.subtitleStyle),
     activeCustomPromptId: typeof result.activeCustomPromptId === "string" &&
         result.activeCustomPromptId.trim()
@@ -180,6 +185,9 @@ export async function setSettings(partial: Partial<Settings>): Promise<void> {
   await ensureMigrations();
   await chrome.storage.sync.set({
     ...partial,
+    ...(partial.preferredCaptionLanguage === undefined ? {} : {
+      preferredCaptionLanguage: normalizeCaptionLanguage(partial.preferredCaptionLanguage),
+    }),
     ...(partial.subtitleStyle === undefined
       ? {}
       : { subtitleStyle: normalizeSubtitleStyle(partial.subtitleStyle) }),

@@ -1,4 +1,6 @@
 {
+  "preferredCaptionLanguageLabel": {"message": "優先する字幕原文の言語"},
+  "preferredCaptionLanguageHint": {"message": "音声言語、指定言語、最初の字幕トラックの順で選択します。候補の選択や en、ja、ar などのコード入力が可能です。要約・翻訳の言語とは別の設定です。"},
   "errorYoutubeRateLimited": {"message": "YouTube が字幕リクエストを制限しています。約 $1 秒待ってから再試行してください。"},
   "extensionName": { "message": "YouTube AI 要約・翻訳" },
   "extensionDescription": { "message": "好みの AI で YouTube 動画を要約し、字幕翻訳と二言語字幕を利用できます" },

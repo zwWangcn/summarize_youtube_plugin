@@ -1,4 +1,6 @@
 {
+  "preferredCaptionLanguageLabel": {"message": "优先获取的字幕语言"},
+  "preferredCaptionLanguageHint": {"message": "先匹配音轨语言；无法匹配时优先使用此语言，仍无匹配则取第一条字幕。可选择建议或输入代码，如 en、ja、ar。与总结和翻译语言无关。"},
   "errorYoutubeRateLimited": {"message": "YouTube 暂时限制字幕请求，请等待约 $1 秒后重试。"},
   "extensionName": { "message": "YouTube AI 总结与翻译" },
   "extensionDescription": { "message": "使用多家 AI 模型总结 YouTube 视频、翻译字幕并显示双语字幕" },

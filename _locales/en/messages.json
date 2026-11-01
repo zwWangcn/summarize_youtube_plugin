@@ -1,4 +1,6 @@
 {
+  "preferredCaptionLanguageLabel": {"message": "Preferred source caption language"},
+  "preferredCaptionLanguageHint": {"message": "Match the audio language first, then this preference, then the first caption track. Choose a suggestion or enter a code such as en, ja, or ar. Independent of summary and translation language."},
   "errorYoutubeRateLimited": {"message": "YouTube is limiting caption requests. Please wait about $1 seconds before retrying."},
   "extensionName": { "message": "YouTube AI Summary & Translation" },
   "extensionDescription": { "message": "Summarize YouTube videos, translate captions, and watch with bilingual subtitles using your choice of AI" },

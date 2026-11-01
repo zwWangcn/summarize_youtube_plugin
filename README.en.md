@@ -158,3 +158,5 @@ The extension connects directly to your selected AI service instead of using a c
 ## License
 
 [MIT](LICENSE)
+
+Source captions follow the current audio language when available, then your preferred source-caption language (English by default), then the first available track. This preference is separate from the summary and translation output language. Set it on the Language settings tab; language codes such as `en`, `ja`, and `ar` are accepted.

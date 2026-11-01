@@ -1,4 +1,6 @@
 {
+  "preferredCaptionLanguageLabel": {"message": "우선 사용할 원문 자막 언어"},
+  "preferredCaptionLanguageHint": {"message": "음성 언어, 지정 언어, 첫 번째 자막 순으로 선택합니다. 제안에서 선택하거나 en, ja, ar 등의 코드를 입력하세요. 요약 및 번역 언어와는 별도 설정입니다."},
   "errorYoutubeRateLimited": {"message": "YouTube에서 자막 요청을 제한하고 있습니다. 약 $1초 후 다시 시도해 주세요."},
   "extensionName": { "message": "YouTube AI 요약 및 번역" },
   "extensionDescription": { "message": "원하는 AI로 YouTube 동영상을 요약하고 자막 번역과 이중 언어 자막을 이용하세요" },

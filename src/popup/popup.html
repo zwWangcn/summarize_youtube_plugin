@@ -42,6 +42,12 @@
             <select id="outputLanguage" class="input"></select>
             <p class="hint" data-i18n="outputLanguageHint">同时用于 AI 总结和字幕译文</p>
           </section>
+          <section class="section">
+            <label class="label" for="preferredCaptionLanguage" data-i18n="preferredCaptionLanguageLabel">优先获取的字幕语言</label>
+            <input id="preferredCaptionLanguage" class="input" list="captionLanguageOptions" placeholder="en" maxlength="35" />
+            <datalist id="captionLanguageOptions"></datalist>
+            <p class="hint" data-i18n="preferredCaptionLanguageHint">先匹配音轨语言；无法匹配时使用此语言，再取第一条字幕。可选择建议或输入语言代码，如 en、ja、ar。</p>
+          </section>
         </div>
         <p class="autosave-note" data-i18n="autoSaveHint">更改后自动保存</p>
       </section>

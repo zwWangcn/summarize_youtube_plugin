@@ -88,7 +88,7 @@ npm run build
    - [智谱 GLM](https://open.bigmodel.cn/usercenter/apikeys)
    - [xAI](https://console.x.ai)
 2. 点击 Chrome 工具栏中的扩展图标
-3. 按需选择设置弹窗的界面语言，以及总结与翻译的输出语言
+3. 按需选择界面语言、总结与翻译的输出语言，以及优先获取的字幕语言（默认英语；先匹配音轨语言，无法匹配时使用此设置，再取第一条字幕）
 4. 选择 AI 服务商和模型
 5. 填入对应的 API Key，然后保存
 
