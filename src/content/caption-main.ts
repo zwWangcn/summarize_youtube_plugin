@@ -18,8 +18,19 @@ interface CaptionRenderer {
   defaultAudioTrackIndex?: number;
 }
 
+interface AudioLanguageInfo {
+  id?: string;
+  languageCode?: string;
+  language?: string;
+}
+
+interface PlayerAudioTrack extends AudioLanguageInfo {
+  audioTrackId?: string;
+  getLanguageInfo?(): AudioLanguageInfo | null;
+}
+
 interface CaptionPlayer extends HTMLElement {
-  getAudioTrack?(): { id?: string; audioTrackId?: string; languageCode?: string; language?: string } | null;
+  getAudioTrack?(): PlayerAudioTrack | null;
   getPlayerResponse(): {
     videoDetails?: { videoId?: string };
     captions?: { playerCaptionsTracklistRenderer?: CaptionRenderer };
@@ -39,6 +50,12 @@ function audioLanguage(player: CaptionPlayer, renderer: CaptionRenderer): string
   };
   let selected: ReturnType<NonNullable<CaptionPlayer["getAudioTrack"]>> | undefined;
   try { selected = player.getAudioTrack?.(); } catch { /* API may not be ready. */ }
+  // YouTube can expose language through a method on the audio-track object,
+  // rather than through the object's own id/language fields. Keep its receiver.
+  let info: AudioLanguageInfo | null | undefined;
+  try { info = selected?.getLanguageInfo?.(); } catch { /* Retain legacy metadata fallbacks. */ }
+  const currentLanguage = fromId(info?.languageCode) ?? fromId(info?.language) ?? fromId(info?.id);
+  if (currentLanguage) return currentLanguage;
   const explicit = fromId(selected?.languageCode) ?? fromId(selected?.language);
   if (explicit) return explicit;
   const selectedId = selected?.id ?? selected?.audioTrackId;
@@ -299,7 +316,13 @@ if (!mainWindow[FLAG]) {
         assertCurrent();
         if (!player || !tracks.length) throw new Error(matchedPlayer ? "no-captions" : "not-ready");
         const target = player;
-        const track = chooseCaptionTrack(tracks, audioLanguage(target, renderer), request.preferredCaptionLanguage);
+        const audio = audioLanguage(target, renderer);
+        const track = chooseCaptionTrack(tracks, audio, request.preferredCaptionLanguage);
+        console.debug("[vas] Caption track selected", {
+          videoId: request.videoId, audioLanguage: audio,
+          preferredCaptionLanguage: request.preferredCaptionLanguage,
+          captionLanguage: track.languageCode, kind: track.kind || "manual",
+        });
         const matches = (value: string) => {
           const url = captionUrl(value);
           return url !== null && url.searchParams.get("v") === request.videoId &&

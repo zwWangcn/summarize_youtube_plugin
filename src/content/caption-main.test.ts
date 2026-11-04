@@ -5,6 +5,7 @@ const CAPTIONS = JSON.stringify({ events: [{
   tStartMs: 1000, dDurationMs: 2000,
   segs: [{ utf8: "Ready ", tOffsetMs: 0 }, { utf8: "now", tOffsetMs: 500 }],
 }] });
+type Audio = { id?: string; languageCode?: string; getLanguageInfo?: () => { id?: string; languageCode?: string } | null };
 type Track = { languageCode?: string; kind?: string; [key: string]: unknown };
 
 class FakePlayer extends EventTarget {
@@ -12,7 +13,7 @@ class FakePlayer extends EventTarget {
   readyAt = 0;
   tracks: Track[] = [{ languageCode: "en", kind: "asr" }];
   track: Track = {};
-  audio: { id?: string; languageCode?: string } | null = null;
+  audio: Audio | null = null;
   audioTracks: { audioTrackId?: string; captionTrackIndices?: number[] }[] = [];
   defaultAudioTrackIndex: number | undefined;
   getAudioTrack = vi.fn(() => this.audio);
@@ -93,10 +94,37 @@ describe("cold-load player caption fallback", () => {
 
   it.each<{
     label: string; tracks: Track[]; expected: Track; preference?: string;
-    audio?: { id?: string; languageCode?: string };
+    audio?: Audio;
     metadata?: { audioTrackId?: string; captionTrackIndices?: number[] }[];
     defaultIndex?: number;
   }>([
+    // Real metadata observed on XXcGSMrurZs: direct id is a media identifier,
+    // while getLanguageInfo() reports Japanese original. Both languages are ASR.
+    { label: "XXcGSMrurZs Japanese original with opaque media id", preference: "en",
+      audio: { id: "251;ChEKBWFjb250EghvcmlnaW5hbAoKCgRsYW5nEgJqYQoHCgJ2YhIBMQ",
+        getLanguageInfo() { return { name: "日语原始", id: "ja.4", isDefault: true, isAutoDubbed: false }; } },
+      metadata: [{ audioTrackId: "ja.4", captionTrackIndices: [0, 1] }], defaultIndex: 0,
+      tracks: [{ languageCode: "ja", kind: "asr" }, { languageCode: "en", kind: "asr" }],
+      expected: { languageCode: "ja", kind: "asr" } },
+    { label: "Japanese via getLanguageInfo overrides English preference and default", preference: "en",
+      audio: { getLanguageInfo() { return { id: "ja.4" }; } },
+      metadata: [{ audioTrackId: "en.1" }], defaultIndex: 0,
+      tracks: [{ languageCode: "en" }, { languageCode: "ja", kind: "asr" }], expected: { languageCode: "ja", kind: "asr" } },
+    { label: "language method keeps the audio object as receiver", preference: "en",
+      audio: { id: "ja.4", getLanguageInfo() { return { id: this.id }; } },
+      tracks: [{ languageCode: "en" }, { languageCode: "ja", kind: "asr" }], expected: { languageCode: "ja", kind: "asr" } },
+    { label: "current language method beats a conflicting direct id", preference: "en",
+      audio: { id: "en.1", getLanguageInfo() { return { id: "ja" }; } },
+      tracks: [{ languageCode: "en" }, { languageCode: "ja", kind: "asr" }], expected: { languageCode: "ja", kind: "asr" } },
+    { label: "language method languageCode is accepted", preference: "en",
+      audio: { getLanguageInfo() { return { languageCode: "ja-JP" }; } },
+      tracks: [{ languageCode: "en" }, { languageCode: "ja", kind: "asr" }], expected: { languageCode: "ja", kind: "asr" } },
+    { label: "throwing language method falls back to legacy id",
+      audio: { id: "ja.4", getLanguageInfo() { throw new Error("not ready"); } },
+      tracks: [{ languageCode: "en" }, { languageCode: "ja", kind: "asr" }], expected: { languageCode: "ja", kind: "asr" } },
+    { label: "undetermined language method falls back to preference", preference: "en",
+      audio: { getLanguageInfo() { return { id: "und" }; } },
+      tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
     { label: "audio English ASR beats Arabic manual", audio: { id: "en.4" }, preference: "ar",
       tracks: [{ languageCode: "ar" }, { languageCode: "en", kind: "asr" }], expected: { languageCode: "en", kind: "asr" } },
     { label: "current audio beats a different default audio", audio: { id: "en.4" },
