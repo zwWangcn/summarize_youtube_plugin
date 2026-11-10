@@ -249,5 +249,14 @@
   "onboardingSetupFallback": {"message": "브라우저 툴바의 확장 프로그램 아이콘을 누르고 「AI 모델」에서 API 키를 저장하세요."},
   "onboardingReplay": {"message": "사용 안내 다시 보기"},
   "onboardingReplayHint": {"message": "YouTube 영상을 먼저 열고 이 버튼을 다시 눌러 주세요."},
-  "onboardingOpenYouTube": {"message": "YouTube 열기 ↗"}
+  "onboardingOpenYouTube": {"message": "YouTube 열기 ↗"},
+  "testBuild": {"message": "테스트"},
+  "errorTranslationValidationReason": {"message": "자막 번역 검증 실패: $1. 이 구간을 다시 시도하세요."},
+  "captionValidationFormat": {"message": "모델 응답의 구조가 올바르지 않습니다"},
+  "captionValidationSource": {"message": "원문이 변경되거나 누락되었습니다"},
+  "captionValidationTiming": {"message": "분할 위치에 신뢰할 수 있는 시간 정보가 없습니다"},
+  "captionValidationLength": {"message": "자막이 여전히 너무 깁니다"},
+  "captionValidationUploaded": {"message": "업로드된 자막의 구분이 변경되었습니다"},
+  "exportCaptionDiagnostics": { "message": "자막 진단 내보내기" },
+  "captionDiagnosticsTitle": { "message": "로컬 테스트 진단: 원본 자막과 모델 응답을 포함하며 API 키는 포함하지 않습니다." }
 }

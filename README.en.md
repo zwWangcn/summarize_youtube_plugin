@@ -67,6 +67,8 @@ npm install
 npm run build
 ```
 
+For local 1.5 testing, use `npm run build:test` to show a TEST badge in settings and the video panel. `npm run build` hides it by default. Override with `VITE_TEST_BUILD=true/false`; see [development notes](docs/1.5-development.md).
+
 Once the build is complete, a `dist` directory will be created in the project.
 
 ### 2. Load It in Chrome

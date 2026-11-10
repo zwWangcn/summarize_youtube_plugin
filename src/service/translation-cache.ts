@@ -9,6 +9,7 @@ export interface TranslationCacheIdentity {
   providerId: string;
   modelId: string;
   targetLanguage: OutputLanguage;
+  sourceFingerprint: string;
 }
 
 export interface CachedTranslationSection {
@@ -35,7 +36,7 @@ const STORAGE_PREFIX = "vas-translation-section:";
 const CACHE_TTL_MS = 7 * 24 * 60 * 60 * 1000;
 const MAX_CACHE_ENTRIES = 50;
 // Increment whenever local cue construction or cue-to-translation alignment changes.
-const PIPELINE_VERSION = 10;
+const PIPELINE_VERSION = 15;
 
 function identityKey(identity: TranslationCacheIdentity): string {
   return [
@@ -46,6 +47,7 @@ function identityKey(identity: TranslationCacheIdentity): string {
     identity.providerId,
     identity.modelId,
     PIPELINE_VERSION,
+    identity.sourceFingerprint,
   ].map(encodeURIComponent).join(":");
 }
 
@@ -63,19 +65,24 @@ function asStoredSection(value: unknown): StoredSection | null {
   const section = item.section;
   if (
     item.pipelineVersion !== PIPELINE_VERSION ||
+    typeof item.sourceFingerprint !== "string" || !item.sourceFingerprint ||
     !section ||
     !Number.isInteger(section.chunkId) ||
     !Number.isInteger(section.targetStart) ||
     !Number.isInteger(section.targetEnd) ||
-    !Array.isArray(section.segments) ||
+    !Array.isArray(section.segments) || !section.segments.length ||
     section.segments.some((segment) => (
       !segment ||
       !Number.isInteger(segment.cueId) ||
+      !Number.isInteger(segment.chunkId) || segment.chunkId !== section.chunkId ||
+      !Number.isInteger(segment.sourceFrom) || !Number.isInteger(segment.sourceTo) ||
+      segment.sourceFrom < 0 || segment.sourceTo <= segment.sourceFrom ||
+      typeof segment.sourceText !== "string" || !segment.sourceText ||
       !Number.isInteger(segment.sourceStartId) ||
       !Number.isInteger(segment.sourceEndId) ||
       !Number.isFinite(segment.start) ||
       !Number.isFinite(segment.duration) ||
-      typeof segment.text !== "string"
+      typeof segment.text !== "string" || !segment.text.trim()
     )) ||
     !Number.isFinite(section.timestamp)
   ) return null;

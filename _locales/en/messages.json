@@ -249,5 +249,14 @@
   "onboardingSetupFallback": {"message": "Click this extension’s icon in the browser toolbar, then open AI Models to save your API key."},
   "onboardingReplay": {"message": "View the getting-started tour"},
   "onboardingReplayHint": {"message": "Open a YouTube video, then click this button again to see the tour."},
-  "onboardingOpenYouTube": {"message": "Open YouTube ↗"}
+  "onboardingOpenYouTube": {"message": "Open YouTube ↗"},
+  "testBuild": {"message": "TEST"},
+  "errorTranslationValidationReason": {"message": "Caption translation failed validation: $1. Retry this section."},
+  "captionValidationFormat": {"message": "the model returned an unexpected response structure"},
+  "captionValidationSource": {"message": "the model changed or omitted source text"},
+  "captionValidationTiming": {"message": "the selected split has no reliable timestamp"},
+  "captionValidationLength": {"message": "the subtitles are still too long"},
+  "captionValidationUploaded": {"message": "the model changed uploaded caption boundaries"},
+  "exportCaptionDiagnostics": { "message": "Export caption diagnostics" },
+  "captionDiagnosticsTitle": { "message": "Local test diagnostics: source captions and model responses; no API credentials." }
 }

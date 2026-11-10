@@ -67,6 +67,8 @@ npm install
 npm run build
 ```
 
+本地调试 1.5：运行 `npm run build:test`，设置弹窗和侧栏会显示“测试版”；正式构建 `npm run build` 默认隐藏标识。可用 `VITE_TEST_BUILD=true/false` 覆盖。详见 [1.5 开发说明](docs/1.5-development.md)。
+
 构建完成后，项目中会生成 `dist` 目录。
 
 ### 2. 加载到 Chrome

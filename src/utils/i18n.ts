@@ -1,3 +1,11 @@
+// Bundle catalogs into the extension code. Content-script fetches of chrome-extension
+// resources can be rejected by Chrome/page contexts even when declared accessible.
+import englishCatalog from "../../_locales/en/messages.json";
+import simplifiedChineseCatalog from "../../_locales/zh_CN/messages.json";
+import traditionalChineseCatalog from "../../_locales/zh_TW/messages.json";
+import japaneseCatalog from "../../_locales/ja/messages.json";
+import koreanCatalog from "../../_locales/ko/messages.json";
+
 export const OUTPUT_LANGUAGES = [
   { code: "zh-CN", nativeName: "简体中文", englishName: "Simplified Chinese" },
   { code: "zh-TW", nativeName: "繁體中文", englishName: "Traditional Chinese" },
@@ -38,7 +46,10 @@ interface MessageEntry {
 export type MessageCatalog = Record<string, MessageEntry>;
 export type UiTranslator = (key: string, substitutions?: string | string[]) => string;
 
-const catalogCache = new Map<UiLanguage, Promise<MessageCatalog>>();
+const bundledCatalogs: Record<UiLanguage, MessageCatalog> = {
+  en: englishCatalog, "zh-CN": simplifiedChineseCatalog, "zh-TW": traditionalChineseCatalog,
+  ja: japaneseCatalog, ko: koreanCatalog,
+};
 let activationVersion = 0;
 
 const chromeTranslator: UiTranslator = (key, substitutions) => {
@@ -108,22 +119,7 @@ export function createUiTranslator(
 }
 
 async function loadCatalog(language: UiLanguage): Promise<MessageCatalog> {
-  const cached = catalogCache.get(language);
-  if (cached) return cached;
-  const info = UI_LANGUAGES.find((candidate) => candidate.code === language)!;
-  const url = chrome.runtime.getURL(`_locales/${info.catalog}/messages.json`);
-  const request = (async () => {
-    const response = await fetch(url);
-    if (!response.ok) throw new Error(`Could not load UI catalog: ${response.status}`);
-    return await response.json() as MessageCatalog;
-  })();
-  catalogCache.set(language, request);
-  try {
-    return await request;
-  } catch (error) {
-    catalogCache.delete(language);
-    throw error;
-  }
+  return bundledCatalogs[language];
 }
 
 export async function loadUiTranslator(

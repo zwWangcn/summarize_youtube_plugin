@@ -1,4 +1,6 @@
 import { normalizeCaptionLanguage } from "../utils/caption-language";
+import { downloadCaptionDiagnostics } from "../service/caption-diagnostics";
+import { getOverlayPrefetchChunk } from "./caption-prefetch";
 /** YouTube 内容脚本的 UI、字幕、翻译和 SPA 生命周期编排。 */
 
 import { Panel, type TranscriptView } from "./ui/panel";
@@ -17,16 +19,16 @@ import {
 } from "../service/ai-client";
 import { formatTime } from "../utils/text";
 import type { Transcript } from "./transcript";
+import { prepareCaptionSource, fingerprintCaptionSource } from "./caption-source";
 import {
-  buildAlignedTranscript,
   findActiveCueIndex,
-  getCaptionPrefetchRange,
   isTranscriptInOutputLanguage,
   transcriptToText,
 } from "./transcript";
 import { UserError } from "../utils/errors";
 import {
   translateTranscriptChunk,
+  alignTranslatedParts,
   buildTranslationChunks,
   type TranslatedSegment,
   type TranslationChunk,
@@ -316,9 +318,10 @@ export async function initContentScript(
   let preferredCaptionLanguage = normalizeCaptionLanguage(initialSettings.preferredCaptionLanguage);
   let transcriptData: Transcript | null = null;
   let transcriptVideoId = "";
+  let transcriptFingerprint: Promise<string> | null = null;
+  let cacheLoad: { key: string; version: number; revision: number; task: Promise<void> } | null = null;
   let transcriptChunks: TranslationChunk[] = [];
-  let translatedCues: Record<number, TranslatedSegment> = {};
-  let partialTranslatedCues: Record<number, TranslatedSegment> = {};
+  let translatedSections: Record<number, TranslatedSegment[]> = {};
   let translationIdentityKey = "";
   let translationCacheRevision = 0;
   let translationCacheReset: { videoId: string; task: Promise<void> } | null = null;
@@ -350,9 +353,10 @@ export async function initContentScript(
   let bilingualVideo: HTMLVideoElement | null = null;
   let bilingualSyncHandler: (() => void) | null = null;
   let bilingualFrameCallbackId: number | null = null;
-  let bilingualFrameCueId = -2;
+  let bilingualFrameCueId: string | number = -2;
   let autoTranslationErrors: Record<number, string> = {};
   let autoTranslationBlockedMessage = "";
+  let recentCaptionTranslationMs: number[] = [];
 
   const playerTranslationToggle = new PlayerTranslationToggle((enabled) => {
     setBilingualEnabled(enabled);
@@ -389,7 +393,7 @@ export async function initContentScript(
     playerOnboarding.refreshLocalizedText();
   }
 
-  async function refreshAISetupAvailability(): Promise<void> {
+  async function refreshAISetupAvailability(forceOverlay = false): Promise<void> {
     const previous = aiSetupStatus;
     aiSetupStatus = await requestAISetupStatus({ ...previous, hasKey: false });
     const providerChanged = previous.providerId !== aiSetupStatus.providerId;
@@ -408,7 +412,7 @@ export async function initContentScript(
       return;
     }
     if (providerChanged) destroyBilingualOverlay();
-    if ((!previous.hasKey || providerChanged) && bilingualEnabled && extractor.isOnVideoPage()) {
+    if ((forceOverlay || !previous.hasKey || providerChanged) && bilingualEnabled && extractor.isOnVideoPage()) {
       autoTranslationErrors = {};
       autoTranslationBlockedMessage = "";
       void activateBilingualOverlay();
@@ -441,7 +445,7 @@ export async function initContentScript(
 
   function destroyBilingualOverlay(): void {
     if (bilingualVideo && bilingualSyncHandler) {
-      for (const event of ["timeupdate", "seeking", "seeked", "loadedmetadata", "play"]) {
+      for (const event of ["timeupdate", "seeking", "seeked", "loadedmetadata", "play", "ratechange"]) {
         bilingualVideo.removeEventListener(event, bilingualSyncHandler);
       }
     }
@@ -491,9 +495,10 @@ export async function initContentScript(
     displayedSummary = null;
     transcriptData = null;
     transcriptVideoId = "";
+    transcriptFingerprint = null;
+    cacheLoad = null;
     transcriptChunks = [];
-    translatedCues = {};
-    partialTranslatedCues = {};
+    translatedSections = {};
     translationIdentityKey = "";
     transcriptView = "source";
     translationTask = null;
@@ -503,6 +508,7 @@ export async function initContentScript(
     fullTranslationRequested = false;
     autoTranslationErrors = {};
     autoTranslationBlockedMessage = "";
+    recentCaptionTranslationMs = [];
     translationProgressMessage = null;
     transcriptScrollTop = 0;
     destroyBilingualOverlay();
@@ -532,9 +538,13 @@ export async function initContentScript(
       nextChunkPreset !== translationChunkPreset
     ) {
       translationChunkPreset = nextChunkPreset;
+      transcriptStateVersion += 1;
+      translatedSections = {};
+      translationIdentityKey = "";
+      autoTranslationErrors = {};
+      autoTranslationBlockedMessage = "";
       translationAbort?.abort();
       translationJobs = [];
-      partialTranslatedCues = {};
       fullTranslationRequested = false;
       translationProgressMessage = null;
       if (transcriptData) {
@@ -623,14 +633,15 @@ export async function initContentScript(
     }
 
     if (changes.provider || changes.model) {
+      transcriptStateVersion += 1;
       translationAbort?.abort();
       translationJobs = [];
-      translatedCues = {};
-      partialTranslatedCues = {};
+      translatedSections = {};
       translationIdentityKey = "";
       autoTranslationErrors = {};
       autoTranslationBlockedMessage = "";
-      void refreshAISetupAvailability();
+      renderTranslationConsumers();
+      void refreshAISetupAvailability(true);
     }
   });
 
@@ -640,7 +651,7 @@ export async function initContentScript(
   ): Promise<Transcript> {
     const videoId = extractor.getVideoId();
     if (transcriptData && transcriptVideoId === videoId) return transcriptData;
-    const transcript = await buildAlignedTranscript(await extractor.getTranscript(preferredCaptionLanguage));
+    const transcript = prepareCaptionSource(await extractor.getTranscript(preferredCaptionLanguage));
     if (expectedVersion !== transcriptStateVersion) {
       throw new DOMException("The operation was aborted", "AbortError");
     }
@@ -696,16 +707,17 @@ export async function initContentScript(
   }
 
   function findChunkAtTime(time: number): number {
-    const found = transcriptChunks.findIndex((chunk) => {
-      const first = transcriptData!.segments[chunk.targetStart];
-      const last = transcriptData!.segments[chunk.targetEnd];
-      return time >= first.start && time < last.start + last.duration;
-    });
-    if (found >= 0) return found;
-    const next = transcriptChunks.findIndex(
-      (chunk) => transcriptData!.segments[chunk.targetStart].start > time,
-    );
-    return next < 0 ? Math.max(0, transcriptChunks.length - 1) : next;
+    // Prefer the latest block start: YouTube event display durations often overlap.
+    let low = 0;
+    let high = transcriptChunks.length - 1;
+    let result = 0;
+    while (low <= high) {
+      const middle = Math.floor((low + high) / 2);
+      const first = transcriptData!.segments[transcriptChunks[middle].targetStart];
+      if (first.start <= time) { result = middle; low = middle + 1; }
+      else high = middle - 1;
+    }
+    return result;
   }
 
   function updateTranscriptToolbar(panel: Panel): void {
@@ -721,12 +733,7 @@ export async function initContentScript(
         formatTime(last.start + last.duration),
       ]),
     );
-    panel.setCurrentSectionTranslated(
-      Array.from(
-        { length: chunk.targetEnd - chunk.targetStart + 1 },
-        (_, offset) => chunk.targetStart + offset,
-      ).every((cueId) => Boolean(translatedCues[cueId])),
-    );
+    panel.setCurrentSectionTranslated(isChunkTranslated(chunk));
     panel.setAllSectionsTranslated(transcriptChunks.every(isChunkTranslated));
     panel.setTranscriptView(transcriptView);
     panel.setTranslationProgress(localizedText(translationProgressMessage));
@@ -736,17 +743,23 @@ export async function initContentScript(
     if (!transcriptData || !transcriptChunks.length) return;
     const content = panel.getContentElement();
     const previousTop = preserveScroll ? transcriptScrollTop : content.scrollTop;
+    const anchor = preserveScroll ? content.querySelector<HTMLElement>(`[data-chunk-id="${activeChunkId}"]`) : null;
+    const anchorTop = anchor?.getBoundingClientRect().top;
     renderTranscriptSections(content, transcriptData, {
       chunks: transcriptChunks,
       loadedStart: loadedChunkStart,
       loadedEnd: loadedChunkEnd,
       activeChunkId,
       view: transcriptView,
-      translations: translatedCues,
-      partialTranslations: partialTranslatedCues,
+      translations: translatedSections,
       withTimestamps: transcriptWithTimestamps,
     });
-    if (preserveScroll) content.scrollTop = previousTop;
+    if (preserveScroll) {
+      const nextAnchor = content.querySelector<HTMLElement>(`[data-chunk-id="${activeChunkId}"]`);
+      const delta = anchorTop !== undefined && nextAnchor ? nextAnchor.getBoundingClientRect().top - anchorTop : 0;
+      content.scrollTop = previousTop + delta;
+      transcriptScrollTop = content.scrollTop;
+    }
     updateTranscriptToolbar(panel);
   }
 
@@ -838,45 +851,47 @@ export async function initContentScript(
     const transcript = transcriptData!;
     const ai = await getActiveAIIdentity();
     assertCurrent();
+    const fingerprint = transcriptFingerprint ??= fingerprintCaptionSource(transcript);
     const identity: TranslationCacheIdentity = {
       videoId: extractor.getVideoId(),
       sourceLanguage: transcript.languageCode,
       providerId: ai.providerId,
       modelId: ai.modelId,
       targetLanguage: outputLanguage,
+      sourceFingerprint: `${await fingerprint}:${translationChunkPreset}`,
     };
+    assertCurrent();
     // Custom instructions intentionally do not participate in cache identity.
     // Users opt into new wording through the explicit retranslation actions.
     const key = JSON.stringify(identity);
     if (translationIdentityKey !== key) {
-      translatedCues = {};
-      partialTranslatedCues = {};
-      const cached = await getCachedTranslation(identity);
-      assertCurrent();
-      for (const section of Object.values(cached?.sections ?? {})) {
-        const chunk = transcriptChunks[section.chunkId];
-        if (
-          chunk &&
-          chunk.targetStart === section.targetStart &&
-          chunk.targetEnd === section.targetEnd
-        ) {
-          for (const segment of section.segments) {
-            const source = transcript.segments[segment.cueId];
-            if (
-              source &&
-              segment.cueId >= chunk.targetStart &&
-              segment.cueId <= chunk.targetEnd &&
-              segment.start === source.start &&
-              segment.duration === source.duration &&
-              segment.sourceStartId === (source.sourceStartId ?? segment.cueId) &&
-              segment.sourceEndId === (source.sourceEndId ?? segment.cueId)
-            ) {
-              translatedCues[segment.cueId] = segment;
-            }
+      if (cacheLoad?.key === key && cacheLoad.version === expectedVersion && cacheLoad.revision === cacheRevision) {
+        await cacheLoad.task;
+        assertCurrent();
+        return identity;
+      }
+      translatedSections = {};
+      const task = (async () => {
+        const cached = await getCachedTranslation(identity);
+        assertCurrent();
+        for (const section of Object.values(cached?.sections ?? {})) {
+          const chunk = transcriptChunks[section.chunkId];
+          if (!chunk || chunk.targetStart !== section.targetStart || chunk.targetEnd !== section.targetEnd) continue;
+          try {
+            const aligned = alignTranslatedParts(transcript, chunk, section.segments.map((segment) => ({
+              source: segment.sourceText, translation: segment.text,
+            })));
+            // Reconstruct observed times rather than trusting persistent timestamps.
+            translatedSections[chunk.id] = aligned;
+          } catch {
+            // Invalid coverage or timing invalidates the whole section.
           }
         }
-      }
-      translationIdentityKey = key;
+        translationIdentityKey = key;
+      })();
+      cacheLoad = { key, version: expectedVersion, revision: cacheRevision, task };
+      try { await task; }
+      finally { if (cacheLoad?.task === task) cacheLoad = null; }
     }
     return identity;
   }
@@ -922,60 +937,19 @@ export async function initContentScript(
   }
 
   function isChunkTranslated(chunk: TranslationChunk): boolean {
-    for (let cueId = chunk.targetStart; cueId <= chunk.targetEnd; cueId++) {
-      if (!translatedCues[cueId]) return false;
-    }
-    return true;
+    return Boolean(translatedSections[chunk.id]?.length);
   }
 
-  function clearPartialRange(start: number, end: number): void {
-    for (let cueId = start; cueId <= end; cueId++) delete partialTranslatedCues[cueId];
-  }
-
-  function commitTranslatedSegments(segments: TranslatedSegment[]): void {
-    for (const segment of segments) {
-      translatedCues[segment.cueId] = segment;
-      delete partialTranslatedCues[segment.cueId];
-      delete autoTranslationErrors[segment.cueId];
-    }
-  }
-
-  async function persistTranslationRange(
-    identity: TranslationCacheIdentity,
-    start: number,
-    end: number,
-  ): Promise<void> {
-    const affected = transcriptChunks.filter(
-      (chunk) => chunk.targetEnd >= start && chunk.targetStart <= end,
-    );
-    for (const chunk of affected) {
-      const segments: TranslatedSegment[] = [];
-      for (let cueId = chunk.targetStart; cueId <= chunk.targetEnd; cueId++) {
-        if (translatedCues[cueId]) segments.push(translatedCues[cueId]);
-      }
-      if (!segments.length) continue;
-      await setCachedTranslationSection(identity, {
-        chunkId: chunk.id,
-        targetStart: chunk.targetStart,
-        targetEnd: chunk.targetEnd,
-        segments,
-      });
-    }
-  }
-
-  async function persistTranslationRangeSafely(
-    identity: TranslationCacheIdentity,
-    start: number,
-    end: number,
+  async function persistTranslationSectionSafely(
+    identity: TranslationCacheIdentity, chunk: TranslationChunk, segments: TranslatedSegment[],
   ): Promise<void> {
     try {
-      await persistTranslationRange(identity, start, end);
+      await setCachedTranslationSection(identity, {
+        chunkId: chunk.id, targetStart: chunk.targetStart, targetEnd: chunk.targetEnd, segments,
+      });
     } catch (error) {
-      const detail = error instanceof Error ? (error.stack ?? error.message) : String(error);
-      console.debug("[vas] Translation cache write failed:", detail);
-      if (currentPanel?.getMode() === "transcript") {
-        currentPanel.showWarning(t("translationCacheWriteFailed"));
-      }
+      console.debug("[vas] Translation cache write failed:", error);
+      if (currentPanel?.getMode() === "transcript") currentPanel.showWarning(t("translationCacheWriteFailed"));
     }
   }
 
@@ -1029,8 +1003,7 @@ export async function initContentScript(
         loadedChunkEnd = Math.min(transcriptChunks.length - 1, activeChunkId + 1);
         panel.setMode("transcript");
         panel.setTranslationAvailable(!isTranscriptInOutputLanguage(transcript.languageCode, outputLanguage));
-        translatedCues = {};
-        partialTranslatedCues = {};
+        translatedSections = {};
         translationIdentityKey = "";
         autoTranslationErrors = {};
         autoTranslationBlockedMessage = "";
@@ -1072,75 +1045,36 @@ export async function initContentScript(
     };
     assertCurrent();
 
-    if (job.forceRefresh) {
-      const affected = transcriptChunks.filter(
-        (chunk) => chunk.targetEnd >= job.targetStart && chunk.targetStart <= job.targetEnd,
-      );
-      for (const chunk of affected) await invalidateTranslationSection(identity, chunk.id);
-      for (let cueId = job.targetStart; cueId <= job.targetEnd; cueId++) {
-        delete translatedCues[cueId];
-        delete autoTranslationErrors[cueId];
-      }
+    const chunks = transcriptChunks.filter((chunk) =>
+      chunk.targetEnd >= job.targetStart && chunk.targetStart <= job.targetEnd);
+    for (const chunk of chunks) {
       assertCurrent();
-    }
-
-    const ranges: Array<{ start: number; end: number }> = [];
-    let cursor = job.targetStart;
-    while (cursor <= job.targetEnd) {
-      while (cursor <= job.targetEnd && translatedCues[cursor]) cursor += 1;
-      if (cursor > job.targetEnd) break;
-      const start = cursor;
-      while (cursor <= job.targetEnd && !translatedCues[cursor]) cursor += 1;
-      ranges.push({ start, end: cursor - 1 });
-    }
-
-    for (const range of ranges) {
-      assertCurrent();
-      const requestChunk: TranslationChunk = {
-        id: job.sectionId ?? -1,
-        targetStart: range.start,
-        targetEnd: range.end,
-        contextStart: Math.max(0, range.start - 8),
-        contextEnd: Math.min(transcript.segments.length - 1, range.end + 8),
-      };
-      let latestPartial: TranslatedSegment[] = [];
-      clearPartialRange(range.start, range.end);
-      try {
-        const result = await translateTranscriptChunk(
-          transcript,
-          requestChunk,
-          identity.targetLanguage,
-          (partial, formatRetry) => {
-            if (controller.signal.aborted || stateVersion !== transcriptStateVersion) return;
-            latestPartial = partial;
-            clearPartialRange(range.start, range.end);
-            for (const segment of partial) partialTranslatedCues[segment.cueId] = segment;
-            if (formatRetry && job.sectionId !== undefined) {
-              translationProgressMessage = {
-                key: "repairingSectionFormat",
-                substitutions: String(job.sectionId + 1),
-              };
-            }
-            renderTranslationConsumers();
-          },
-          controller.signal,
-          job.customInstruction ?? "",
-        );
+      if (!job.forceRefresh && isChunkTranslated(chunk)) continue;
+      if (job.forceRefresh) {
+        await invalidateTranslationSection(identity, chunk.id);
         assertCurrent();
-        clearPartialRange(range.start, range.end);
-        commitTranslatedSegments(result);
-        await persistTranslationRangeSafely(identity, range.start, range.end);
-      } catch (error) {
-        clearPartialRange(range.start, range.end);
-        if (!controller.signal.aborted && stateVersion === transcriptStateVersion &&
-          (error as Error)?.name !== "AbortError" && latestPartial.length) {
-          commitTranslatedSegments(latestPartial);
-          await persistTranslationRangeSafely(identity, range.start, range.end);
-        }
-        throw error;
-      } finally {
-        renderTranslationConsumers();
       }
+      const requestStart = performance.now();
+      const result = await translateTranscriptChunk(
+        transcript, chunk, identity.targetLanguage,
+        (_partial, formatRetry) => {
+          if (controller.signal.aborted || stateVersion !== transcriptStateVersion) return;
+          if (formatRetry && job.sectionId !== undefined) {
+            translationProgressMessage = { key: "repairingSectionFormat", substitutions: String(chunk.id + 1) };
+            currentPanel?.setTranslationProgress(localizedText(translationProgressMessage));
+          }
+        }, controller.signal, job.customInstruction ?? "", {
+          videoId: identity.videoId, providerId: identity.providerId, modelId: identity.modelId,
+        },
+      );
+      assertCurrent();
+      recentCaptionTranslationMs = [...recentCaptionTranslationMs, performance.now() - requestStart].slice(-3);
+      // Whole-block commit: partial / retried output never changes playback or disk.
+      translatedSections[chunk.id] = result;
+      delete autoTranslationErrors[chunk.id];
+      renderTranslationConsumers();
+      await persistTranslationSectionSafely(identity, chunk, result);
+      assertCurrent();
     }
     if (job.kind !== "overlay") autoTranslationBlockedMessage = "";
   }
@@ -1149,7 +1083,7 @@ export async function initContentScript(
     if (translationCacheReset?.videoId === extractor.getVideoId()) return;
     if (!transcriptData || job.targetStart > job.targetEnd) return;
     job.customInstruction ??= activeCustomPromptInstruction;
-    const alreadyCurrent = currentTranslationJob &&
+    const alreadyCurrent = !translationAbort?.signal.aborted && currentTranslationJob &&
       currentTranslationJob.kind === job.kind &&
       currentTranslationJob.targetStart <= job.targetStart &&
       currentTranslationJob.targetEnd >= job.targetEnd;
@@ -1162,8 +1096,11 @@ export async function initContentScript(
 
     if (job.kind === "overlay") {
       translationJobs = translationJobs.filter((queued) => queued.kind !== "overlay");
+      const playbackChunk = transcriptChunks[findChunkAtTime(getCurrentPlaybackTime())];
+      const servesPlayback = playbackChunk && job.targetStart <= playbackChunk.targetEnd && job.targetEnd >= playbackChunk.targetStart;
       if (
         currentTranslationJob?.kind === "overlay" &&
+        servesPlayback &&
         (job.targetStart > currentTranslationJob.targetEnd ||
           job.targetEnd < currentTranslationJob.targetStart)
       ) {
@@ -1214,12 +1151,14 @@ export async function initContentScript(
             translationProgressMessage = { key: "translationSectionDone" };
           }
         } catch (error) {
-          if ((error as Error)?.name !== "AbortError") {
+          if ((error as Error)?.name !== "AbortError" && !controller.signal.aborted && stateVersion === transcriptStateVersion) {
             const message = error instanceof Error ? error.message : t("translationFailed");
             if (job.kind === "overlay") {
               autoTranslationBlockedMessage = message;
-              for (let cueId = job.targetStart; cueId <= job.targetEnd; cueId++) {
-                if (!translatedCues[cueId]) autoTranslationErrors[cueId] = message;
+              for (const chunk of transcriptChunks) {
+                if (chunk.targetEnd >= job.targetStart && chunk.targetStart <= job.targetEnd && !isChunkTranslated(chunk)) {
+                  autoTranslationErrors[chunk.id] = message;
+                }
               }
               if ((error as Error)?.name === "NoApiKeyError") {
                 bilingualOverlay?.setSourceReady(false);
@@ -1237,15 +1176,19 @@ export async function initContentScript(
             console.debug("[vas] Translation stopped:", detail);
           }
         } finally {
-          currentTranslationJob = null;
-          translationAbort = null;
-          renderTranslationConsumers();
+          if (translationAbort === controller) {
+            currentTranslationJob = null;
+            translationAbort = null;
+            renderTranslationConsumers();
+          }
         }
       }
-      if (fullTranslationRequested && transcriptChunks.every(isChunkTranslated)) {
-        translationProgressMessage = { key: "translationAllDone" };
+      if (stateVersion === transcriptStateVersion) {
+        if (fullTranslationRequested && transcriptChunks.every(isChunkTranslated)) {
+          translationProgressMessage = { key: "translationAllDone" };
+        }
+        fullTranslationRequested = false;
       }
-      fullTranslationRequested = false;
     })().finally(() => {
       if (translationTask !== task) return;
       translationTask = null;
@@ -1298,84 +1241,54 @@ export async function initContentScript(
     }
   }
 
-  function maybeQueueOverlayPrefetch(currentCueId: number): void {
-    if (translationCacheReset?.videoId === extractor.getVideoId()) return;
-    if (!transcriptData || isTranscriptInOutputLanguage(transcriptData.languageCode, outputLanguage)) return;
-    if (fullTranslationRequested) return;
-    if (autoTranslationBlockedMessage) return;
-    const range = getCaptionPrefetchRange(
-      transcriptData.segments,
-      currentCueId,
-      getCurrentPlaybackTime(),
-      (cueId) => Boolean(translatedCues[cueId]),
-      15,
-      getTranslationChunkLimits(translationChunkPreset).maxSeconds,
-      getTranslationChunkLimits(translationChunkPreset).maxChars,
-    );
-    if (!range || autoTranslationErrors[range.start] || partialTranslatedCues[range.start]) return;
-    enqueueTranslationJob({
-      kind: "overlay",
-      targetStart: range.start,
-      targetEnd: range.end,
-      forceRefresh: false,
-    });
+  function maybeQueueOverlayPrefetch(): void {
+    if (translationCacheReset?.videoId === extractor.getVideoId() || !transcriptData ||
+      fullTranslationRequested || autoTranslationBlockedMessage ||
+      isTranscriptInOutputLanguage(transcriptData.languageCode, outputLanguage)) return;
+    const time = getCurrentPlaybackTime();
+    const current = findChunkAtTime(time);
+    const chunk = getOverlayPrefetchChunk(transcriptData.segments, transcriptChunks, current, time,
+      isChunkTranslated, bilingualVideo?.playbackRate ?? 1, recentCaptionTranslationMs);
+    if (!chunk || autoTranslationErrors[chunk.id]) return;
+    enqueueTranslationJob({ kind: "overlay", targetStart: chunk.targetStart, targetEnd: chunk.targetEnd,
+      sectionId: chunk.id, forceRefresh: false });
   }
 
   function retryBilingualTranslation(): void {
     if (!bilingualOverlay || !transcriptData || !bilingualEnabled) return;
-    const currentTime = getCurrentPlaybackTime();
-    const cueId = findActiveCueIndex(transcriptData.segments, currentTime);
-    if (cueId < 0) return;
-
+    const chunk = transcriptChunks[findChunkAtTime(getCurrentPlaybackTime())];
+    if (!chunk) return;
     autoTranslationBlockedMessage = "";
-    autoTranslationErrors = {};
+    delete autoTranslationErrors[chunk.id];
     bilingualOverlay.setSourceReady(true);
-    const range = getCaptionPrefetchRange(
-      transcriptData.segments,
-      cueId,
-      currentTime,
-      (candidateCueId) => Boolean(translatedCues[candidateCueId]),
-      15,
-      getTranslationChunkLimits(translationChunkPreset).maxSeconds,
-      getTranslationChunkLimits(translationChunkPreset).maxChars,
-    );
-    if (range) {
-      clearPartialRange(range.start, range.end);
-      enqueueTranslationJob({
-        kind: "overlay",
-        targetStart: range.start,
-        targetEnd: range.end,
-        forceRefresh: false,
-      });
-    }
-    syncBilingualOverlay(currentTime);
+    enqueueTranslationJob({ kind: "overlay", targetStart: chunk.targetStart, targetEnd: chunk.targetEnd,
+      sectionId: chunk.id, forceRefresh: true });
   }
 
   function syncBilingualOverlay(playbackTime: number = getCurrentPlaybackTime()): void {
     if (!bilingualOverlay || !transcriptData || !bilingualEnabled) return;
-    const cueId = findActiveCueIndex(transcriptData.segments, playbackTime);
-    if (cueId < 0) {
+    const chunk = transcriptChunks[findChunkAtTime(playbackTime)];
+    const aligned = chunk ? translatedSections[chunk.id] : undefined;
+    const translatedIndex = aligned ? findActiveCueIndex(aligned, playbackTime) : -1;
+    const translated = translatedIndex >= 0 ? aligned![translatedIndex] : undefined;
+    const rawIndex = findActiveCueIndex(transcriptData.segments, playbackTime);
+    const raw = rawIndex >= 0 ? transcriptData.segments[rawIndex] : undefined;
+    // A committed section's gaps stay gaps; don't show a raw rolling cue over them.
+    const sourceText = aligned ? translated?.sourceText : raw?.text;
+    if (!sourceText) {
       bilingualOverlay.setCue(null);
+      maybeQueueOverlayPrefetch();
       return;
     }
-    const source = transcriptData.segments[cueId];
-    const translated = partialTranslatedCues[cueId] ?? translatedCues[cueId];
-    const translationNeeded = !isTranscriptInOutputLanguage(
-      transcriptData.languageCode,
-      outputLanguage,
-    );
+    const translationNeeded = !isTranscriptInOutputLanguage(transcriptData.languageCode, outputLanguage);
     const errorText = translationNeeded && !translated
-      ? (autoTranslationErrors[cueId] || autoTranslationBlockedMessage)
-      : "";
-    bilingualOverlay.setCue({
-      sourceText: source.text,
+      ? (autoTranslationErrors[chunk?.id ?? -1] || autoTranslationBlockedMessage) : "";
+    bilingualOverlay.setCue({ sourceText,
       translationText: translationNeeded ? translated?.text : undefined,
-      statusText: translationNeeded && !translated
-        ? (errorText || t("bilingualTranslating"))
-        : undefined,
+      statusText: translationNeeded && !translated ? (errorText || t("bilingualTranslating")) : undefined,
       retryText: errorText ? t("bilingualRetry") : undefined,
     });
-    if (translationNeeded) maybeQueueOverlayPrefetch(cueId);
+    if (translationNeeded) maybeQueueOverlayPrefetch();
   }
 
   async function activateBilingualOverlay(preferredPlayer?: HTMLElement): Promise<void> {
@@ -1411,15 +1324,15 @@ export async function initContentScript(
       if (video) {
         bilingualVideo = video;
         bilingualSyncHandler = () => syncBilingualOverlay();
-        for (const event of ["timeupdate", "seeking", "seeked", "loadedmetadata", "play"]) {
+        for (const event of ["timeupdate", "seeking", "seeked", "loadedmetadata", "play", "ratechange"]) {
           video.addEventListener(event, bilingualSyncHandler, { passive: true });
         }
         if (typeof video.requestVideoFrameCallback === "function") {
           const syncVideoFrame: VideoFrameRequestCallback = (_now, metadata) => {
             if (bilingualVideo !== video || bilingualOverlay !== overlay || !bilingualEnabled) return;
-            const frameCueId = transcriptData
-              ? findActiveCueIndex(transcriptData.segments, metadata.mediaTime)
-              : -1;
+            const frameChunk = transcriptChunks[findChunkAtTime(metadata.mediaTime)];
+            const frameSegments = translatedSections[frameChunk?.id] ?? transcriptData?.segments ?? [];
+            const frameCueId = `${frameChunk?.id}:${findActiveCueIndex(frameSegments, metadata.mediaTime)}:${Boolean(translatedSections[frameChunk?.id])}`;
             if (frameCueId !== bilingualFrameCueId) {
               bilingualFrameCueId = frameCueId;
               syncBilingualOverlay(metadata.mediaTime);
@@ -1894,6 +1807,10 @@ export async function initContentScript(
     },
 
     onClearTranslationCache: () => resetVideoTranslationCache(),
+    onExportCaptionDiagnostics: () => {
+      const videoId = extractor.getVideoId();
+      if (videoId) void downloadCaptionDiagnostics(videoId).catch((error) => console.debug("[vas] Caption diagnostic export failed", error));
+    },
 
     onClose: () => {
       summaryAbort?.abort();

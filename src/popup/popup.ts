@@ -1,4 +1,5 @@
 import { normalizeCaptionLanguage } from "../utils/caption-language";
+import { IS_TEST_BUILD, BUILD_VERSION } from "../service/build-info";
 /**
  * Popup 逻辑 — 管理分页设置、多供应商 AI 模型和 API Key。
  */
@@ -65,6 +66,16 @@ import {
 } from "./popup-setup";
 
 // ── DOM refs ────────────────────────────────────────────────────────
+if (IS_TEST_BUILD) {
+  const badge = document.createElement("span");
+  badge.className = "test-build-badge";
+  const label = document.createElement("span");
+  label.dataset.i18n = "testBuild";
+  label.textContent = chromeT("testBuild");
+  badge.append(label, document.createTextNode(` ${BUILD_VERSION}`));
+  document.querySelector(".header")?.appendChild(badge);
+}
+
 const providerSelect = document.getElementById("provider") as HTMLSelectElement;
 const modelSelect = document.getElementById("model") as HTMLSelectElement;
 const uiLanguageSelect = document.getElementById("uiLanguage") as HTMLSelectElement;

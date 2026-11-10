@@ -13,11 +13,12 @@ const identity: TranslationCacheIdentity = {
   providerId: "openai",
   modelId: "gpt-test",
   targetLanguage: "zh-CN",
+  sourceFingerprint: "source-v1:balanced",
 };
 
-function translated(cueId: number, start: number, duration: number, text: string) {
+function translated(cueId: number, start: number, duration: number, text: string, chunkId = 0) {
   return {
-    cueId,
+    cueId, chunkId, sourceFrom: 0, sourceTo: 6, sourceText: "source",
     sourceStartId: cueId,
     sourceEndId: cueId,
     start,
@@ -62,18 +63,25 @@ describe("section translation cache", () => {
       targetEnd: 2,
       segments: [translated(0, 0, 3, "第一段")],
     });
-    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(10);
+    expect((await getCachedTranslation(identity))?.pipelineVersion).toBe(15);
     await setCachedTranslationSection(identity, {
       chunkId: 2,
       targetStart: 5,
       targetEnd: 7,
-      segments: [translated(5, 10, 3, "第三段")],
+      segments: [translated(5, 10, 3, "第三段", 2)],
     });
 
     expect(Object.keys((await getCachedTranslation(identity))!.sections)).toEqual(["0", "2"]);
 
     await invalidateTranslationSection(identity, 0);
     expect(Object.keys((await getCachedTranslation(identity))!.sections)).toEqual(["2"]);
+  });
+
+  it("isolates original source and timing revisions", async () => {
+    await setCachedTranslationSection(identity, { chunkId: 0, targetStart: 0, targetEnd: 0,
+      segments: [translated(0, 0, 1, "译文")],
+    });
+    expect(await getCachedTranslation({ ...identity, sourceFingerprint: "new-timing" })).toBeNull();
   });
 
   it("isolates caches by model identity", async () => {
@@ -172,7 +180,7 @@ describe("section translation cache", () => {
         chunkId: 1,
         targetStart: 2,
         targetEnd: 3,
-        segments: [translated(2, 2, 2, "第二段")],
+        segments: [translated(2, 2, 2, "第二段", 1)],
       }),
     ]);
     expect(Object.keys((await getCachedTranslation(identity))!.sections).sort())

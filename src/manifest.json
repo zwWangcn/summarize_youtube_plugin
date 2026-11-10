@@ -1,7 +1,7 @@
 {
   "manifest_version": 3,
   "name": "__MSG_extensionName__",
-  "version": "1.4.8",
+  "version": "1.5.0",
   "minimum_chrome_version": "111",
   "description": "__MSG_extensionDescription__",
   "default_locale": "en",
@@ -50,12 +50,6 @@
       "matches": ["https://www.youtube.com/*", "https://youtube.com/*", "https://m.youtube.com/*"],
       "js": ["src/content/youtube.ts"],
       "run_at": "document_end"
-    }
-  ],
-  "web_accessible_resources": [
-    {
-      "resources": ["_locales/*/messages.json"],
-      "matches": ["https://www.youtube.com/*", "https://youtube.com/*", "https://m.youtube.com/*"]
     }
   ]
 }

@@ -41,8 +41,8 @@ describe("localized AI prompts", () => {
 
   it.each(OUTPUT_LANGUAGES)("builds a $englishName caption translation prompt", (language) => {
     const prompt = buildTranslationSystemPrompt(language.code);
-    expect(prompt).toContain(`into ${language.englishName} (${language.code})`);
-    expect(prompt).toContain("NDJSON");
+    expect(prompt).toContain(`into readable ${language.englishName} (${language.code})`);
+    expect(prompt).toContain("segments");
     expect(prompt).toContain(`written in ${language.englishName}`);
   });
 

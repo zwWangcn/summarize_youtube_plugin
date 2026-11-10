@@ -117,8 +117,7 @@ export interface TranscriptSectionRenderState {
   loadedEnd: number;
   activeChunkId: number;
   view: "source" | "translation";
-  translations: Record<number, TranslatedSegment>;
-  partialTranslations?: Record<number, TranslatedSegment>;
+  translations: Record<number, TranslatedSegment[]>;
   withTimestamps: boolean;
 }
 
@@ -179,15 +178,18 @@ export function renderTranscriptSections(
     body.className = "vas-section-body";
     let hasMissingTranslation = false;
     if (state.view === "translation") body.classList.add("vas-translated");
-    for (let index = chunk.targetStart; index <= chunk.targetEnd; index++) {
-      const source = transcript.segments[index];
-      const translated = state.partialTranslations?.[index] ?? state.translations[index];
-      if (state.view === "translation" && translated) {
-        appendCaptionLine(body, source.start, translated.text, state.withTimestamps);
-      } else {
-        appendCaptionLine(body, source.start, source.text, state.withTimestamps);
-        if (state.view === "translation") hasMissingTranslation = true;
+    const aligned = state.translations[chunk.id];
+    if (aligned?.length) {
+      for (const segment of aligned) {
+        appendCaptionLine(body, segment.start,
+          state.view === "translation" ? segment.text : segment.sourceText, state.withTimestamps);
       }
+    } else {
+      for (let index = chunk.targetStart; index <= chunk.targetEnd; index++) {
+        const source = transcript.segments[index];
+        appendCaptionLine(body, source.start, source.text, state.withTimestamps);
+      }
+      hasMissingTranslation = state.view === "translation";
     }
     if (hasMissingTranslation) {
       const hint = document.createElement("div");

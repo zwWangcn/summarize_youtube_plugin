@@ -249,5 +249,14 @@
   "onboardingSetupFallback": {"message": "请点击浏览器工具栏的插件图标，在「AI 模型」里保存 API Key。"},
   "onboardingReplay": {"message": "重新查看使用引导"},
   "onboardingReplayHint": {"message": "请先打开一个 YouTube 视频，再点击这里查看引导。"},
-  "onboardingOpenYouTube": {"message": "打开 YouTube ↗"}
+  "onboardingOpenYouTube": {"message": "打开 YouTube ↗"},
+  "testBuild": {"message": "测试版"},
+  "errorTranslationValidationReason": {"message": "字幕翻译校验失败：$1。请重试本段。"},
+  "captionValidationFormat": {"message": "模型返回的数据结构不符合要求"},
+  "captionValidationSource": {"message": "模型修改或遗漏了原文"},
+  "captionValidationTiming": {"message": "断句位置缺少可靠时间信息"},
+  "captionValidationLength": {"message": "字幕仍然过长"},
+  "captionValidationUploaded": {"message": "模型改变了上传字幕的分段"},
+  "exportCaptionDiagnostics": { "message": "导出字幕诊断" },
+  "captionDiagnosticsTitle": { "message": "本地测试诊断：包含原始字幕和模型响应，不含 API 密钥。" }
 }

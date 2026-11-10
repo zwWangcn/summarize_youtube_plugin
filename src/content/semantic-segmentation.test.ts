@@ -1,5 +1,6 @@
 import { describe, expect, it } from "vitest";
-import { buildAlignedTranscript, findActiveCueIndex, type Transcript } from "./transcript";
+import { findActiveCueIndex, type Transcript } from "./transcript";
+import { segmentTranscriptSemantically as buildAlignedTranscript } from "./semantic-segmentation";
 import { parseJson3Captions } from "./extractors/caption-interceptor";
 
 const examples = {

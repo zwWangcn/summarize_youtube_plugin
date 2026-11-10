@@ -249,5 +249,14 @@
   "onboardingSetupFallback": {"message": "請點擊瀏覽器工具列的擴充功能圖示，在「AI 模型」裡儲存 API Key。"},
   "onboardingReplay": {"message": "重新查看使用導覽"},
   "onboardingReplayHint": {"message": "請先開啟一個 YouTube 影片，再點擊這裡查看導覽。"},
-  "onboardingOpenYouTube": {"message": "開啟 YouTube ↗"}
+  "onboardingOpenYouTube": {"message": "開啟 YouTube ↗"},
+  "testBuild": {"message": "測試版"},
+  "errorTranslationValidationReason": {"message": "字幕翻譯校驗失敗：$1。請重試本段。"},
+  "captionValidationFormat": {"message": "模型回傳的資料結構不符要求"},
+  "captionValidationSource": {"message": "模型修改或遺漏了原文"},
+  "captionValidationTiming": {"message": "斷句位置缺少可靠時間資訊"},
+  "captionValidationLength": {"message": "字幕仍然過長"},
+  "captionValidationUploaded": {"message": "模型改變了上傳字幕的分段"},
+  "exportCaptionDiagnostics": { "message": "匯出字幕診斷" },
+  "captionDiagnosticsTitle": { "message": "本機測試診斷：包含原始字幕與模型回應，不含 API 金鑰。" }
 }

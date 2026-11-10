@@ -249,5 +249,14 @@
   "onboardingSetupFallback": {"message": "ブラウザーのツールバーで拡張機能のアイコンをクリックし、「AI モデル」で API キーを保存してください。"},
   "onboardingReplay": {"message": "使い方ガイドをもう一度見る"},
   "onboardingReplayHint": {"message": "YouTube の動画を開いてから、もう一度このボタンをクリックしてください。"},
-  "onboardingOpenYouTube": {"message": "YouTube を開く ↗"}
+  "onboardingOpenYouTube": {"message": "YouTube を開く ↗"},
+  "testBuild": {"message": "テスト版"},
+  "errorTranslationValidationReason": {"message": "字幕翻訳の検証に失敗しました：$1。この区間を再試行してください。"},
+  "captionValidationFormat": {"message": "モデルの応答形式が正しくありません"},
+  "captionValidationSource": {"message": "原文が変更または省略されました"},
+  "captionValidationTiming": {"message": "区切り位置に信頼できる時刻情報がありません"},
+  "captionValidationLength": {"message": "字幕がまだ長すぎます"},
+  "captionValidationUploaded": {"message": "アップロード字幕の区切りが変更されました"},
+  "exportCaptionDiagnostics": { "message": "字幕診断をエクスポート" },
+  "captionDiagnosticsTitle": { "message": "ローカルのテスト診断：元の字幕とモデルの応答を含み、API キーは含みません。" }
 }

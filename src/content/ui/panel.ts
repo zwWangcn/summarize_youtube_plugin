@@ -20,6 +20,7 @@ import { linkifyTimestampsInDom } from "./renderer";
 import { t } from "../../utils/i18n";
 import { aiSummaryIconMarkup } from "./icons";
 import { openAISetup } from "../../service/onboarding";
+import { IS_TEST_BUILD, BUILD_VERSION } from "../../service/build-info";
 
 // ---------------------------------------------------------------------------
 // Types
@@ -42,6 +43,7 @@ export interface PanelCallbacks {
   onTranslateCurrent?: (forceRefresh: boolean) => void;
   onTranslateAll?: (forceRefresh: boolean) => void;
   onClearTranslationCache?: () => void;
+  onExportCaptionDiagnostics?: () => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -311,6 +313,7 @@ export class Panel {
         <div class="vas-header-brand">
           ${aiSummaryIconMarkup(22, "vas-header-brand-icon")}
           <span class="vas-header-title">${t("extensionName")}</span>
+          ${IS_TEST_BUILD ? `<span class="vas-test-build">${t("testBuild")} ${BUILD_VERSION}</span>` : ""}
         </div>
         <div class="vas-header-actions">
           <button class="vas-btn-icon vas-btn-reset-width" title="${t("resetWidthTitle")}" style="display:none">↺</button>
@@ -341,6 +344,7 @@ export class Panel {
         <button class="vas-btn vas-translate-current">${t("translateSection")}</button>
         <button class="vas-btn vas-translate-all">${t("translateAll")}</button>
         <button class="vas-btn vas-clear-translation-cache" title="${t("clearTranslationCacheTitle")}">${t("clearTranslationCache")}</button>
+        ${IS_TEST_BUILD && this.callbacks.onExportCaptionDiagnostics ? `<button class="vas-btn vas-caption-diagnostics" title="${t("captionDiagnosticsTitle")}">${t("exportCaptionDiagnostics")}</button>` : ""}
         <span class="vas-translation-progress"></span>
       </div>
       <div class="vas-error" style="display:none"></div>
@@ -393,6 +397,9 @@ export class Panel {
     });
     this.clearTranslationCacheBtn.addEventListener("click", () => {
       this.callbacks.onClearTranslationCache?.();
+    });
+    this.panel.querySelector(".vas-caption-diagnostics")?.addEventListener("click", () => {
+      this.callbacks.onExportCaptionDiagnostics?.();
     });
     // Copy button
     this.copyBtn.addEventListener("click", () => this.copyContent());
@@ -633,6 +640,8 @@ export class Panel {
     this.trigger.setAttribute("aria-label", accessibleLabel);
     this.trigger.title = accessibleLabel;
     if (this.titleUsesDefault) this.titleEl.textContent = t("extensionName");
+    const testBadge = this.panel.querySelector(".vas-test-build");
+    if (testBadge) testBadge.textContent = `${t("testBuild")} ${BUILD_VERSION}`;
 
     const resetWidth = this.panel.querySelector<HTMLElement>(".vas-btn-reset-width");
     const close = this.panel.querySelector<HTMLElement>(".vas-btn-close");
@@ -654,6 +663,8 @@ export class Panel {
     this.translationViewBtn.textContent = t("translationView");
     this.clearTranslationCacheBtn.textContent = t("clearTranslationCache");
     this.clearTranslationCacheBtn.title = t("clearTranslationCacheTitle");
+    const diagnosticsBtn = this.panel.querySelector<HTMLButtonElement>(".vas-caption-diagnostics");
+    if (diagnosticsBtn) { diagnosticsBtn.textContent = t("exportCaptionDiagnostics"); diagnosticsBtn.title = t("captionDiagnosticsTitle"); }
     this.translateAllBtn.textContent = t(
       this.allSectionsTranslated ? "retranslateAll" : "translateAll",
     );

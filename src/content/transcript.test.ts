@@ -1,7 +1,7 @@
+import { segmentTranscriptSemantically as buildAlignedTranscript } from "./semantic-segmentation";
 import { describe, expect, it } from "vitest";
 import japanesePayload from "./fixtures/youtube-ja-partial.json";
 import {
-  buildAlignedTranscript,
   findActiveCueIndex,
   getCaptionPrefetchRange,
   isTranscriptInOutputLanguage,
