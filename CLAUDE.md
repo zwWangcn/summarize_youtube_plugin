@@ -25,10 +25,12 @@ npm run preview   # vite preview（一般用不到，扩展直接加载 dist/）
 ```
 content script (youtube.ts)
   ├── 实现 Extractor 接口（字幕提取、视频ID/标题、页面检测）
-  ├── 调用 initContentScript(extractor, config) — shared.ts 中的主逻辑
-  │     ├── 管理 Panel 生命周期（注入/销毁/SPA 重建）
-  │     ├── 协调字幕获取 → AI 总结 → 流式渲染的完整流程
-  │     └── 集成总结缓存（summary-cache.ts）的读写
+  ├── 调用 initContentScript(extractor, config) — shared.ts 只做装配与编排
+  │     ├── 管理 Panel 生命周期（注入/销毁/SPA 重建）、设置变化、跨模块失效
+  │     ├── SummaryController（summary-controller.ts）：AI 总结、总结翻译、总结缓存
+  │     ├── CaptionSession（caption-session.ts）：字幕/分块/译文/翻译缓存/翻译队列的唯一持有者
+  │     ├── TranscriptReader（transcript-reader.ts）：侧栏阅读器位置、懒加载、原文/译文视图
+  │     └── BilingualController（bilingual-controller.ts）：播放器双语字幕、帧同步、预取、失败恢复
   ├── 通过 service/ai-client.ts 请求后台执行流式 AI 调用
   └── UI 通过 Panel 类（Shadow DOM）渲染
 
@@ -82,7 +84,7 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 
 同一视频的总结与双语字幕共享在途获取；失败后清除在途状态，允许重试。详见 `docs/caption-loading.md`。
 
-### SPA 导航感知（shared.ts）
+### SPA 导航感知（page.ts / shared.ts）
 
 通过以下事件感知 YouTube SPA 页面切换（`watchNavigation`）：
 - YouTube 自身的 `yt-navigate-finish` DOM 事件（主路径）
@@ -90,14 +92,14 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 
 注意：内容脚本运行在隔离世界，重写 `history.pushState` 无法拦截页面自己的调用，不要再用这种方式。
 
-切换视频时：离开视频页 → 销毁 Panel；进入新视频 → 等 800ms → 重新注入。另有 1s/3s/6s 的恢复检查，防止 YouTube skeleton → real DOM 切换时 UI 被移除。
+切换视频时：离开视频页 → 销毁 Panel；进入新视频 → 等 800ms → 重新注入。状态依赖通过各控制器的 Host 接口显式注入，控制器之间不直接互相修改状态。另有 1s/3s/6s 的恢复检查，防止 YouTube skeleton → real DOM 切换时 UI 被移除。
 
 ### Panel UI 架构（panel.ts）
 
 - **触发按钮**：普通 DOM 元素，注入到视频播放器容器内，通过 `bindToPlayer()` 跟随播放器 hover 状态显隐
 - **面板**：Shadow DOM host 注入到 `<body>`（`position: fixed`），样式完全隔离
 - **状态机**：`idle → loading → summary|transcript|translation|error`，由 `setMode()` 驱动 UI 切换
-- 回调通过 `PanelCallbacks` 接口注入，业务逻辑在 shared.ts 中
+- 回调通过 `PanelCallbacks` 接口注入，shared.ts 把回调转发给各控制器
 
 ### AI 流式调用（service/ai.ts）
 
@@ -137,7 +139,12 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 
 | 文件 | 职责 |
 |---|---|
-| `src/content/shared.ts` | 核心编排逻辑：注入、SPA 感知、Panel 生命周期、回调实现 |
+| `src/content/shared.ts` | 装配与编排：创建控制器、设置变化、Panel 挂载、SPA 注入/导航 |
+| `src/content/summary-controller.ts` | AI 总结与总结翻译（SummaryHost 接口） |
+| `src/content/caption-session.ts` | 字幕、分块、译文、翻译缓存与翻译队列（CaptionSessionHost 接口） |
+| `src/content/transcript-reader.ts` | 侧栏字幕阅读器 |
+| `src/content/bilingual-controller.ts` | 播放器双语字幕与翻译按钮 |
+| `src/content/page.ts` | 无状态页面工具：注入目标、导航监听、播放时间、跳转 |
 | `src/content/ui/panel.ts` | Shadow DOM 面板 UI 组件与状态机 |
 | `src/content/ui/renderer.ts` | Markdown/流式渲染（marked + DOMPurify） |
 | `src/content/ui/styles.css` | Shadow DOM 暗色主题样式 |
