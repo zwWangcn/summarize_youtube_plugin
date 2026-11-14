@@ -25,6 +25,18 @@ const SUMMARY_FIRST_RESPONSE_TIMEOUT_MS = 60_000;
 const SUMMARY_INACTIVITY_TIMEOUT_MS = 45_000;
 const MAX_HIERARCHICAL_REDUCTION_REQUESTS = 12;
 
+/**
+ * 总结输入的字符预算。字符不是 token：中日韩、泰文等最坏约 1.5 token/字，
+ * 因此预算必须让 “预算 × 1.5 + 输出上限” 仍小于模型上下文；
+ * model-registry 的测试对每个注册模型校验这一点。
+ */
+export function summaryInputCharBudget(contextWindow: number): number {
+  return Math.min(
+    ABSOLUTE_MAX_INPUT_CHARS,
+    Math.max(20_000, Math.floor(contextWindow * CONTEXT_INPUT_RATIO)),
+  );
+}
+
 export interface ActiveAIIdentity {
   providerId: string;
   modelId: string;
@@ -143,11 +155,7 @@ export async function* summarizeTextStream(
 ): AsyncGenerator<string> {
   const identity = await getActiveAIIdentity();
   const { model } = resolveAISelection(identity.providerId, identity.modelId);
-  // 字符不是 token，但 70% context 的保守预算能覆盖中日韩字幕，并为提示词/输出留余量。
-  const maxChars = Math.min(
-    ABSOLUTE_MAX_INPUT_CHARS,
-    Math.max(20_000, Math.floor(model.contextWindow * CONTEXT_INPUT_RATIO)),
-  );
+  const maxChars = summaryInputCharBudget(model.contextWindow);
   const reduced = await reduceToContextBudget(
     transcript,
     maxChars,

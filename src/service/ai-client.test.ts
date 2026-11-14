@@ -1,6 +1,7 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 import type { AIStreamEvent, AIStreamRequest } from "./ai-stream-protocol";
-import { summarizeTextStream, translateSummaryStream } from "./ai-client";
+import { summarizeTextStream, summaryInputCharBudget, translateSummaryStream } from "./ai-client";
+import { PROVIDERS } from "./model-registry";
 
 vi.mock("./storage", () => ({
   getSettings: vi.fn(async () => ({
@@ -140,4 +141,17 @@ describe("localized summary AI requests", () => {
       .rejects.toMatchObject({ name: "AIServiceError", retryable: false });
     expect(requests).toHaveLength(0);
   });
+});
+
+describe("summary input budget", () => {
+  // Characters are not tokens. CJK / Thai captions can cost ~1.5 tokens per
+  // character, so the budget must fit even then, plus the 16k default output
+  // and prompt overhead. Fails if a small-context model is ever registered.
+  it.each(PROVIDERS.flatMap((provider) => provider.models.map((model) => [provider.id, model.id, model.contextWindow] as const)))(
+    "fits %s / %s worst-case token usage into its context window",
+    (_provider, _model, contextWindow) => {
+      const worstCaseTokens = summaryInputCharBudget(contextWindow) * 1.5 + 16_384 + 8_000;
+      expect(worstCaseTokens).toBeLessThanOrEqual(contextWindow);
+    },
+  );
 });
