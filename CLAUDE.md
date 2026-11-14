@@ -104,6 +104,7 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 - 流式调用，使用 `fetch` + `ReadableStream` 手动解析 SSE
 - `summarizeTextStream()` 返回 `AsyncGenerator<string>`，token 级别 yield
 - 内置重试（最多 2 次，指数退避）：5xx、408、429 与网络错误可重试，429 遵守 `Retry-After`（超过 30 秒直接报错）；已向调用方交付过 token 的流不再重试（重试会从头重新生成，导致前端内容重复拼接）
+- 后台保活（`background/stream-keepalive.ts`）：MV3 Service Worker 空闲 30 秒即被终止，等待首个 token 期间 fetch 收到数据也不算活动（Chrome 实测：响应头延迟、正文延迟、SSE 心跳三种情况都在 30.0 秒断开）。有流式请求时每 20 秒调用 `chrome.runtime.getPlatformInfo()` 重置空闲计时器，结束后停止
 - `classifyHttpError()` 将 HTTP 失败映射为具体提示：401/403 Key 无效、402/配额类正文余额不足、429 限流、404/`model_not_found` 模型不存在、400 上下文超长，其余 4xx 为通用拒绝
 - `ContentFilteredError`：各适配器将供应商的内容过滤信号统一映射为 `finishReason: "content_filter"`（OpenAI `content_filter`、Gemini `SAFETY`/`RECITATION` 等及 `promptFeedback.blockReason`、Anthropic `refusal`），由 `summarizeTextStream` 识别并抛出该错误
 

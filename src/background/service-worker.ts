@@ -8,6 +8,7 @@
  */
 
 import { streamAIText } from "../service/ai";
+import { beginStreamKeepAlive } from "./stream-keepalive";
 import { getSettings } from "../service/storage";
 import { getActiveAISetupStatus } from "../service/ai-setup";
 import { claimPlayerOnboarding } from "../service/onboarding";
@@ -184,6 +185,7 @@ chrome.runtime.onConnect.addListener((port) => {
     started = true;
 
     void (async () => {
+      const endKeepAlive = beginStreamKeepAlive();
       try {
         await waitForUiLanguageReady();
         if (
@@ -204,13 +206,13 @@ chrome.runtime.onConnect.addListener((port) => {
         post({ type: "done" });
       } catch (error) {
         if (!disconnected) post(serializeAIError(error));
+      } finally {
+        endKeepAlive();
       }
     })();
   });
 });
 
-// Prevent service worker from being terminated during long operations
-// (not strictly needed but good practice)
 console.log("[vas] Service worker ready");
 void refreshAISetupBadge();
 void clearExpiredCache().catch((error: unknown) => {
