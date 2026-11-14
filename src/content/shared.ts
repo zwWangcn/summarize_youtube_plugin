@@ -6,6 +6,7 @@
  * - CaptionSession：字幕、分块、译文、翻译缓存与翻译队列
  * - TranscriptReader：侧栏字幕阅读器的位置与视图
  * - BilingualController：播放器双语字幕
+ * - ChatController：针对视频内容的追问
  * 本文件只负责创建它们、响应设置变化、挂载面板以及 SPA 注入/导航。
  */
 
@@ -44,6 +45,7 @@ import { SummaryController } from "./summary-controller";
 import { CaptionSession } from "./caption-session";
 import { TranscriptReader } from "./transcript-reader";
 import { BilingualController } from "./bilingual-controller";
+import { ChatController } from "./chat-controller";
 
 export type { ContentScriptConfig, Extractor } from "./content-types";
 export { findYouTubeTarget, watchNavigation } from "./page";
@@ -139,6 +141,15 @@ export async function initContentScript(
       if (captionPreferenceChangePending) applyCaptionPreferenceChange();
     },
   });
+  const chat = new ChatController({
+    extractor,
+    getPanel: () => getPanel(),
+    currentPanel: () => currentPanel,
+    ensureTranscript: (panel: Panel): Promise<Transcript> => session.ensureTranscript(panel),
+    getOutputLanguage,
+    getCustomInstruction: () => activeCustomPromptInstruction,
+    getAISetupStatus,
+  });
   extractor.onCaptionsAvailable?.((videoId) => bilingual.onCaptionsAvailable(videoId));
 
   const playerOnboarding = new PlayerOnboarding({
@@ -176,6 +187,7 @@ export async function initContentScript(
   /** Captions of the current video are no longer valid. */
   function clearSourceState(): void {
     session.clear();
+    chat.invalidateContext();
     bilingual.clearRecovery();
     reader.reset();
     bilingual.destroy();
@@ -185,6 +197,7 @@ export async function initContentScript(
   function clearTranscriptState(): void {
     clearSourceState();
     summary.reset();
+    chat.reset();
   }
 
   /**
@@ -220,6 +233,7 @@ export async function initContentScript(
         currentPanel.showSetupRequired();
       }
       summary.abort();
+      chat.abort();
       session.stopForMissingKey();
       bilingual.destroy();
       return;
@@ -288,6 +302,8 @@ export async function initContentScript(
         playerOnboarding.refreshLocalizedText();
         if (currentPanel?.getMode() === "transcript") {
           reader.render(currentPanel);
+        } else if (currentPanel?.getMode() === "chat") {
+          chat.refreshLocalizedText();
         } else if (currentPanel) {
           currentPanel.setTranslationProgress(session.progressText);
           summary.refreshLocalizedText(currentPanel);
@@ -328,6 +344,7 @@ export async function initContentScript(
 
     if (changes.provider || changes.model) {
       session.invalidateForModelChange();
+      chat.invalidateContext();
       renderTranslationConsumers();
       void refreshAISetupAvailability(true);
     }
@@ -338,6 +355,9 @@ export async function initContentScript(
     onSummarize: () => summary.summarize(),
     onTranslateSummary: () => summary.translate(),
     onTranscript: (withTimestamps: boolean) => reader.show(withTimestamps),
+    onAsk: () => chat.open(),
+    onAskSubmit: (question: string) => { void chat.ask(question); },
+    onAskNewChat: () => chat.newChat(),
     onTranscriptViewChange: (view: TranscriptView) => reader.setView(view),
     onTranslateCurrent: (forceRefresh: boolean) => reader.translateCurrent(forceRefresh),
     onTranslateAll: (forceRefresh: boolean) => reader.translateAll(forceRefresh),
@@ -348,6 +368,7 @@ export async function initContentScript(
     },
     onClose: () => {
       summary.abort();
+      chat.abort();
       session.dropReaderJobs();
     },
     onSeek: (seconds: number) => seekPlayer(seconds),

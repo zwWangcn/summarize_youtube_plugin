@@ -30,7 +30,8 @@ content script (youtube.ts)
   │     ├── SummaryController（summary-controller.ts）：AI 总结、总结翻译、总结缓存
   │     ├── CaptionSession（caption-session.ts）：字幕/分块/译文/翻译缓存/翻译队列的唯一持有者
   │     ├── TranscriptReader（transcript-reader.ts）：侧栏阅读器位置、懒加载、原文/译文视图
-  │     └── BilingualController（bilingual-controller.ts）：播放器双语字幕、帧同步、预取、失败恢复
+  │     ├── BilingualController（bilingual-controller.ts）：播放器双语字幕、帧同步、预取、失败恢复
+  │     └── ChatController（chat-controller.ts）：针对视频内容的追问
   ├── 通过 service/ai-client.ts 请求后台执行流式 AI 调用
   └── UI 通过 Panel 类（Shadow DOM）渲染
 
@@ -128,6 +129,9 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 
 System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论点和赞助内容识别，并拼接目标输出语言约束。
 
+- **视频标题**：字幕桥接从已按视频 ID 匹配的 player response 带回标题（`getKnownVideoTitle()`，未知时为空串，不用占位文案）。总结、分层归纳和追问提示词以 JSON 引号作为页面元数据传入，明确声明不是指令。
+- **追问**（`buildVideoQuestion*Prompt`）：只依据字幕回答，未覆盖时直接说明，引用 `[MM:SS]` 时间戳；字幕、标题和历史回答都视为资料而非指令。用户消息顺序为「标题 + 完整字幕 → 历史对话 → 当前问题」，同一视频连续提问时前缀逐字节相同，供服务商自动前缀缓存复用。历史最多 6 轮并截断。超出预算的长视频用与总结相同的分层归纳压缩一次，`ChatController` 按字幕对象缓存，界面提示细节可能缺失。
+
 ### 总结缓存（service/summary-cache.ts）
 
 - 存储后端：`chrome.storage.local`（每条总结独立 key，避免多标签页覆盖）
@@ -144,6 +148,7 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 | `src/content/caption-session.ts` | 字幕、分块、译文、翻译缓存与翻译队列（CaptionSessionHost 接口） |
 | `src/content/transcript-reader.ts` | 侧栏字幕阅读器 |
 | `src/content/bilingual-controller.ts` | 播放器双语字幕与翻译按钮 |
+| `src/content/chat-controller.ts` | 视频追问：对话状态、字幕上下文缓存、流式渲染 |
 | `src/content/page.ts` | 无状态页面工具：注入目标、导航监听、播放时间、跳转 |
 | `src/content/ui/panel.ts` | Shadow DOM 面板 UI 组件与状态机 |
 | `src/content/ui/renderer.ts` | Markdown/流式渲染（marked + DOMPurify） |

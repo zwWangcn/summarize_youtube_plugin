@@ -9,7 +9,10 @@ import {
 import { AI_STREAM_PORT, type AIStreamEvent, type AIStreamRequest } from "./ai-stream-protocol";
 import {
   buildSummaryUserPrompt,
+  buildVideoQuestionSystemPrompt,
+  buildVideoQuestionUserPrompt,
   buildVideoTitleSection,
+  type VideoQuestionTurn,
   buildSummaryTranslationSystemPrompt,
   buildSummaryTranslationUserPrompt,
   getSummaryLanguageReminder,
@@ -289,3 +292,75 @@ export async function* streamAIText(
     try { port.disconnect(); } catch { /* already disconnected */ }
   }
 }
+
+// ---------------------------------------------------------------------------
+// Questions about the video
+// ---------------------------------------------------------------------------
+
+/** Room kept free for the conversation history and the question itself. */
+const QUESTION_RESERVE_CHARS = 30_000;
+const MAX_HISTORY_TURNS = 6;
+const MAX_HISTORY_QUESTION_CHARS = 1_000;
+const MAX_HISTORY_ANSWER_CHARS = 3_000;
+
+export interface QuestionContext {
+  captions: string;
+  /** Long videos are answered from condensed notes instead of the raw captions. */
+  condensed: boolean;
+}
+
+/**
+ * Captions to answer questions from. Videos over the budget are condensed with
+ * the same hierarchical reduction as summaries; callers cache the result per
+ * video so that the reduction runs once, not per question.
+ */
+export async function prepareQuestionContext(
+  transcriptText: string,
+  outputLanguage: OutputLanguage,
+  signal?: AbortSignal,
+  customInstruction: string = "",
+  videoTitle: string = "",
+): Promise<QuestionContext> {
+  const identity = await getActiveAIIdentity();
+  const { model } = resolveAISelection(identity.providerId, identity.modelId);
+  const maxChars = Math.max(
+    20_000,
+    summaryInputCharBudget(model.contextWindow) - QUESTION_RESERVE_CHARS,
+  );
+  const reduced = await reduceToContextBudget(
+    transcriptText, maxChars, outputLanguage, signal, customInstruction, videoTitle,
+  );
+  return { captions: reduced.text, condensed: reduced.passes > 0 };
+}
+
+function clip(text: string, maxChars: number): string {
+  return text.length > maxChars ? `${text.slice(0, maxChars)}…` : text;
+}
+
+export async function* askVideoQuestionStream(params: {
+  context: QuestionContext;
+  videoTitle: string;
+  history: VideoQuestionTurn[];
+  question: string;
+  outputLanguage: OutputLanguage;
+  customInstruction?: string;
+  signal?: AbortSignal;
+}): AsyncGenerator<string> {
+  const history = params.history.slice(-MAX_HISTORY_TURNS).map((turn) => ({
+    question: clip(turn.question, MAX_HISTORY_QUESTION_CHARS),
+    answer: clip(turn.answer, MAX_HISTORY_ANSWER_CHARS),
+  }));
+  yield* streamAIText(
+    buildVideoQuestionSystemPrompt(params.outputLanguage, params.customInstruction),
+    buildVideoQuestionUserPrompt({
+      videoTitle: params.videoTitle,
+      captions: params.context.captions,
+      condensed: params.context.condensed,
+      history,
+      question: params.question,
+      outputLanguage: params.outputLanguage,
+    }),
+    summaryStreamOptions(params.signal),
+  );
+}
+

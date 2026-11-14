@@ -495,3 +495,77 @@
   line-height: 1.5;
   white-space: nowrap;
 }
+
+/* ---- Questions about the video ---- */
+.vas-chat-empty {
+  padding: 24px 4px;
+  color: var(--vas-text-muted);
+  font-size: 14px;
+  line-height: 1.6;
+}
+.vas-chat-notice {
+  margin: 0 0 12px;
+  padding: 8px 10px;
+  border: 1px solid var(--vas-border);
+  border-radius: 8px;
+  color: var(--vas-text-secondary);
+  font-size: 13px;
+}
+.vas-chat-turn {
+  margin: 0 0 16px;
+}
+.vas-chat-question {
+  margin: 0 0 8px auto;
+  max-width: 85%;
+  width: fit-content;
+  padding: 8px 12px;
+  border: 1px solid var(--vas-accent-border);
+  border-radius: 12px 12px 4px 12px;
+  background: var(--vas-accent-bg);
+  color: var(--vas-text-primary);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+.vas-chat-answer > :first-child { margin-top: 0; }
+.vas-chat-answer > :last-child { margin-bottom: 0; }
+.vas-chat-status {
+  color: var(--vas-text-muted);
+  font-size: 13px;
+}
+.vas-chat-error {
+  color: var(--vas-text-secondary);
+  border-left: 3px solid var(--vas-accent);
+  padding-left: 10px;
+}
+.vas-chat-form {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px 12px;
+  border-top: 1px solid var(--vas-border);
+  background: var(--vas-bg-toolbar);
+}
+.vas-chat-input {
+  box-sizing: border-box;
+  width: 100%;
+  min-height: 44px;
+  max-height: 140px;
+  resize: vertical;
+  padding: 8px 10px;
+  border: 1px solid var(--vas-border-btn);
+  border-radius: 8px;
+  background: var(--vas-bg-content);
+  color: var(--vas-text-primary);
+  font: inherit;
+  font-size: 14px;
+  line-height: 1.5;
+}
+.vas-chat-input:focus {
+  outline: none;
+  border-color: var(--vas-border-focus);
+}
+.vas-chat-actions {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

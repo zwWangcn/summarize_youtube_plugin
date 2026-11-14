@@ -27,6 +27,13 @@ A Chrome extension for YouTube. Use your own AI API key to summarize videos, rea
 - Support for 14 summary and translation output languages: Simplified Chinese, Traditional Chinese, English, Japanese, Korean, Spanish, French, German, Italian, Portuguese, Russian, Vietnamese, Thai, and Indonesian
 - Summaries are saved locally for convenient access when you revisit the same video
 
+### Ask About the Video
+
+- Ask follow-up questions in the panel, such as "what supports this claim" or "where is this topic discussed"
+- Answers are based only on the captions; when the captions do not cover a question, the answer says so instead of guessing
+- Answers link to the matching moments, and follow-up questions take the earlier conversation into account
+- Very long videos are answered from condensed caption notes, and the panel says that details may be missing
+
 ### Read and Translate Captions
 
 - View the video's complete captions in the side panel
@@ -108,6 +115,12 @@ API keys are stored only on the current device and are not synced through Chrome
 2. Click the "AI Summary & Translation" button in the upper-right corner of the player
 3. Select "AI Summary" in the right-side panel
 4. Wait as the summary is generated in real time
+
+### Ask About a Video
+
+1. Open the side panel and click "Ask"
+2. Type a question and press Enter to send (Shift+Enter for a new line)
+3. Click a timestamp in the answer to jump there; "New chat" clears the conversation
 
 ### Read or Translate Captions
 

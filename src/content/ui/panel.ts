@@ -25,7 +25,7 @@ import { IS_TEST_BUILD, BUILD_VERSION } from "../../service/build-info";
 // ---------------------------------------------------------------------------
 // Types
 // ---------------------------------------------------------------------------
-export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "error";
+export type PanelMode = "idle" | "loading" | "summary" | "transcript" | "chat" | "error";
 export type TranscriptView = "source" | "translation";
 
 export function getSummarizeButtonMessageKey(
@@ -44,6 +44,12 @@ export interface PanelCallbacks {
   onTranslateAll?: (forceRefresh: boolean) => void;
   onClearTranslationCache?: () => void;
   onExportCaptionDiagnostics?: () => void;
+  /** "Ask" button: open the question view for this video. */
+  onAsk?: () => void;
+  /** A question was submitted from the question box. */
+  onAskSubmit?: (question: string) => void;
+  /** Start a new conversation about the same video. */
+  onAskNewChat?: () => void;
   onClose: () => void;
   /** 点击总结中的时间戳时触发，参数为跳转秒数。 */
   onSeek?: (seconds: number) => void;
@@ -75,6 +81,12 @@ export class Panel {
   private summarizeBtn: HTMLButtonElement;
   private summaryTranslateBtn: HTMLButtonElement;
   private transcriptBtn: HTMLButtonElement;
+  private askBtn: HTMLButtonElement;
+  private chatForm: HTMLFormElement;
+  private chatInput: HTMLTextAreaElement;
+  private chatSendBtn: HTMLButtonElement;
+  private chatNewBtn: HTMLButtonElement;
+  private chatBusy = false;
   private transcriptTools: HTMLElement;
   private sourceViewBtn: HTMLButtonElement;
   private translationViewBtn: HTMLButtonElement;
@@ -166,6 +178,12 @@ export class Panel {
     this.summarizeBtn = this.panel.querySelector(".vas-btn-summarize")!;
     this.summaryTranslateBtn = this.panel.querySelector(".vas-btn-summary-translate")!;
     this.transcriptBtn = this.panel.querySelector(".vas-btn-transcript")!;
+    this.askBtn = this.panel.querySelector(".vas-btn-ask")!;
+    if (!callbacks.onAsk) this.askBtn.style.display = "none";
+    this.chatForm = this.panel.querySelector(".vas-chat-form")!;
+    this.chatInput = this.panel.querySelector(".vas-chat-input")!;
+    this.chatSendBtn = this.panel.querySelector(".vas-chat-send")!;
+    this.chatNewBtn = this.panel.querySelector(".vas-chat-new")!;
     this.transcriptTools = this.panel.querySelector(".vas-transcript-tools")!;
     this.sourceViewBtn = this.panel.querySelector(".vas-view-source")!;
     this.translationViewBtn = this.panel.querySelector(".vas-view-translation")!;
@@ -323,6 +341,7 @@ export class Panel {
       <div class="vas-toolbar">
         <button class="vas-btn vas-btn-primary vas-btn-summarize">${t("aiSummary")}</button>
         <button class="vas-btn vas-btn-transcript">${t("rawTranscript")}</button>
+        <button class="vas-btn vas-btn-ask">${t("askVideo")}</button>
         <button class="vas-btn vas-btn-summary-translate" style="display:none"></button>
         <span class="vas-toolbar-spacer"></span>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
@@ -356,6 +375,14 @@ export class Panel {
       </div>
       <div class="vas-cache-hint" style="display:none"></div>
       <div class="vas-content" style="display:none"></div>
+      <form class="vas-chat-form" style="display:none">
+        <textarea class="vas-chat-input" rows="2" maxlength="1000" placeholder="${t("askPlaceholder")}" aria-label="${t("askPlaceholder")}"></textarea>
+        <div class="vas-chat-actions">
+          <button type="button" class="vas-btn vas-chat-new">${t("askNewChat")}</button>
+          <span class="vas-toolbar-spacer"></span>
+          <button type="submit" class="vas-btn vas-btn-primary vas-chat-send">${t("askSend")}</button>
+        </div>
+      </form>
       <div class="vas-resize-handle"></div>
     `;
     return el;
@@ -400,6 +427,23 @@ export class Panel {
     });
     this.panel.querySelector(".vas-caption-diagnostics")?.addEventListener("click", () => {
       this.callbacks.onExportCaptionDiagnostics?.();
+    });
+    this.askBtn.addEventListener("click", () => this.callbacks.onAsk?.());
+    this.chatForm.addEventListener("submit", (event) => {
+      event.preventDefault();
+      this.submitQuestion();
+    });
+    this.chatNewBtn.addEventListener("click", () => this.callbacks.onAskNewChat?.());
+    // Key events leaving the shadow root are retargeted to #vas-root, so
+    // YouTube would treat typing as player hotkeys (k, f, c, j, l, digits…).
+    for (const type of ["keydown", "keyup", "keypress"] as const) {
+      this.chatInput.addEventListener(type, (event) => event.stopPropagation());
+    }
+    this.chatInput.addEventListener("keydown", (event) => {
+      // Enter sends; Shift+Enter adds a line; never send while an IME composes.
+      if (event.key !== "Enter" || event.shiftKey || event.isComposing || event.keyCode === 229) return;
+      event.preventDefault();
+      this.submitQuestion();
     });
     // Copy button
     this.copyBtn.addEventListener("click", () => this.copyContent());
@@ -573,7 +617,8 @@ export class Panel {
     // 从内容模式切换到 loading 时，保持当前面板高度防止跳动
     if (mode === "loading" && (
       this.mode === "summary" ||
-      this.mode === "transcript"
+      this.mode === "transcript" ||
+      this.mode === "chat"
     )) {
       const currentHeight = this.panel.getBoundingClientRect().height;
       if (currentHeight > 120) {
@@ -611,6 +656,13 @@ export class Panel {
         }
         this.copyBtn.style.display = "inline-flex";
         this.timestampToggle.style.display = "flex";
+        this.setButtonsDisabled(false);
+        this.stopElapsedTimer();
+        break;
+      case "chat":
+        this.contentEl.style.display = "block";
+        this.chatForm.style.display = "flex";
+        this.copyBtn.style.display = "inline-flex";
         this.setButtonsDisabled(false);
         this.stopElapsedTimer();
         break;
@@ -657,6 +709,11 @@ export class Panel {
 
     this.refreshSummarizeButtonText();
     this.transcriptBtn.textContent = t("rawTranscript");
+    this.askBtn.textContent = t("askVideo");
+    this.chatInput.placeholder = t("askPlaceholder");
+    this.chatInput.setAttribute("aria-label", t("askPlaceholder"));
+    this.chatSendBtn.textContent = t("askSend");
+    this.chatNewBtn.textContent = t("askNewChat");
     this.copyBtn.textContent = t("copy");
     this.copyBtn.title = t("copy");
     this.sourceViewBtn.textContent = t("sourceView");
@@ -708,6 +765,8 @@ export class Panel {
   setButtonsDisabled(disabled: boolean): void {
     this.summarizeBtn.disabled = disabled || !this.aiAvailable;
     this.transcriptBtn.disabled = disabled;
+    this.askBtn.disabled = disabled || !this.aiAvailable;
+    this.chatSendBtn.disabled = this.chatBusy || !this.aiAvailable;
     this.summaryTranslateBtn.disabled = disabled || this.summaryTranslationBusy || !this.aiAvailable;
   }
 
@@ -815,6 +874,25 @@ export class Panel {
   setTranslationProgress(text: string): void {
     this.translationProgressEl.textContent = text;
     this.translationProgressEl.style.display = text ? "" : "none";
+  }
+
+  // ---- Questions ----
+
+  setChatBusy(busy: boolean): void {
+    this.chatBusy = busy;
+    this.chatSendBtn.disabled = busy || !this.aiAvailable;
+    this.chatNewBtn.disabled = busy;
+  }
+
+  focusChatInput(): void {
+    this.chatInput.focus();
+  }
+
+  private submitQuestion(): void {
+    const question = this.chatInput.value.trim();
+    if (!question || this.chatBusy || !this.aiAvailable) return;
+    this.chatInput.value = "";
+    this.callbacks.onAskSubmit?.(question);
   }
 
   // ---- Copy ----
@@ -986,6 +1064,7 @@ export class Panel {
     this.summaryTranslateBtn.style.display = "none";
     this.timestampToggle.style.display = "none";
     this.transcriptTools.style.display = "none";
+    this.chatForm.style.display = "none";
     this.hideCacheHint();
   }
 }
