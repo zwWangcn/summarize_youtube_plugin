@@ -1,55 +1,123 @@
-/* Shared palette for settings, Shadow DOM panels, and player controls. */
+/* Shared palette for settings, Shadow DOM panels, and player controls.
+ *
+ * Design rules:
+ *   - Neutral first. Primary actions are near-white on dark / near-black on
+ *     light, so the UI never competes with YouTube's own red.
+ *   - Brand red appears only as a small mark (icon sparkle, setup dot,
+ *     onboarding highlight).
+ *   - Timestamps use the same blue YouTube uses for links in descriptions.
+ */
 :root,
 :host {
-  --vas-text-primary: #f4f4f5;
-  --vas-text-secondary: #c4c4cc;
-  --vas-text-muted: #a1a1aa;
-  --vas-bg-base: #18181b;
-  --vas-bg-elevated: #2b2b30;
-  --vas-bg-card: #242428;
-  /* Floating panels reveal the blurred page; settings cards stay opaque. */
-  --vas-bg-panel: rgba(36, 36, 40, 0.60);
-  --vas-bg-input: rgba(255, 255, 255, 0.055);
-  --vas-bg-hover: rgba(255, 255, 255, 0.085);
+  --vas-font-sans: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "PingFang SC",
+    "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans SC", "Helvetica Neue", Arial, sans-serif;
+  --vas-font-mono: ui-monospace, "SF Mono", "Cascadia Code", "JetBrains Mono", Menlo, Consolas, monospace;
+
+  --vas-radius-sm: 6px;
+  --vas-radius-md: 10px;
+  --vas-radius-lg: 14px;
+  --vas-radius-full: 999px;
+
+  --vas-text-primary: #ededef;
+  --vas-text-secondary: #b4b4bb;
+  --vas-text-muted: #8b8b94;
+  --vas-bg-base: #141416;
+  --vas-bg-elevated: #26262a;
+  --vas-bg-card: #1c1c1f;
+  /* The panel floats over video: frosted glass, tinted dark enough that
+     muted text stays readable over bright frames. */
+  --vas-bg-panel: rgba(24, 24, 27, 0.76);
+  /* Sticky labels inside the glass blur the text scrolling beneath them. */
+  --vas-bg-panel-sticky: rgba(24, 24, 27, 0.2);
+  --vas-glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.07);
+  --vas-bg-input: rgba(255, 255, 255, 0.04);
+  --vas-bg-hover: rgba(255, 255, 255, 0.07);
   --vas-bg-btn-hover: var(--vas-bg-hover);
-  --vas-bg-header: rgba(0, 0, 0, 0.08);
-  --vas-bg-toolbar: rgba(0, 0, 0, 0.06);
+  --vas-bg-header: transparent;
+  --vas-bg-toolbar: transparent;
   --vas-bg-content: transparent;
-  --vas-border-subtle: rgba(255, 255, 255, 0.07);
-  --vas-border: rgba(255, 255, 255, 0.12);
-  --vas-border-btn: rgba(255, 255, 255, 0.18);
-  --vas-border-focus: var(--vas-accent);
-  --vas-accent: #ff819a;
-  --vas-accent-brand: #ff0033;
-  --vas-accent-strong: #e6002e;
-  --vas-accent-contrast: #ffffff;
-  --vas-accent-bg: rgba(255, 0, 51, 0.1);
-  --vas-bg-active: var(--vas-accent-bg);
-  --vas-accent-border: rgba(255, 0, 51, 0.38);
-  --vas-accent-hover: #cc0029;
-  --vas-accent-ring: rgba(255, 0, 51, 0.18);
-  --vas-accent-glow: rgba(255, 0, 51, 0.26);
-  --vas-scrollbar-thumb: rgba(255, 255, 255, 0.2);
-  --vas-shadow: 0 12px 40px rgba(0, 0, 0, 0.28);
-  --vas-blur: blur(16px);
+  --vas-bg-subtle: rgba(255, 255, 255, 0.035);
+  --vas-border-subtle: rgba(255, 255, 255, 0.06);
+  --vas-border: rgba(255, 255, 255, 0.09);
+  --vas-border-btn: rgba(255, 255, 255, 0.14);
+  --vas-border-focus: rgba(255, 255, 255, 0.55);
+
+  /* "Accent" is the neutral foreground used for primary and selected states. */
+  --vas-accent: #ededef;
+  --vas-accent-strong: #ededef;
+  --vas-accent-contrast: #141416;
+  --vas-accent-hover: #ffffff;
+  --vas-accent-bg: rgba(255, 255, 255, 0.08);
+  --vas-bg-active: rgba(255, 255, 255, 0.1);
+  --vas-accent-border: rgba(255, 255, 255, 0.18);
+  --vas-accent-ring: rgba(255, 255, 255, 0.12);
+
+  /* Brand mark only. */
+  --vas-accent-brand: #ff3355;
+  --vas-accent-glow: rgba(255, 51, 85, 0.22);
+
+  --vas-link: #3ea6ff;
+  --vas-link-bg: rgba(62, 166, 255, 0.12);
+
+  --vas-danger-fg: #ff9b9b;
+  --vas-danger-bg: rgba(239, 68, 68, 0.1);
+  --vas-danger-border: rgba(239, 68, 68, 0.28);
+  --vas-warning-fg: #f5cf6b;
+  --vas-warning-bg: rgba(245, 180, 0, 0.09);
+  --vas-warning-border: rgba(245, 180, 0, 0.25);
+  --vas-success-fg: #6fdcaa;
+  --vas-success-bg: rgba(16, 185, 129, 0.1);
+  --vas-success-border: rgba(16, 185, 129, 0.25);
+
+  --vas-placeholder: rgba(237, 237, 239, 0.3);
+  --vas-scrollbar-thumb: rgba(255, 255, 255, 0.16);
+  --vas-shadow: 0 0 0 1px rgba(0, 0, 0, 0.3), 0 16px 48px rgba(0, 0, 0, 0.45);
+  --vas-blur: blur(28px) saturate(160%);
 }
 
 :host(.vas-theme-light) {
-  --vas-text-primary: #27272a;
-  --vas-text-secondary: #5d5d66;
+  --vas-text-primary: #18181b;
+  --vas-text-secondary: #52525b;
   --vas-text-muted: #71717a;
   --vas-bg-base: #fafafa;
-  --vas-bg-elevated: #f4f4f5;
+  --vas-bg-elevated: #f1f1f3;
   --vas-bg-card: #ffffff;
-  --vas-bg-panel: rgba(255, 255, 255, 0.60);
-  --vas-bg-input: rgba(39, 39, 42, 0.035);
-  --vas-bg-hover: rgba(39, 39, 42, 0.065);
-  --vas-bg-header: rgba(39, 39, 42, 0.025);
-  --vas-bg-toolbar: rgba(39, 39, 42, 0.02);
-  --vas-border-subtle: rgba(39, 39, 42, 0.07);
-  --vas-border: rgba(39, 39, 42, 0.12);
-  --vas-border-btn: rgba(39, 39, 42, 0.18);
-  --vas-accent: #e6002e;
-  --vas-scrollbar-thumb: rgba(39, 39, 42, 0.2);
-  --vas-shadow: 0 12px 40px rgba(39, 39, 42, 0.14);
+  --vas-bg-panel: rgba(255, 255, 255, 0.78);
+  --vas-bg-panel-sticky: rgba(255, 255, 255, 0.35);
+  --vas-glass-edge: inset 0 1px 0 rgba(255, 255, 255, 0.6);
+  --vas-bg-input: rgba(24, 24, 27, 0.03);
+  --vas-bg-hover: rgba(24, 24, 27, 0.055);
+  --vas-bg-subtle: rgba(24, 24, 27, 0.025);
+  --vas-border-subtle: rgba(24, 24, 27, 0.06);
+  --vas-border: rgba(24, 24, 27, 0.1);
+  --vas-border-btn: rgba(24, 24, 27, 0.15);
+  --vas-border-focus: rgba(24, 24, 27, 0.5);
+
+  --vas-accent: #18181b;
+  --vas-accent-strong: #18181b;
+  --vas-accent-contrast: #ffffff;
+  --vas-accent-hover: #3f3f46;
+  --vas-accent-bg: rgba(24, 24, 27, 0.06);
+  --vas-bg-active: rgba(24, 24, 27, 0.07);
+  --vas-accent-border: rgba(24, 24, 27, 0.18);
+  --vas-accent-ring: rgba(24, 24, 27, 0.1);
+
+  --vas-accent-brand: #e6002e;
+
+  --vas-link: #065fd4;
+  --vas-link-bg: rgba(6, 95, 212, 0.08);
+
+  --vas-danger-fg: #c81e1e;
+  --vas-danger-bg: rgba(239, 68, 68, 0.07);
+  --vas-danger-border: rgba(239, 68, 68, 0.25);
+  --vas-warning-fg: #a15c00;
+  --vas-warning-bg: rgba(245, 158, 11, 0.09);
+  --vas-warning-border: rgba(245, 158, 11, 0.3);
+  --vas-success-fg: #047857;
+  --vas-success-bg: rgba(16, 185, 129, 0.08);
+  --vas-success-border: rgba(16, 185, 129, 0.25);
+
+  --vas-placeholder: rgba(24, 24, 27, 0.35);
+  --vas-scrollbar-thumb: rgba(24, 24, 27, 0.18);
+  --vas-shadow: 0 0 0 1px rgba(24, 24, 27, 0.06), 0 16px 48px rgba(24, 24, 27, 0.14);
 }

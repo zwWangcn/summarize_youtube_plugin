@@ -1,24 +1,24 @@
 @import "../../ui/theme.css";
 
-:host { all: initial; font: 14px/1.6 -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Noto Sans SC", sans-serif; color: var(--vas-text-primary); }
+:host { all: initial; font: 14px/1.6 var(--vas-font-sans); color: var(--vas-text-primary); }
 * { box-sizing: border-box; }
-.card { position: fixed; width: 340px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: auto; padding: 20px; border: 1px solid var(--vas-border); border-radius: 16px; background: var(--vas-bg-card); box-shadow: var(--vas-shadow); pointer-events: auto; }
+.card { position: fixed; width: 340px; max-width: calc(100vw - 24px); max-height: calc(100vh - 24px); overflow: auto; padding: 18px; border: 1px solid var(--vas-border); border-radius: var(--vas-radius-lg); background: var(--vas-bg-card); box-shadow: var(--vas-shadow); pointer-events: auto; }
 .top { display: flex; align-items: center; justify-content: space-between; gap: 12px; }
 .progress { display: flex; gap: 5px; }
-.dot { width: 22px; height: 4px; border-radius: 4px; background: var(--vas-border-btn); }
+.dot { width: 18px; height: 3px; border-radius: 3px; background: var(--vas-border-btn); }
 .dot.active { background: var(--vas-accent); }
-h2 { margin: 14px 0 8px; font-size: 19px; line-height: 1.4; }
+h2 { margin: 14px 0 6px; font-size: 16px; font-weight: 600; line-height: 1.4; }
 p { margin: 0; color: var(--vas-text-secondary); }
 .actions { display: flex; align-items: center; gap: 8px; margin-top: 18px; }
-button { font: inherit; cursor: pointer; border-radius: 8px; border: 0; padding: 8px 12px; }
+button { font: inherit; font-size: 13px; font-weight: 500; cursor: pointer; border-radius: var(--vas-radius-md); border: 0; padding: 7px 14px; }
 button:focus-visible, a:focus-visible { outline: 2px solid var(--vas-border-focus); outline-offset: 3px; }
-.primary { margin-left: auto; color: var(--vas-accent-contrast); background: var(--vas-accent-strong); font-weight: 650; }
+.primary { margin-left: auto; color: var(--vas-accent-contrast); background: var(--vas-accent-strong); font-weight: 600; }
 .secondary { color: var(--vas-text-secondary); background: var(--vas-bg-hover); }
 .skip { color: var(--vas-text-muted); background: none; padding: 2px 4px; font-size: 12px; }
-.preview { display: block; margin-top: 14px; color: var(--vas-accent); background: none; border: 1px solid var(--vas-accent-border); width: 100%; }
+.preview { display: block; margin-top: 14px; color: var(--vas-text-primary); background: none; border: 1px solid var(--vas-border-btn); width: 100%; }
 .hint { margin-top: 10px; color: var(--vas-text-muted); font-size: 12px; }
-.ring { position: fixed; border: 3px solid var(--vas-accent-brand); border-radius: 12px; box-shadow: 0 0 0 5px var(--vas-accent-ring), 0 0 24px var(--vas-accent-glow); pointer-events: none; animation: breathe 1.8s ease-in-out infinite; }
-@keyframes breathe { 50% { box-shadow: 0 0 0 9px var(--vas-accent-bg), 0 0 30px var(--vas-accent-glow); } }
+.ring { position: fixed; border: 2px solid var(--vas-accent-brand); border-radius: var(--vas-radius-full); box-shadow: 0 0 0 4px var(--vas-accent-glow); pointer-events: none; animation: breathe 1.8s ease-in-out infinite; }
+@keyframes breathe { 50% { box-shadow: 0 0 0 8px transparent; } }
 @media (prefers-reduced-motion: reduce) { .ring { animation: none; } }
 
 .primary:hover { background: var(--vas-accent-hover); }

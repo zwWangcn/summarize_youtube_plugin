@@ -18,7 +18,7 @@ import panelStyles from "./styles.css?inline";
 import themeTokens from "../../ui/theme.css?inline";
 import { linkifyTimestampsInDom } from "./renderer";
 import { t } from "../../utils/i18n";
-import { aiSummaryIconMarkup } from "./icons";
+import { aiSummaryIconMarkup, uiIconMarkup } from "./icons";
 import { openAISetup } from "../../service/onboarding";
 import { IS_TEST_BUILD, BUILD_VERSION } from "../../service/build-info";
 
@@ -62,6 +62,11 @@ const DEFAULT_PANEL_WIDTH = 420;
 const MIN_PANEL_WIDTH = 320;
 const MAX_PANEL_WIDTH = 800;
 const PANEL_WIDTH_STORAGE_KEY = "vas-panel-width";
+
+function setIconButtonLabel(button: HTMLElement, label: string): void {
+  button.title = label;
+  button.setAttribute("aria-label", label);
+}
 
 // ---------------------------------------------------------------------------
 // Panel class
@@ -226,15 +231,12 @@ export class Panel {
       width: "36px",
       height: "36px",
       padding: "0",
-      border: "1px solid var(--vas-border-btn)",
-      borderRadius: "8px",
-      background: "var(--vas-bg-card)",
-      color: "var(--vas-text-primary)",
-      fontFamily: '"Roboto", "Arial", sans-serif',
-      fontSize: "13px",
-      fontWeight: "500",
+      border: "0",
+      borderRadius: "50%",
+      // Always over video, so match YouTube's own overlay buttons in both themes.
+      background: "rgba(0, 0, 0, 0.55)",
+      color: "#fff",
       cursor: "pointer",
-      whiteSpace: "nowrap",
       backdropFilter: "blur(8px)",
       WebkitBackdropFilter: "blur(8px)",
       transition: "opacity 0.3s ease, background 0.2s",
@@ -243,12 +245,12 @@ export class Panel {
     const accessibleLabel = t("openAiTools");
     btn.setAttribute("aria-label", accessibleLabel);
     btn.title = accessibleLabel;
-    btn.innerHTML = aiSummaryIconMarkup(22, "vas-trigger-icon");
+    btn.innerHTML = aiSummaryIconMarkup(20, "vas-trigger-icon");
     btn.addEventListener("mouseenter", () => {
-      btn.style.background = "var(--vas-bg-elevated)";
+      btn.style.background = "rgba(0, 0, 0, 0.75)";
     });
     btn.addEventListener("mouseleave", () => {
-      btn.style.background = "var(--vas-bg-card)";
+      btn.style.background = "rgba(0, 0, 0, 0.55)";
     });
     btn.addEventListener("click", () => this.open());
     return btn;
@@ -334,20 +336,22 @@ export class Panel {
           ${IS_TEST_BUILD ? `<span class="vas-test-build">${t("testBuild")} ${BUILD_VERSION}</span>` : ""}
         </div>
         <div class="vas-header-actions">
-          <button class="vas-btn-icon vas-btn-reset-width" title="${t("resetWidthTitle")}" style="display:none">↺</button>
-          <button class="vas-btn-icon vas-btn-close" title="${t("closeTitle")}">✕</button>
+          <button class="vas-btn-icon vas-btn-reset-width" title="${t("resetWidthTitle")}" aria-label="${t("resetWidthTitle")}" style="display:none">${uiIconMarkup("reset-width")}</button>
+          <button class="vas-btn-icon vas-btn-copy" title="${t("copy")}" aria-label="${t("copy")}" style="display:none">${uiIconMarkup("copy")}</button>
+          <button class="vas-btn-icon vas-btn-close" title="${t("closeTitle")}" aria-label="${t("closeTitle")}">${uiIconMarkup("close")}</button>
         </div>
       </div>
       <div class="vas-toolbar">
-        <button class="vas-btn vas-btn-primary vas-btn-summarize">${t("aiSummary")}</button>
-        <button class="vas-btn vas-btn-transcript">${t("rawTranscript")}</button>
-        <button class="vas-btn vas-btn-ask">${t("askVideo")}</button>
-        <button class="vas-btn vas-btn-summary-translate" style="display:none"></button>
+        <div class="vas-tabs">
+          <button class="vas-tab vas-btn-summarize">${t("aiSummary")}</button>
+          <button class="vas-tab vas-btn-transcript">${t("rawTranscript")}</button>
+          <button class="vas-tab vas-btn-ask">${t("askVideo")}</button>
+        </div>
         <span class="vas-toolbar-spacer"></span>
+        <button class="vas-btn vas-btn-ghost vas-btn-summary-translate" style="display:none"></button>
         <label class="vas-toggle-label vas-timestamp-toggle" style="display:none">
           <input type="checkbox" class="vas-timestamp-checkbox" checked /> <span class="vas-timestamp-text">${t("timestamp")}</span>
         </label>
-        <button class="vas-btn vas-btn-copy" title="${t("copy")}" style="display:none">${t("copy")}</button>
       </div>
       <div class="vas-setup-notice" style="display:none">
         <span class="vas-setup-message" role="status"></span>
@@ -360,10 +364,10 @@ export class Panel {
         </div>
         <span class="vas-transcript-range"></span>
         <span class="vas-transcript-tools-spacer"></span>
-        <button class="vas-btn vas-translate-current">${t("translateSection")}</button>
-        <button class="vas-btn vas-translate-all">${t("translateAll")}</button>
-        <button class="vas-btn vas-clear-translation-cache" title="${t("clearTranslationCacheTitle")}">${t("clearTranslationCache")}</button>
-        ${IS_TEST_BUILD && this.callbacks.onExportCaptionDiagnostics ? `<button class="vas-btn vas-caption-diagnostics" title="${t("captionDiagnosticsTitle")}">${t("exportCaptionDiagnostics")}</button>` : ""}
+        <button class="vas-btn vas-btn-ghost vas-translate-current">${t("translateSection")}</button>
+        <button class="vas-btn vas-btn-ghost vas-translate-all">${t("translateAll")}</button>
+        <button class="vas-btn-icon vas-clear-translation-cache" title="${t("clearTranslationCacheTitle")}" aria-label="${t("clearTranslationCache")}">${uiIconMarkup("trash")}</button>
+        ${IS_TEST_BUILD && this.callbacks.onExportCaptionDiagnostics ? `<button class="vas-btn vas-btn-ghost vas-caption-diagnostics" title="${t("captionDiagnosticsTitle")}">${t("exportCaptionDiagnostics")}</button>` : ""}
         <span class="vas-translation-progress"></span>
       </div>
       <div class="vas-error" style="display:none"></div>
@@ -396,13 +400,17 @@ export class Panel {
     // Close button
     this.panel.querySelector(".vas-btn-close")?.addEventListener("click", () => this.close());
     // Summarize button
-    this.summarizeBtn.addEventListener("click", () => this.callbacks.onSummarize());
+    this.summarizeBtn.addEventListener("click", () => {
+      this.setActiveTab(this.summarizeBtn);
+      this.callbacks.onSummarize();
+    });
     this.summaryTranslateBtn.addEventListener(
       "click",
       () => this.callbacks.onTranslateSummary?.(),
     );
     // Transcript button
     this.transcriptBtn.addEventListener("click", () => {
+      this.setActiveTab(this.transcriptBtn);
       this.timestampToggle.style.display = "flex";
       this.callbacks.onTranscript(this.timestampCheckbox.checked);
     });
@@ -428,7 +436,10 @@ export class Panel {
     this.panel.querySelector(".vas-caption-diagnostics")?.addEventListener("click", () => {
       this.callbacks.onExportCaptionDiagnostics?.();
     });
-    this.askBtn.addEventListener("click", () => this.callbacks.onAsk?.());
+    this.askBtn.addEventListener("click", () => {
+      this.setActiveTab(this.askBtn);
+      this.callbacks.onAsk?.();
+    });
     this.chatForm.addEventListener("submit", (event) => {
       event.preventDefault();
       this.submitQuestion();
@@ -601,9 +612,11 @@ export class Panel {
     this.panel.style.minHeight = "";
     // 清空旧内容（如字幕原文），避免切换时闪烁
     this.contentEl.innerHTML = `
-      <div class="vas-thinking">
-        <div class="vas-thinking-dot"></div>
+      <div class="vas-thinking" role="status">
         <span>${t("aiThinking")}</span>
+        <div class="vas-skeleton" aria-hidden="true">
+          <i style="width: 42%"></i><i></i><i style="width: 88%"></i><i style="width: 64%"></i>
+        </div>
       </div>`;
     this.contentEl.scrollTop = 0;
     this.loadingEl.style.display = "none";
@@ -629,6 +642,11 @@ export class Panel {
     this.mode = mode;
     this.hideAll();
     this.refreshSummarizeButtonText();
+
+    if (mode === "summary") this.setActiveTab(this.summarizeBtn);
+    else if (mode === "transcript") this.setActiveTab(this.transcriptBtn);
+    else if (mode === "chat") this.setActiveTab(this.askBtn);
+    else if (mode === "idle") this.setActiveTab(null);
 
     switch (mode) {
       case "idle":
@@ -700,8 +718,8 @@ export class Panel {
     const languageSwitch = this.panel.querySelector<HTMLElement>(".vas-view-switch");
     const timestampText = this.panel.querySelector<HTMLElement>(".vas-timestamp-text");
     const thinkingText = this.contentEl.querySelector<HTMLElement>(".vas-thinking span");
-    if (resetWidth) resetWidth.title = t("resetWidthTitle");
-    if (close) close.title = t("closeTitle");
+    if (resetWidth) setIconButtonLabel(resetWidth, t("resetWidthTitle"));
+    if (close) setIconButtonLabel(close, t("closeTitle"));
     if (languageSwitch) languageSwitch.setAttribute("aria-label", t("captionLanguageAria"));
     if (timestampText) timestampText.textContent = t("timestamp");
     if (thinkingText) thinkingText.textContent = t("aiThinking");
@@ -714,11 +732,10 @@ export class Panel {
     this.chatInput.setAttribute("aria-label", t("askPlaceholder"));
     this.chatSendBtn.textContent = t("askSend");
     this.chatNewBtn.textContent = t("askNewChat");
-    this.copyBtn.textContent = t("copy");
-    this.copyBtn.title = t("copy");
+    setIconButtonLabel(this.copyBtn, t("copy"));
     this.sourceViewBtn.textContent = t("sourceView");
     this.translationViewBtn.textContent = t("translationView");
-    this.clearTranslationCacheBtn.textContent = t("clearTranslationCache");
+    this.clearTranslationCacheBtn.setAttribute("aria-label", t("clearTranslationCache"));
     this.clearTranslationCacheBtn.title = t("clearTranslationCacheTitle");
     const diagnosticsBtn = this.panel.querySelector<HTMLButtonElement>(".vas-caption-diagnostics");
     if (diagnosticsBtn) { diagnosticsBtn.textContent = t("exportCaptionDiagnostics"); diagnosticsBtn.title = t("captionDiagnosticsTitle"); }
@@ -1054,6 +1071,15 @@ export class Panel {
   }
 
   // ---- Helpers ----
+
+  /** Highlight the view tab; set on click so loading keeps the chosen tab lit. */
+  private setActiveTab(active: HTMLButtonElement | null): void {
+    for (const tab of [this.summarizeBtn, this.transcriptBtn, this.askBtn]) {
+      const selected = tab === active;
+      tab.classList.toggle("vas-active", selected);
+      tab.setAttribute("aria-pressed", String(selected));
+    }
+  }
 
   private hideAll(): void {
     this.loadingEl.style.display = "none";
