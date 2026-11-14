@@ -1,3 +1,4 @@
+import { setLocalWithQuotaFallback } from "./storage-quota";
 import { normalizeCaptionLanguage } from "../utils/caption-language";
 /**
  * Chrome Storage 封装。
@@ -212,7 +213,8 @@ export async function setApiKey(provider: string, key: string): Promise<void> {
   await ensureMigrations();
   const storageKey = apiKeyStorageKey(provider);
   const normalizedKey = key.trim();
-  if (normalizedKey) await chrome.storage.local.set({ [storageKey]: normalizedKey });
+  // A full cache must never block saving the key itself.
+  if (normalizedKey) await setLocalWithQuotaFallback({ [storageKey]: normalizedKey });
   else await chrome.storage.local.remove(storageKey);
 }
 

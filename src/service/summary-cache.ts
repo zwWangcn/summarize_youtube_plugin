@@ -1,5 +1,6 @@
 /** 总结缓存：每条总结使用独立 storage key，避免多标签页整表覆盖。 */
 
+import { setLocalWithQuotaFallback } from "./storage-quota";
 import type { OutputLanguage } from "../utils/i18n";
 
 export interface CachedSummary {
@@ -170,7 +171,7 @@ export async function setCachedSummary(
     outputLanguage,
     timestamp: now,
   };
-  await chrome.storage.local.set({
+  await setLocalWithQuotaFallback({
     [key]: entry,
     [accessKey(source, videoId, outputLanguage)]: now,
   });

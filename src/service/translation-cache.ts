@@ -1,5 +1,6 @@
 /** 翻译缓存：每个翻译 section 独立存储，避免并发完成的 section 互相覆盖。 */
 
+import { setLocalWithQuotaFallback } from "./storage-quota";
 import type { TranslatedSegment } from "./transcript-translation";
 import type { OutputLanguage } from "../utils/i18n";
 
@@ -162,7 +163,7 @@ export async function setCachedTranslationSection(
     pipelineVersion: PIPELINE_VERSION,
     section: { ...section, timestamp },
   };
-  await chrome.storage.local.set({
+  await setLocalWithQuotaFallback({
     [sectionStorageKey(identity, section.chunkId)]: stored,
   });
   await cleanupSections(identityKey(identity));
