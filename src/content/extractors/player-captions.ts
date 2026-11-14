@@ -5,6 +5,8 @@ import { UserError } from "../../utils/errors";
 export interface PlayerCaptionBody {
   url: string;
   text: string;
+  /** Title from the player response matched to this video ID ("" if unknown). */
+  title: string;
 }
 
 /** CAPTION_LOAD_BUDGET_MS in caption-main.ts plus a margin for event delivery. */
@@ -110,7 +112,8 @@ export function loadPlayerCaptions(
             url.searchParams.get("v") !== videoId ||
             url.searchParams.has("tlang")
           ) return;
-          finish(undefined, { url: result.url, text: result.text });
+          const title = typeof result.title === "string" ? result.title.trim().slice(0, 300) : "";
+          finish(undefined, { url: result.url, text: result.text, title });
         } catch { /* Ignore malformed page messages until the bounded timeout. */ }
       }
     };

@@ -74,6 +74,7 @@ function setup(overrides: Partial<SummaryHost> = {}) {
   const host: SummaryHost = {
     extractor: {
       getTranscript: vi.fn(), getVideoTitle: () => "Title", getVideoId: () => videoId, isOnVideoPage: () => true,
+      getKnownVideoTitle: () => "How Rockets Work",
     },
     getPanel: () => panel as unknown as Panel,
     ensureTranscript: vi.fn(async () => transcript),
@@ -107,6 +108,8 @@ describe("SummaryController", () => {
     expect(cache.writes).toEqual(["## Title\n- point [00:05]"]);
     expect(host.onIdle).toHaveBeenCalledTimes(1);
     expect(controller.isRunning()).toBe(false);
+    const { summarizeTextStream } = await import("../service/ai-client");
+    expect(vi.mocked(summarizeTextStream).mock.calls[0][4]).toBe("How Rockets Work");
   });
 
   it("shows a cached summary without calling the model", async () => {

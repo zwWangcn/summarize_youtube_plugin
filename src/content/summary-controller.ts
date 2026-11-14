@@ -274,11 +274,15 @@ export class SummaryController {
       let buffer = "";
       let pendingRender = false;
 
+      // Read after the transcript load: the caption bridge reports the
+      // player's own title for this video, which beats stale page metadata.
+      const promptTitle = this.host.extractor.getKnownVideoTitle?.() ?? "";
       for await (const chunk of summarizeTextStream(
         transcriptText,
         requestedLanguage,
         summaryController.signal,
         customInstruction,
+        promptTitle,
       )) {
         buffer += chunk;
         if (!pendingRender) {

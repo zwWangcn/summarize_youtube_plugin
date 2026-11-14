@@ -9,6 +9,8 @@ export interface Extractor {
   /** Notifies when the page itself loaded usable captions for a video. */
   onCaptionsAvailable?: (listener: (videoId: string) => void) => () => void;
   getVideoTitle: () => string;
+  /** Title for AI prompts; "" when it cannot be determined reliably (never a placeholder). */
+  getKnownVideoTitle?: () => string;
   getVideoId: () => string;
   isOnVideoPage: () => boolean;
 }

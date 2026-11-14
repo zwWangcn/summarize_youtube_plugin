@@ -8,7 +8,14 @@
  */
 
 import { initContentScript, findYouTubeTarget, type Extractor } from "./shared";
-import { clearTranscriptCache, getTranscript, getVideoTitle, getVideoIdFromUrl, isYouTubeVideoPage } from "./extractors/youtube";
+import {
+  clearTranscriptCache,
+  getKnownVideoTitle,
+  getTranscript,
+  getVideoTitle,
+  getVideoIdFromUrl,
+  isYouTubeVideoPage,
+} from "./extractors/youtube";
 import { onCaptionAvailable } from "./extractors/player-captions";
 
 const extractor: Extractor = {
@@ -16,6 +23,7 @@ const extractor: Extractor = {
   clearTranscriptCache,
   onCaptionsAvailable: (listener) => onCaptionAvailable((notice) => listener(notice.videoId)),
   getVideoTitle,
+  getKnownVideoTitle,
   getVideoId: getVideoIdFromUrl,
   isOnVideoPage: isYouTubeVideoPage,
 };

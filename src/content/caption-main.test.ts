@@ -10,6 +10,7 @@ type Track = { languageCode?: string; kind?: string; [key: string]: unknown };
 
 class FakePlayer extends EventTarget {
   videoId = "video-a";
+  title = "";
   readyAt = 0;
   tracks: Track[] = [{ languageCode: "en", kind: "asr" }];
   track: Track = {};
@@ -26,7 +27,7 @@ class FakePlayer extends EventTarget {
   captionClick = false;
   onSelect: (() => void) | undefined;
   getPlayerResponse = vi.fn(() => ({
-    videoDetails: { videoId: this.videoId },
+    videoDetails: { videoId: this.videoId, title: this.title },
     captions: { playerCaptionsTracklistRenderer: {
       captionTracks: Date.now() >= this.readyAt ? this.tracks : [],
       audioTracks: this.audioTracks, defaultAudioTrackIndex: this.defaultAudioTrackIndex,
@@ -73,9 +74,9 @@ async function install() {
   vi.stubGlobal("fetch", vi.fn(async () => { throw new Error("Silent fetch unavailable"); }));
   player.onSelect = () => { void window.fetch(CAPTION_URL); };
   await import("./caption-main");
-  const { getTranscript, clearTranscriptCache } = await import("./extractors/youtube");
+  const { getTranscript, clearTranscriptCache, getKnownVideoTitle } = await import("./extractors/youtube");
   const { loadPlayerCaptions } = await import("./extractors/player-captions");
-  return { player, window, document, pageLocation, getTranscript, clearTranscriptCache, loadPlayerCaptions, originalFetch, FakeXHR };
+  return { player, window, document, pageLocation, getTranscript, clearTranscriptCache, getKnownVideoTitle, loadPlayerCaptions, originalFetch, FakeXHR };
 }
 
 describe("cold-load player caption fallback", () => {
@@ -378,6 +379,15 @@ describe("cold-load player caption fallback", () => {
       expect(originalFetch).toHaveBeenCalledTimes(2);
     },
   );
+
+  it("remembers the title from the player response matched to the video", async () => {
+    const { player, getTranscript, getKnownVideoTitle } = await install();
+    player.title = "  How Rockets Work  ";
+    const request = getTranscript();
+    await vi.advanceTimersByTimeAsync(1_000);
+    await request;
+    expect(getKnownVideoTitle()).toBe("How Rockets Work");
+  });
 
   it("retries an empty response exactly once, then reports a timeout", async () => {
     const { getTranscript, originalFetch, player } = await install();

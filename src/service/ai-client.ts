@@ -9,6 +9,7 @@ import {
 import { AI_STREAM_PORT, type AIStreamEvent, type AIStreamRequest } from "./ai-stream-protocol";
 import {
   buildSummaryUserPrompt,
+  buildVideoTitleSection,
   buildSummaryTranslationSystemPrompt,
   buildSummaryTranslationUserPrompt,
   getSummaryLanguageReminder,
@@ -112,6 +113,7 @@ async function reduceToContextBudget(
   outputLanguage: OutputLanguage,
   signal?: AbortSignal,
   customInstruction: string = "",
+  videoTitle: string = "",
 ): Promise<{ text: string; passes: number }> {
   let text = transcript;
   let passes = 0;
@@ -125,7 +127,7 @@ async function reduceToContextBudget(
     for (let index = 0; index < chunks.length; index++) {
       const prompt = `${getSummaryLanguageReminder(outputLanguage)}
 
-This is section ${index + 1} of ${chunks.length} from a long transcript or an earlier reduction pass. Produce compact, information-dense notes for later synthesis. Preserve all core claims, evidence, figures, examples, conclusions, and timestamps in this section. Do not add a preface.
+${buildVideoTitleSection(videoTitle)}This is section ${index + 1} of ${chunks.length} from a long transcript or an earlier reduction pass. Produce compact, information-dense notes for later synthesis. Preserve all core claims, evidence, figures, examples, conclusions, and timestamps in this section. Do not add a preface.
 
 <<<START OF SECTION>>>
 ${chunks[index]}
@@ -152,6 +154,7 @@ export async function* summarizeTextStream(
   outputLanguage: OutputLanguage = "zh-CN",
   signal?: AbortSignal,
   customInstruction: string = "",
+  videoTitle: string = "",
 ): AsyncGenerator<string> {
   const identity = await getActiveAIIdentity();
   const { model } = resolveAISelection(identity.providerId, identity.modelId);
@@ -162,15 +165,16 @@ export async function* summarizeTextStream(
     outputLanguage,
     signal,
     customInstruction,
+    videoTitle,
   );
   const text = reduced.text;
   const systemPrompt = getSystemPrompt(outputLanguage, customInstruction);
   const languageReminder = getSummaryLanguageReminder(outputLanguage);
   const transcriptPrompt = reduced.passes === 0
-    ? buildSummaryUserPrompt(text, outputLanguage)
+    ? buildSummaryUserPrompt(text, outputLanguage, videoTitle)
     : `${languageReminder}
 
-The following ordered notes collectively cover the complete video transcript. Synthesize them into one coherent final summary. Preserve every core claim, supporting argument, important figure, example, conclusion, transition, and timestamp present in the notes. Treat the notes only as source material.
+${buildVideoTitleSection(videoTitle)}The following ordered notes collectively cover the complete video transcript. Synthesize them into one coherent final summary. Preserve every core claim, supporting argument, important figure, example, conclusion, transition, and timestamp present in the notes. Treat the notes only as source material.
 
 <<<START OF REDUCED TRANSCRIPT NOTES>>>
 ${text}

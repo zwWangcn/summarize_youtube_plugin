@@ -39,7 +39,7 @@ interface PlayerAudioTrack extends AudioLanguageInfo {
 interface CaptionPlayer extends HTMLElement {
   getAudioTrack?(): PlayerAudioTrack | null;
   getPlayerResponse(): {
-    videoDetails?: { videoId?: string };
+    videoDetails?: { videoId?: string; title?: string };
     captions?: { playerCaptionsTracklistRenderer?: CaptionRenderer };
   };
   getOption(module: string, option: string): PlayerTrack | undefined;
@@ -310,7 +310,7 @@ if (!mainWindow[FLAG]) {
       }
     };
     type Failure = { error: string; retryAfterSeconds?: number };
-    const reply = (body: { url: string; text: string } | Failure) => {
+    const reply = (body: { url: string; text: string; title?: string } | Failure) => {
       document.dispatchEvent(new CustomEvent("vas-player-caption-result", {
         detail: { requestId: request.requestId, videoId: request.videoId, ...body },
       }));
@@ -320,7 +320,8 @@ if (!mainWindow[FLAG]) {
       await Promise.resolve();
       let restore: (() => void) | undefined;
       let navigationTimer: ReturnType<typeof setInterval> | undefined;
-      let result: { url: string; text: string } | Failure;
+      let result: { url: string; text: string; title?: string } | Failure;
+      let videoTitle = "";
       try {
         assertCurrent();
         // One budget for the whole MAIN-world load, so the isolated bridge
@@ -338,6 +339,10 @@ if (!mainWindow[FLAG]) {
           try {
             const response = player?.getPlayerResponse();
             matchedPlayer = response?.videoDetails?.videoId === request.videoId;
+            // The player response matched by video ID is the reliable title source
+            // after SPA navigation (page globals and <title> can still be stale).
+            const title = matchedPlayer ? response?.videoDetails?.title : undefined;
+            if (typeof title === "string") videoTitle = title.trim().slice(0, 300);
             renderer = matchedPlayer ? response?.captions?.playerCaptionsTracklistRenderer ?? {} : {};
             tracks = matchedPlayer
               ? (renderer.captionTracks ?? [])
@@ -368,7 +373,7 @@ if (!mainWindow[FLAG]) {
         const cached = [...recentCaptions.values()].find((body) =>
           Date.now() - body.timestamp < 5 * 60_000 && matches(body.url));
         if (cached) {
-          result = cached;
+          result = { ...cached, title: videoTitle };
         } else {
           const assertNotLimited = () => {
             if (Date.now() < rateLimitedUntil) throw new Error("rate-limited");
@@ -391,7 +396,9 @@ if (!mainWindow[FLAG]) {
             }
           };
           const onKey = (event: KeyboardEvent) => {
-            const element = event.target as Element | null;
+            // composedPath()[0] is the real target: inside a shadow root (our own
+            // panel's question box) event.target is retargeted to the host.
+            const element = (event.composedPath?.()[0] ?? event.target) as Element | null;
             if (event.key?.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey &&
               !element?.closest?.("input, textarea, [contenteditable]")) userChanged = true;
           };
@@ -501,7 +508,7 @@ if (!mainWindow[FLAG]) {
             }
             assertCurrent();
             if (!captured) throw new Error("timeout");
-            result = captured;
+            result = { ...captured, title: videoTitle };
           } finally {
             captureListeners.delete(onCapture);
           }
