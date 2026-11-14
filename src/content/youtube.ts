@@ -9,10 +9,12 @@
 
 import { initContentScript, findYouTubeTarget, type Extractor } from "./shared";
 import { clearTranscriptCache, getTranscript, getVideoTitle, getVideoIdFromUrl, isYouTubeVideoPage } from "./extractors/youtube";
+import { onCaptionAvailable } from "./extractors/player-captions";
 
 const extractor: Extractor = {
   getTranscript,
   clearTranscriptCache,
+  onCaptionsAvailable: (listener) => onCaptionAvailable((notice) => listener(notice.videoId)),
   getVideoTitle,
   getVideoId: getVideoIdFromUrl,
   isOnVideoPage: isYouTubeVideoPage,

@@ -8,10 +8,7 @@ import {
   transcriptToText,
   type Transcript,
 } from "./transcript";
-import {
-  isTranslatedCaptionURL,
-  parseJson3Captions,
-} from "./extractors/caption-interceptor";
+import { parseJson3Captions } from "./extractors/caption-parsers";
 
 describe("transcript helpers", () => {
   it.each([false, true])("accepts a long source cue locally (overlapping timelines: %s)", async (overlap) => {
@@ -519,15 +516,6 @@ describe("transcript helpers", () => {
 });
 
 describe("YouTube JSON3 caption parsing", () => {
-  it("rejects YouTube auto-translation requests as source-caption candidates", () => {
-    expect(isTranslatedCaptionURL(
-      "https://www.youtube.com/api/timedtext?v=video&lang=en&tlang=zh-Hans",
-    )).toBe(true);
-    expect(isTranslatedCaptionURL(
-      "https://www.youtube.com/api/timedtext?v=video&lang=en",
-    )).toBe(false);
-  });
-
   it("preserves start time, duration, language, and text", () => {
     const parsed = parseJson3Captions(JSON.stringify({
       events: [

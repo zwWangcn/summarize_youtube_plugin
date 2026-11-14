@@ -7,7 +7,7 @@ import { normalizeCaptionLanguage } from "../../utils/caption-language";
 
 import { UserError } from "../../utils/errors";
 import { t } from "../../utils/i18n";
-import { parseJson3Captions } from "./caption-interceptor";
+import { parseJson3Captions } from "./caption-parsers";
 import type { Transcript, TranscriptSegment } from "../transcript";
 import { clearPlayerCaptionCache, loadPlayerCaptions } from "./player-captions";
 

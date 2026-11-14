@@ -7,7 +7,38 @@ export interface PlayerCaptionBody {
   text: string;
 }
 
+/** CAPTION_LOAD_BUDGET_MS in caption-main.ts plus a margin for event delivery. */
+export const PLAYER_CAPTION_BRIDGE_TIMEOUT_MS = 18_000;
+
+const FAILURE_MESSAGES: Record<string, string> = {
+  "no-captions": "errorNoCaptions",
+  "not-ready": "errorCaptionPlayerNotReady",
+  timeout: "errorCaptionLoadTimeout",
+  "user-changed-captions": "errorCaptionChangedDuringLoad",
+};
+
 const activeLoads = new Map<string, { videoId: string; cancel: () => void }>();
+
+export interface CaptionAvailableNotice {
+  videoId: string;
+  lang: string;
+  kind: string;
+}
+
+/** Subscribe to body-free notices that the player fetched usable captions. */
+export function onCaptionAvailable(listener: (notice: CaptionAvailableNotice) => void): () => void {
+  const handler = (event: Event) => {
+    const detail = (event as CustomEvent).detail;
+    if (typeof detail?.videoId !== "string" || !detail.videoId || detail.videoId.length > 100) return;
+    listener({
+      videoId: detail.videoId,
+      lang: typeof detail.lang === "string" ? detail.lang : "",
+      kind: typeof detail.kind === "string" ? detail.kind : "",
+    });
+  };
+  document.addEventListener("vas-caption-available", handler);
+  return () => document.removeEventListener("vas-caption-available", handler);
+}
 
 /** Clear only this video's source captions, including obsolete in-flight loads. */
 export function clearPlayerCaptionCache(videoId: string): void {
@@ -52,13 +83,19 @@ export function loadPlayerCaptions(
           finish(new UserError(t("errorYoutubeRateLimited", String(seconds)), "YT_RATE_LIMITED", "HTTP 429"));
           return;
         }
-        finish(result.error === "navigation"
-          ? new DOMException("Navigation changed", "AbortError")
-          : new UserError(
-            t(result.error === "no-captions" ? "errorNoCaptions" : "errorYoutubeCaptionUnavailable"),
-            "YT_PLAYER_CAPTIONS",
-            String(result.error),
-          ));
+        if (result.error === "navigation") {
+          finish(new DOMException("Navigation changed", "AbortError"));
+          return;
+        }
+        const reason = String(result.error);
+        console.debug("[vas] Player caption load failed:", reason);
+        // Distinct reasons instead of one "turn on CC manually" message, so
+        // failures are diagnosable and users are not sent to the wrong fix.
+        finish(new UserError(
+          t(FAILURE_MESSAGES[reason] ?? "errorYoutubeCaptionUnavailable"),
+          "YT_PLAYER_CAPTIONS",
+          reason,
+        ));
       } else if (
         typeof result.url === "string" &&
         typeof result.text === "string" &&
@@ -78,8 +115,8 @@ export function loadPlayerCaptions(
       }
     };
     const timeout = setTimeout(() => finish(new UserError(
-      t("errorYoutubeCaptionUnavailable"), "YT_PLAYER_TIMEOUT",
-    )), 16_000);
+      t("errorCaptionLoadTimeout"), "YT_PLAYER_TIMEOUT",
+    )), PLAYER_CAPTION_BRIDGE_TIMEOUT_MS);
     const navigationCheck = setInterval(() => {
       if (new URL(window.location.href).searchParams.get("v") !== videoId) abort();
     }, 200);

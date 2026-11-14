@@ -75,13 +75,70 @@ export interface StreamAIOptions {
 export class AIServiceError extends Error {
   /**
    * 是否值得重试。
-   * - true：5xx、响应流异常等服务端/网络问题（默认）
-   * - false：4xx 客户端错误、配置错误等，重试无益
+   * - true：5xx、429、响应流异常等服务端/网络问题（默认）
+   * - false：Key 无效、余额不足、上下文超长等，重试无益
+   * retryAfterMs：服务端要求的最短等待时间（来自 Retry-After）。
    */
-  constructor(message: string, public readonly retryable: boolean = true) {
+  constructor(
+    message: string,
+    public readonly retryable: boolean = true,
+    public readonly retryAfterMs?: number,
+  ) {
     super(message);
     this.name = "AIServiceError";
   }
+}
+
+/** Retry-After 超过此值时不在后台等待，直接告诉用户稍后再试。 */
+const MAX_RETRY_AFTER_MS = 30_000;
+
+function parseRetryAfterMs(value: string | null): number | null {
+  if (!value?.trim()) return null;
+  const seconds = Number(value);
+  if (Number.isFinite(seconds) && seconds >= 0) return seconds * 1000;
+  const date = Date.parse(value);
+  return Number.isFinite(date) ? Math.max(0, date - Date.now()) : null;
+}
+
+/**
+ * 把 HTTP 失败映射为可操作的提示和正确的重试策略。
+ * 之前所有 4xx 都提示“检查 API Key”且不重试：429 限流、402 余额不足、
+ * 400 上下文超长都会被误导到 Key 上。
+ */
+export function classifyHttpError(
+  status: number,
+  body: string,
+  retryAfter: string | null = null,
+): AIServiceError {
+  const text = body.toLowerCase();
+  if (
+    status === 402 ||
+    /insufficient[_ ](?:balance|quota|credit)|exceeded your current quota|credit balance is too low|billing|余额不足|欠费/
+      .test(text)
+  ) {
+    return new AIServiceError(t("errorApiInsufficientBalance"), false);
+  }
+  if (status === 401 || status === 403 ||
+      (status === 400 && /api[_ ]?key (?:not valid|invalid)|invalid[_ ]api[_ ]?key/.test(text))) {
+    return new AIServiceError(t("errorApiKeyInvalid", String(status)), false);
+  }
+  if (status === 429) {
+    const delay = parseRetryAfterMs(retryAfter);
+    return new AIServiceError(
+      t("errorApiRateLimited"),
+      delay === null || delay <= MAX_RETRY_AFTER_MS,
+      delay ?? undefined,
+    );
+  }
+  if (status === 404 || (status < 500 && /model[_ ]not[_ ]found|model .*does not exist|unknown model/.test(text))) {
+    return new AIServiceError(t("errorApiModelNotFound"), false);
+  }
+  if ((status === 400 || status === 413 || status === 422) &&
+      /context[_ ]length|context window|too long|too many tokens|maximum (?:context|.*tokens)|token limit|prompt is too long/.test(text)) {
+    return new AIServiceError(t("errorApiContextTooLong"), false);
+  }
+  if (status === 408 || status >= 500) return new AIServiceError(t("errorAiUnavailable"), true);
+  return new AIServiceError(t("errorApiRejected", String(status)), false);
 }
 
 export class ContentFilteredError extends Error {
@@ -181,8 +238,9 @@ export async function* streamAIText(
       throw abortError();
     }
     if (attempt > 0) {
-      const delay = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
-      await waitForRetryDelay(delay, options.signal);
+      const backoff = RETRY_DELAY_MS * Math.pow(2, attempt - 1);
+      const requested = lastError instanceof AIServiceError ? lastError.retryAfterMs ?? 0 : 0;
+      await waitForRetryDelay(Math.max(backoff, requested), options.signal);
     }
 
     try {
@@ -226,13 +284,9 @@ export async function* streamAIText(
         });
 
         if (!response.ok) {
-          const errBody = await response.text();
-          if (response.status >= 400 && response.status < 500) {
-            console.debug("[vas] AI 4xx:", response.status, errBody.slice(0, 200));
-            throw new AIServiceError(t("errorApiRejected", String(response.status)), false);
-          }
-          console.debug("[vas] AI 5xx:", response.status, errBody.slice(0, 200));
-          throw new AIServiceError(t("errorAiUnavailable"), true);
+          const errBody = await response.text().catch(() => "");
+          console.debug("[vas] AI HTTP error:", response.status, errBody.slice(0, 200));
+          throw classifyHttpError(response.status, errBody, response.headers.get("Retry-After"));
         }
 
         const reader = response.body?.getReader();

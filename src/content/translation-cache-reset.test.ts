@@ -152,17 +152,13 @@ describe("translation cache reset orchestration", () => {
     videoId = "video-1";
     const location = { href: "https://www.youtube.com/watch?v=video-1" };
     vi.stubGlobal("window", { location, addEventListener: vi.fn() });
-    vi.stubGlobal("history", {
-      pushState: vi.fn((_state, _unused, url) => { location.href = String(url); }),
-      replaceState: vi.fn(),
-    });
     vi.stubGlobal("MutationObserver", class { observe() {} disconnect() {} });
     vi.stubGlobal("requestAnimationFrame", vi.fn());
-    vi.stubGlobal("document", {
+    vi.stubGlobal("document", Object.assign(new EventTarget(), {
       getElementById: (id: string) => id === "vas-root" && ui.root ? {} : null,
       querySelector: () => null, body: {},
       documentElement: { hasAttribute: () => false, classList: { contains: () => false } },
-    });
+    }));
     vi.stubGlobal("chrome", {
       i18n: { getUILanguage: () => "en" },
       runtime: {
@@ -494,7 +490,9 @@ describe("translation cache reset orchestration", () => {
     ui.callbacks!.onClearTranslationCache!();
     await flush();
     videoId = "video-2";
-    history.pushState(null, "", "https://www.youtube.com/watch?v=video-2");
+    // YouTube SPA navigation: URL changes, then the page fires yt-navigate-finish.
+    window.location.href = "https://www.youtube.com/watch?v=video-2";
+    document.dispatchEvent(new Event("yt-navigate-finish"));
     await ui.callbacks!.onTranscript(true);
     expect(ui.translations[0].text).toBe("第二个视频");
     removal.resolve();

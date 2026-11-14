@@ -4,6 +4,13 @@
  */
 
 const FLAG = "__vas_interceptor_installed";
+// Keep in sync with PLAYER_CAPTION_BRIDGE_TIMEOUT_MS in player-captions.ts
+// (this file must stay self-contained, so the value cannot be imported).
+const CAPTION_LOAD_BUDGET_MS = 15_000;
+// Extension-initiated player loads per video, so repeated retries can never
+// turn into a request storm even when responses keep coming back empty.
+const MAX_TRIGGERS_PER_VIDEO = 4;
+const TRIGGER_WINDOW_MS = 2 * 60_000;
 const mainWindow = window as unknown as Record<string, unknown>;
 
 interface PlayerTrack {
@@ -102,6 +109,17 @@ if (!mainWindow[FLAG]) {
   // mistaken for a missing request and triggered again by the extension.
   const captionRequests = new Map<object, { url: string; startedAt: number; pending: boolean }>();
   let rateLimitedUntil = 0;
+  const triggerTimes = new Map<string, number[]>();
+  const takeTriggerBudget = (videoId: string): boolean => {
+    const now = Date.now();
+    const recent = (triggerTimes.get(videoId) ?? []).filter((time) => now - time < TRIGGER_WINDOW_MS);
+    const allowed = recent.length < MAX_TRIGGERS_PER_VIDEO;
+    if (allowed) recent.push(now);
+    triggerTimes.delete(videoId);
+    triggerTimes.set(videoId, recent);
+    if (triggerTimes.size > 20) triggerTimes.delete(triggerTimes.keys().next().value!);
+    return allowed;
+  };
   const startRequest = (url: string): object => {
     const token = {};
     captionRequests.set(token, { url, startedAt: Date.now(), pending: true });
@@ -155,8 +173,14 @@ if (!mainWindow[FLAG]) {
     recentCaptions.set(key, { url, text, timestamp: Date.now() });
     while (recentCaptions.size > 12) recentCaptions.delete(recentCaptions.keys().next().value!);
     for (const listener of captureListeners) listener(url, text);
-    document.dispatchEvent(new CustomEvent("vas-caption-captured", {
-      detail: { url, text },
+    // Body-free notice: lets the isolated world recover a failed load after the
+    // player (or the user's CC click) fetched captions, without copying the body.
+    document.dispatchEvent(new CustomEvent("vas-caption-available", {
+      detail: {
+        videoId: parsed.searchParams.get("v"),
+        lang: parsed.searchParams.get("lang"),
+        kind: parsed.searchParams.get("kind") || "",
+      },
     }));
   };
 
@@ -169,11 +193,18 @@ if (!mainWindow[FLAG]) {
         : input.url;
     const token = captionUrl(url) ? startRequest(url) : null;
     return originalFetch(input, init).then((response) => {
-      if (token) finishRequest(token, response.status, response.headers?.get("Retry-After"));
+      const finish = () => {
+        if (token) finishRequest(token, response.status, response.headers?.get("Retry-After"));
+      };
       if (response.ok && isTimedText(url) && (!token || captionRequests.has(token))) {
+        // A request is finished only once its body was read and offered to the
+        // capture listeners; headers alone would let the loader re-trigger
+        // while a large caption body is still streaming.
         void response.clone().text().then((text) => {
           if (!token || captionRequests.has(token)) notify(url, text);
-        }).catch(() => {});
+        }).catch(() => {}).finally(finish);
+      } else {
+        finish();
       }
       return response;
     }, (error) => {
@@ -292,12 +323,16 @@ if (!mainWindow[FLAG]) {
       let result: { url: string; text: string } | Failure;
       try {
         assertCurrent();
-        const deadline = Date.now() + 8_000;
+        // One budget for the whole MAIN-world load, so the isolated bridge
+        // (which waits slightly longer) never gives up while this side still works.
+        const loadDeadline = Date.now() + CAPTION_LOAD_BUDGET_MS;
+        const remaining = () => Math.max(0, loadDeadline - Date.now());
+        const readyDeadline = Date.now() + 8_000;
         let player: CaptionPlayer | null = null;
         let tracks: PlayerTrack[] = [];
         let renderer: CaptionRenderer = {};
         let matchedPlayer = false;
-        while (Date.now() < deadline) {
+        while (Date.now() < readyDeadline) {
           assertCurrent();
           player = document.getElementById("movie_player") as CaptionPlayer | null;
           try {
@@ -339,21 +374,36 @@ if (!mainWindow[FLAG]) {
             if (Date.now() < rateLimitedUntil) throw new Error("rate-limited");
           };
           assertNotLimited();
-          const original = { ...target.getOption("captions", "track") };
-          const originalIsTarget = original.languageCode === track.languageCode &&
-            (original.kind || "") === (track.kind || "") && !original.translationLanguage;
+          const sameTrack = (value: PlayerTrack | undefined, other: PlayerTrack) =>
+            (value?.languageCode || "") === (other.languageCode || "") &&
+            (value?.kind || "") === (other.kind || "");
+          let original: PlayerTrack = { ...target.getOption("captions", "track") };
+          let originalIsTarget = sameTrack(original, track) && !original.translationLanguage;
+          // Only real input counts as a user change. The player also switches
+          // tracks by itself (auto-captions for foreign-language videos, the
+          // sticky CC language restored by loadModule); treating that as the
+          // user aborted loads that a manual CC click would then "fix".
           let userChanged = false;
           let changed = false;
           const onClick = (event: Event) => {
-            if ((event.target as Element | null)?.closest?.(".ytp-subtitles-button")) userChanged = true;
+            if ((event.target as Element | null)?.closest?.(".ytp-subtitles-button, .ytp-settings-menu")) {
+              userChanged = true;
+            }
+          };
+          const onKey = (event: KeyboardEvent) => {
+            const element = event.target as Element | null;
+            if (event.key?.toLowerCase() === "c" && !event.ctrlKey && !event.metaKey && !event.altKey &&
+              !element?.closest?.("input, textarea, [contenteditable]")) userChanged = true;
           };
           target.addEventListener("click", onClick, true);
+          document.addEventListener("keydown", onKey as EventListener, true);
           const style = document.createElement("style");
           style.textContent = "#movie_player.vas-caption-probe .ytp-caption-window-container{visibility:hidden!important}";
           target.appendChild(style);
           target.classList.add("vas-caption-probe");
           restore = () => {
             target.removeEventListener("click", onClick, true);
+            document.removeEventListener("keydown", onKey as EventListener, true);
             style.remove();
             target.classList.remove("vas-caption-probe");
             try {
@@ -383,64 +433,71 @@ if (!mainWindow[FLAG]) {
           };
           captureListeners.add(onCapture);
           try {
-            const matchingRequests = () => [...captionRequests.values()].filter((item) =>
-              matches(item.url) && (item.pending || Date.now() - item.startedAt < 30_000));
-            const waitForCapture = async (ms: number) => {
-              const deadline = Date.now() + ms;
+            // Only an in-flight request is worth waiting for. A finished one that
+            // produced no usable cues (early empty envelope, HTTP error) must not
+            // block loading: previously it did for 30 s, which is why a manual
+            // CC click was needed. HTTP 429 remains authoritative via the cooldown.
+            const pendingMatch = () => [...captionRequests.values()].some((item) =>
+              item.pending && matches(item.url));
+            const requestedSince = (time: number) => [...captionRequests.values()].some((item) =>
+              item.startedAt >= time && matches(item.url));
+            const throwIfUserChanged = () => {
+              if (userChanged) throw new Error("user-changed-captions");
+            };
+            // Waits up to `ms`, or until `settled` reports that the request being
+            // waited for has finished without usable captions: there is no point
+            // in sitting out the rest of the window before the next step.
+            const waitForCapture = async (ms: number, settled?: () => boolean) => {
+              const deadline = Date.now() + Math.min(ms, remaining());
               while (!captured && Date.now() < deadline) {
                 assertCurrent();
                 assertNotLimited();
-                if (userChanged) throw new Error("user-changed-captions");
-                const current = target.getOption("captions", "track");
-                if (!changed && ((current?.languageCode || "") !== (original.languageCode || "") ||
-                  (current?.kind || "") !== (original.kind || ""))) {
-                  userChanged = true;
-                  throw new Error("user-changed-captions");
-                }
-                if (changed && current?.languageCode && (current.languageCode !== track.languageCode ||
-                  (current.kind || "") !== (track.kind || ""))) {
-                  userChanged = true;
-                  throw new Error("user-changed-captions");
+                throwIfUserChanged();
+                if (settled?.()) return;
+                if (!changed) {
+                  // The player picked a track on its own before we touched it:
+                  // adopt that as the state to restore afterwards.
+                  const current = target.getOption("captions", "track");
+                  if (!sameTrack(current, original)) {
+                    original = { ...current };
+                    originalIsTarget = sameTrack(original, track) && !original.translationLanguage;
+                  }
                 }
                 await wait(50, signal);
               }
             };
-            // Give the player's initial CC request a chance to start. If it is
-            // already pending, wait for it instead of clearing/reselecting CC.
+            // Give the player's own startup request a chance to begin, then wait
+            // for any matching request that is still in flight.
+            const notPending = () => !pendingMatch();
             await waitForCapture(300);
-            const existing = matchingRequests().length > 0;
-            if (!captured && existing) {
-              await waitForCapture(6_000);
-            } else {
-              // A second selection is allowed only if the first produced NO
-              // network request (caption module not ready). Never retry an
-              // empty/failed/slow response by toggling the track again.
-              for (let attempt = 0; attempt < 2 && !captured; attempt++) {
-                assertCurrent();
-                assertNotLimited();
-                if (userChanged) throw new Error("user-changed-captions");
-                changed = true;
-                target.setOption("captions", "track", {});
-                await wait(150, signal);
-                assertCurrent();
-                if (userChanged) throw new Error("user-changed-captions");
-                target.loadModule("captions");
-                // Module loading can start the saved track asynchronously.
-                await wait(150, signal);
-                assertCurrent();
-                assertNotLimited();
-                if (userChanged) throw new Error("user-changed-captions");
-                if (!captured && !matchingRequests().length) {
-                  target.setOption("captions", "track", originalIsTarget ? original : {
-                    languageCode: track.languageCode, ...(track.kind ? { kind: track.kind } : {}),
-                  });
-                }
-                await waitForCapture(3_000);
-                if (matchingRequests().length) {
-                  if (!captured) await waitForCapture(3_000);
-                  break;
-                }
+            if (!captured && pendingMatch()) await waitForCapture(6_000, notPending);
+            // Ask the player to load the track, like a CC click would. Each attempt
+            // causes at most one matching request; a second attempt covers both a
+            // caption module that was not ready and an empty/failed response.
+            for (let attempt = 0; attempt < 2 && !captured && remaining() > 0; attempt++) {
+              assertCurrent();
+              assertNotLimited();
+              throwIfUserChanged();
+              if (pendingMatch() || !takeTriggerBudget(request.videoId)) break;
+              const attemptStartedAt = Date.now();
+              changed = true;
+              target.setOption("captions", "track", {});
+              await wait(150, signal);
+              assertCurrent();
+              throwIfUserChanged();
+              target.loadModule("captions");
+              // Module loading can start the saved track asynchronously.
+              await wait(150, signal);
+              assertCurrent();
+              assertNotLimited();
+              throwIfUserChanged();
+              if (!captured && !requestedSince(attemptStartedAt)) {
+                target.setOption("captions", "track", originalIsTarget ? original : {
+                  languageCode: track.languageCode, ...(track.kind ? { kind: track.kind } : {}),
+                });
               }
+              await waitForCapture(3_000, () => requestedSince(attemptStartedAt) && notPending());
+              if (!captured && pendingMatch()) await waitForCapture(3_000, notPending);
             }
             assertCurrent();
             if (!captured) throw new Error("timeout");

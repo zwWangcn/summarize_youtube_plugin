@@ -379,14 +379,64 @@ describe("cold-load player caption fallback", () => {
     },
   );
 
-  it("does not retry an empty response by reselecting the track", async () => {
+  it("retries an empty response exactly once, then reports a timeout", async () => {
     const { getTranscript, originalFetch, player } = await install();
     originalFetch.mockResolvedValue({ ok: true, clone: () => ({ text: async () => '{"events":[]}' }) });
     const request = getTranscript().catch((error: Error) => error);
     await vi.advanceTimersByTimeAsync(7_000);
     expect(await request).toMatchObject({ code: "YT_PLAYER_CAPTIONS", detail: "timeout" });
-    expect(originalFetch).toHaveBeenCalledTimes(1);
+    expect(originalFetch).toHaveBeenCalledTimes(2);
+    expect(player.loadModule).toHaveBeenCalledTimes(2);
+  });
+
+  it("does not let a finished empty native request block loading (the manual-CC bug)", async () => {
+    const { player, window, getTranscript, originalFetch } = await install();
+    // The player's early startup request returns a cue-less envelope.
+    originalFetch.mockResolvedValueOnce({ ok: true, clone: () => ({ text: async () => '{"events":[]}' }) });
+    await window.fetch(CAPTION_URL);
+    await vi.advanceTimersByTimeAsync(100);
+    const request = getTranscript();
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await request).segments[0].text).toBe("Ready now");
     expect(player.loadModule).toHaveBeenCalledTimes(1);
+    expect(originalFetch).toHaveBeenCalledTimes(2);
+  });
+
+  it("caps extension-initiated player loads per video across repeated retries", async () => {
+    const { player, getTranscript, originalFetch } = await install();
+    originalFetch.mockResolvedValue({ ok: true, clone: () => ({ text: async () => '{"events":[]}' }) });
+    for (let retry = 0; retry < 3; retry++) {
+      const failure = getTranscript().catch((error: Error) => error);
+      await vi.advanceTimersByTimeAsync(7_000);
+      expect(await failure).toMatchObject({ code: "YT_PLAYER_CAPTIONS", detail: "timeout" });
+    }
+    expect(player.loadModule).toHaveBeenCalledTimes(4);
+    expect(originalFetch).toHaveBeenCalledTimes(4);
+  });
+
+  it("does not treat the player enabling the target track by itself as a user change", async () => {
+    const { player, window, getTranscript } = await install();
+    player.onSelect = undefined;
+    const request = getTranscript();
+    // YouTube auto-enables captions (no click) and requests them.
+    await vi.advanceTimersByTimeAsync(100);
+    player.track = { languageCode: "en", kind: "asr" };
+    void window.fetch(CAPTION_URL);
+    await vi.advanceTimersByTimeAsync(500);
+    expect((await request).segments[0].text).toBe("Ready now");
+    expect(player.track).toEqual({ languageCode: "en", kind: "asr" });
+  });
+
+  it("does not treat the player switching to another track by itself as a user change", async () => {
+    const { player, getTranscript } = await install();
+    const request = getTranscript();
+    // Without a click, e.g. the sticky CC language restored by the player.
+    await vi.advanceTimersByTimeAsync(100);
+    player.track = { languageCode: "fr" };
+    await vi.advanceTimersByTimeAsync(1_000);
+    expect((await request).segments[0].text).toBe("Ready now");
+    // The player's own choice becomes the state restored afterwards.
+    expect(player.track).toEqual({ languageCode: "fr" });
   });
 
   it("does not act on a stale live player response during SPA initialization", async () => {
@@ -413,15 +463,17 @@ describe("cold-load player caption fallback", () => {
 
   it("does not finish on a nonempty timedtext envelope with no actual cues", async () => {
     const { window, originalFetch, getTranscript } = await install();
-    originalFetch.mockResolvedValueOnce({ ok: true, clone: () => ({ text: async () => '{"events":[]}' }) });
-    const request = getTranscript();
-    let completed = false;
-    void request.then(() => { completed = true; });
+    // Every automatic load (including the retry) returns a cue-less envelope.
+    originalFetch.mockResolvedValue({ ok: true, clone: () => ({ text: async () => '{"events":[]}' }) });
+    const failure = getTranscript().catch((error: Error) => error);
     await vi.advanceTimersByTimeAsync(1_000);
-    expect(completed).toBe(false);
+    // Finished empty responses end the wait early instead of sitting out 6 s.
+    expect(await failure).toMatchObject({ code: "YT_PLAYER_CAPTIONS", detail: "timeout" });
+    originalFetch.mockResolvedValue({ ok: true, clone: () => ({ text: async () => CAPTIONS }) });
     await window.fetch(CAPTION_URL);
+    const retry = getTranscript();
     await vi.advanceTimersByTimeAsync(100);
-    expect((await request).segments[0].text).toBe("Ready now");
+    expect((await retry).segments[0].text).toBe("Ready now");
   });
 
   it("reuses a response captured before the isolated content script registered", async () => {
@@ -545,7 +597,10 @@ describe("cold-load player caption fallback", () => {
     player.onSelect = undefined;
     const failure = getTranscript().catch((error: Error) => error);
     await vi.advanceTimersByTimeAsync(600);
+    // The user picks French in the player's settings menu.
     player.track = { languageCode: "fr" };
+    player.captionClick = true;
+    player.dispatchEvent(new Event("click"));
     await vi.advanceTimersByTimeAsync(1_000);
     expect(await failure).toMatchObject({ code: "YT_PLAYER_CAPTIONS" });
     expect(player.track).toEqual({ languageCode: "fr" });
@@ -559,7 +614,7 @@ describe("cold-load player caption fallback", () => {
     const isolatedDocument = new EventTarget();
     vi.stubGlobal("document", isolatedDocument);
     const failure = loadPlayerCaptions("video-a").catch((error: Error) => error);
-    await vi.advanceTimersByTimeAsync(16_100);
+    await vi.advanceTimersByTimeAsync(18_100);
     expect(await failure).toMatchObject({ code: "YT_PLAYER_TIMEOUT" });
     expect(vi.getTimerCount()).toBe(0);
     vi.stubGlobal("document", document);

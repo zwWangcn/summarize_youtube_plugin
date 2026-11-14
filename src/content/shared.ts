@@ -87,6 +87,8 @@ import { resolveAISelection } from "../service/model-registry";
 export interface Extractor {
   getTranscript: (preferredCaptionLanguage?: string) => Promise<Transcript>;
   clearTranscriptCache?: (videoId: string) => void | Promise<void>;
+  /** Notifies when the page itself loaded usable captions for a video. */
+  onCaptionsAvailable?: (listener: (videoId: string) => void) => () => void;
   getVideoTitle: () => string;
   getVideoId: () => string;
   isOnVideoPage: () => boolean;
@@ -232,50 +234,30 @@ function formatCacheAge(ms: number): string {
 // ---------------------------------------------------------------------------
 // SPA navigation detection
 // ---------------------------------------------------------------------------
-function watchNavigation(onChange: () => void): () => void {
+export function watchNavigation(onChange: () => void): () => void {
   let lastUrl = window.location.href;
-
-  // Watch <title> mutations
-  const titleObserver = new MutationObserver(() => {
+  const check = () => {
     if (window.location.href !== lastUrl) {
       lastUrl = window.location.href;
       onChange();
     }
-  });
+  };
+
+  // YouTube's own SPA event. DOM events cross the isolated-world boundary;
+  // overriding history.pushState here would not (the page calls its own copy),
+  // which is why that interception never fired and navigation was only noticed
+  // whenever <title> happened to change after the URL.
+  document.addEventListener("yt-navigate-finish", check);
+  // Fallbacks: title changes and back/forward.
+  const titleObserver = new MutationObserver(check);
   const titleEl = document.querySelector("title");
   if (titleEl) titleObserver.observe(titleEl, { childList: true, subtree: true });
-
-  // Intercept history API
-  const origPushState = history.pushState.bind(history);
-  const origReplaceState = history.replaceState.bind(history);
-
-  history.pushState = function (...args: Parameters<typeof origPushState>) {
-    origPushState(...args);
-    if (window.location.href !== lastUrl) {
-      lastUrl = window.location.href;
-      onChange();
-    }
-  };
-  history.replaceState = function (...args: Parameters<typeof origReplaceState>) {
-    origReplaceState(...args);
-    if (window.location.href !== lastUrl) {
-      lastUrl = window.location.href;
-      onChange();
-    }
-  };
-  window.addEventListener("popstate", onPopState);
-  function onPopState() {
-    if (window.location.href !== lastUrl) {
-      lastUrl = window.location.href;
-      onChange();
-    }
-  }
+  window.addEventListener("popstate", check);
 
   return () => {
+    document.removeEventListener("yt-navigate-finish", check);
     titleObserver.disconnect();
-    history.pushState = origPushState;
-    history.replaceState = origReplaceState;
-    window.removeEventListener("popstate", onPopState);
+    window.removeEventListener("popstate", check);
   };
 }
 
@@ -357,6 +339,24 @@ export async function initContentScript(
   let autoTranslationErrors: Record<number, string> = {};
   let autoTranslationBlockedMessage = "";
   let recentCaptionTranslationMs: number[] = [];
+  let captionPreferenceChangePending = false;
+  /** Armed after a failed overlay load; the next usable player captions retry it once. */
+  let captionRecovery: {
+    videoId: string;
+    overlay: BilingualSubtitleOverlay;
+    player: HTMLElement;
+  } | null = null;
+
+  // Without this, a failed automatic load stayed failed even after the player
+  // fetched captions itself (e.g. the user turned CC on): a second click on the
+  // extension was always required. The retry hits the MAIN-world cache.
+  extractor.onCaptionsAvailable?.((videoId) => {
+    const recovery = captionRecovery;
+    if (!recovery || videoId !== recovery.videoId || videoId !== extractor.getVideoId()) return;
+    captionRecovery = null;
+    if (bilingualOverlay !== recovery.overlay || transcriptData || !bilingualEnabled) return;
+    void activateBilingualOverlay(recovery.player);
+  });
 
   const playerTranslationToggle = new PlayerTranslationToggle((enabled) => {
     setBilingualEnabled(enabled);
@@ -485,14 +485,37 @@ export async function initContentScript(
     playerTranslationToggle.setEnabled(bilingualEnabled);
   }
 
+  /** Navigation: everything belongs to the previous video. */
   function clearTranscriptState(): void {
-    transcriptStateVersion += 1;
-    translationAbort?.abort();
+    clearSourceState();
     summaryAbort?.abort();
     summaryTranslationAbort?.abort();
     summaryAbort = null;
     summaryTranslationAbort = null;
     displayedSummary = null;
+  }
+
+  /**
+   * A caption-source change (preferred language) invalidates captions,
+   * segmentation and translations, but not a summary of the same video.
+   * While a summary is running it is deferred: bumping the state version would
+   * abort its transcript fetch silently and leave the panel loading forever.
+   */
+  function applyCaptionPreferenceChange(): void {
+    if (summaryAbort) {
+      captionPreferenceChangePending = true;
+      return;
+    }
+    captionPreferenceChangePending = false;
+    clearSourceState();
+    if (currentPanel?.getMode() === "transcript") currentPanel.reset();
+    if (bilingualEnabled) void activateBilingualOverlay();
+  }
+
+  function clearSourceState(): void {
+    transcriptStateVersion += 1;
+    translationAbort?.abort();
+    captionRecovery = null;
     transcriptData = null;
     transcriptVideoId = "";
     transcriptFingerprint = null;
@@ -560,9 +583,7 @@ export async function initContentScript(
       const next = normalizeCaptionLanguage(changes.preferredCaptionLanguage.newValue);
       if (next !== preferredCaptionLanguage) {
         preferredCaptionLanguage = next;
-        clearTranscriptState();
-        currentPanel?.reset();
-        if (bilingualEnabled) void activateBilingualOverlay();
+        applyCaptionPreferenceChange();
       }
     }
     const nextUiLanguage = changes.uiLanguage?.newValue;
@@ -1350,6 +1371,10 @@ export async function initContentScript(
         sourceText: error instanceof Error ? error.message : t("translationFailed"),
         retryText: t("bilingualRetry"),
       });
+      // Only caption failures can be fixed by captions appearing later.
+      if (!transcriptData) {
+        captionRecovery = { videoId: extractor.getVideoId(), overlay, player };
+      }
     }
   }
 
@@ -1586,6 +1611,7 @@ export async function initContentScript(
       } finally {
         if (renderFrameId !== null) cancelAnimationFrame(renderFrameId);
         if (summaryAbort === summaryController) summaryAbort = null;
+        if (captionPreferenceChangePending && !summaryAbort) applyCaptionPreferenceChange();
       }
     },
 

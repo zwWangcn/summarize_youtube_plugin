@@ -69,26 +69,26 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 - `"anthropic-messages"` → `anthropicAdapter`
 - `"gemini"` → `geminiAdapter`
 
-### 字幕提取的四路径架构
+### 字幕提取：单一播放器路径
 
-YouTube 字幕提取有四条路径，按优先级依次尝试：
+插件自身不直接 fetch 字幕或 player 元数据，全部经由播放器（避免额外请求触发 YouTube 429）：
 
-1. **Interceptor 缓存**（无等待快速路径）：manifest 在 document_start 安装 MAIN-world 脚本，包装 `fetch` / `XMLHttpRequest`，观察播放器的 timedtext 响应。通过 DOM `CustomEvent`（`vas-caption-captured`）交给隔离世界缓存；命中即返回，不操作播放器。
+1. **MAIN-world 观察器**（`caption-main.ts`，document_start）：包装 `fetch` / `XMLHttpRequest`，记录 timedtext 请求的开始/结束，缓存最近 12 条有效响应（5 分钟）。请求在正文读完并交给监听器后才算结束。捕获后派发不带正文的 `vas-caption-available` 通知。
+2. **选轨**：等待当前视频的播放器 API 与轨道列表（最多 8 秒）；按「当前音轨语言 → 用户的优先字幕语言 → 第一条轨道」选择，同语言内人工字幕优先，中文简繁不互换，排除 `tlang` 翻译轨道。
+3. **加载**：命中缓存直接返回；仅**在途**的同轨道请求值得等待（已结束但无可用字幕的请求不再阻塞）；否则像点 CC 一样 `setOption({})` → `loadModule('captions')` → 选择目标轨道。每次最多两轮，每轮最多一个匹配请求，请求结束即进入下一步；每个视频 2 分钟内最多主动触发 4 次。HTTP 429 进入冷却并遵守 `Retry-After`。
+4. **用户操作判定**：只有点击 CC 按钮/字幕设置菜单或按 `c` 键才算用户更改并放弃；播放器自己切换轨道（外语视频自动字幕、`loadModule` 恢复上次语言）不算，进入加载前的自发切换会成为结束后恢复的基准。
+5. **预算**：MAIN world 总预算 `CAPTION_LOAD_BUDGET_MS`（15 秒），隔离世界桥接 `PLAYER_CAPTION_BRIDGE_TIMEOUT_MS`（18 秒）；两者须同步修改。失败原因（`not-ready` / `timeout` / `user-changed-captions` / `no-captions`）映射为不同提示。
+6. **自动恢复**：双语字幕自动加载失败后，收到同视频的 `vas-caption-available`（例如用户随后打开 CC）时自动重试一次，命中 MAIN-world 缓存。
 
-2. **InnerTube ANDROID**（静默路径）：POST `youtubei/v1/player` 使用 ANDROID 客户端上下文（`clientName: "ANDROID"`, `clientVersion: "20.10.38"`），从响应获取字幕 `baseUrl`；优先解析 JSON3，再回退 XML。接口可用性取决于 YouTube，不能假定持续不受令牌限制。
-
-3. **直接 fetch**（静默回退）：从当前视频的 `ytInitialPlayerResponse` 提取字幕 URL，尝试 JSON3/XML。静默路径的每次网络请求有 4 秒超时。
-
-4. **播放器加载兜底**：`player-captions.ts` 请求 MAIN-world 的 `caption-main.ts`，最多等待 8 秒让当前视频播放器和字幕轨道就绪；复用最近响应，或通过 `loadModule('captions')` / `setOption('captions', 'track', ...)` 触发播放器取字幕。最多两次触发，每次等待约 3 秒；结束后恢复原 CC 状态，保留用户期间的主动更改，导航时取消旧请求。桥接总等待上限为 16 秒，不含先行静默请求。详见 `docs/caption-loading.md`。
-
-同一视频的总结与双语字幕共享在途获取；失败后清除在途状态，允许重试。捕获只接受匹配的视频、语言和轨道类型，拒绝 `tlang` 翻译轨道和空字幕。
+同一视频的总结与双语字幕共享在途获取；失败后清除在途状态，允许重试。详见 `docs/caption-loading.md`。
 
 ### SPA 导航感知（shared.ts）
 
-通过三路拦截感知 YouTube SPA 页面切换：
-- `MutationObserver` 监听 `<title>` 变化
-- 重写 `history.pushState` / `history.replaceState`
-- `popstate` 事件
+通过以下事件感知 YouTube SPA 页面切换（`watchNavigation`）：
+- YouTube 自身的 `yt-navigate-finish` DOM 事件（主路径）
+- `MutationObserver` 监听 `<title>` 变化、`popstate`（兜底）
+
+注意：内容脚本运行在隔离世界，重写 `history.pushState` 无法拦截页面自己的调用，不要再用这种方式。
 
 切换视频时：离开视频页 → 销毁 Panel；进入新视频 → 等 800ms → 重新注入。另有 1s/3s/6s 的恢复检查，防止 YouTube skeleton → real DOM 切换时 UI 被移除。
 
@@ -103,7 +103,8 @@ YouTube 字幕提取有四条路径，按优先级依次尝试：
 
 - 流式调用，使用 `fetch` + `ReadableStream` 手动解析 SSE
 - `summarizeTextStream()` 返回 `AsyncGenerator<string>`，token 级别 yield
-- 内置重试（最多 2 次，指数退避，仅 5xx 与网络错误）：4xx（Key 错误、请求格式错等）标记为不可重试直接抛出；已向调用方交付过 token 的流不再重试（重试会从头重新生成，导致前端内容重复拼接）
+- 内置重试（最多 2 次，指数退避）：5xx、408、429 与网络错误可重试，429 遵守 `Retry-After`（超过 30 秒直接报错）；已向调用方交付过 token 的流不再重试（重试会从头重新生成，导致前端内容重复拼接）
+- `classifyHttpError()` 将 HTTP 失败映射为具体提示：401/403 Key 无效、402/配额类正文余额不足、429 限流、404/`model_not_found` 模型不存在、400 上下文超长，其余 4xx 为通用拒绝
 - `ContentFilteredError`：各适配器将供应商的内容过滤信号统一映射为 `finishReason: "content_filter"`（OpenAI `content_filter`、Gemini `SAFETY`/`RECITATION` 等及 `promptFeedback.blockReason`、Anthropic `refusal`），由 `summarizeTextStream` 识别并抛出该错误
 
 ### 字幕翻译（1.5）
@@ -118,7 +119,7 @@ YouTube 字幕提取有四条路径，按优先级依次尝试：
 - 切视频、字幕轨道、模型、语言或分块预设时取消过期任务，阻止旧结果写回。播放器通过 `requestVideoFrameCallback` 跟随模型分段的时间同步。
 - 源语言已匹配目标语言时不请求翻译。旧 `semantic-segmentation.ts` 只保留作回归对照，不进入产品主流程。
 - UI 语言表静态打包，不在 YouTube 页 fetch 扩展 JSON 资源；结构、原文、时间和上传边界失败会分类并记录本地日志。自动字幕目标 3–5 秒；可读性参考原文 100 列／译文 64 列（CJK 按 2 列）及有足够文字时的词起始跨度，不把显示寿命当讲话时长，不因纯长度问题丢弃有效译文。
-- `npm run build:test` 生成带测试标识的 1.5.0 扩展；`npm run build` 默认隐藏标识，`VITE_TEST_BUILD=true/false` 可显式覆盖。详见 `docs/1.5-development.md`。
+- `npm run build:test` 生成带测试标识的 1.5.1 扩展；`npm run build` 默认隐藏标识，`VITE_TEST_BUILD=true/false` 可显式覆盖。详见 `docs/1.5-development.md`。
 
 ### 提示词模板（service/prompts.ts）
 
@@ -140,10 +141,10 @@ System Prompt 使用 YouTube 专用上下文，侧重多语种术语、核心论
 | `src/content/ui/renderer.ts` | Markdown/流式渲染（marked + DOMPurify） |
 | `src/content/ui/styles.css` | Shadow DOM 暗色主题样式 |
 | `src/content/ui/bilingual-overlay.ts` | 播放器内双语字幕、选区冻结和原生 CC 临时隐藏 |
-| `src/content/extractors/youtube.ts` | 四路径字幕获取、JSON3/XML 解析与在途请求合并 |
-| `src/content/caption-main.ts` | document_start MAIN-world fetch/XHR 观察器及播放器加载兜底 |
-| `src/content/extractors/player-captions.ts` | 隔离世界到 MAIN-world 的有界请求桥接及导航取消 |
-| `src/content/extractors/caption-interceptor.ts` | 隔离世界中的字幕事件接收和有界内存缓存 |
+| `src/content/extractors/youtube.ts` | 字幕获取入口、XML 解析与在途请求合并 |
+| `src/content/caption-main.ts` | document_start MAIN-world fetch/XHR 观察器、选轨与播放器加载 |
+| `src/content/extractors/player-captions.ts` | 隔离世界到 MAIN-world 的有界请求桥接、失败原因映射、字幕可用通知 |
+| `src/content/extractors/caption-parsers.ts` | JSON3 字幕正文解析 |
 | `src/content/caption-source.ts` | 原文坐标、真实切点时间、顺序覆盖校验与源指纹 |
 | `src/content/semantic-segmentation.ts` | 旧规则算法，保留为回归对照 |
 | `src/content/sentence-boundary-detector.ts` | SentenceX WASM 初始化、UTF-16 边界转换及 Intl 回退 |

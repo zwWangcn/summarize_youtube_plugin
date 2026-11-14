@@ -1,7 +1,7 @@
 import { describe, expect, it } from "vitest";
 import { findActiveCueIndex, type Transcript } from "./transcript";
 import { segmentTranscriptSemantically as buildAlignedTranscript } from "./semantic-segmentation";
-import { parseJson3Captions } from "./extractors/caption-interceptor";
+import { parseJson3Captions } from "./extractors/caption-parsers";
 
 const examples = {
   souls: "And I wouldn't call this game a Souls-like game based on the mechanics that it has, but it has like a focus on Chinese martial arts and kung fu when you're fighting enemies and things like that.",

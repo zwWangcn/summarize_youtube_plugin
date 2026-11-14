@@ -10,7 +10,7 @@ vi.mock("./storage", () => ({
   getApiKey: vi.fn(async () => "test-key"),
 }));
 
-import { streamAIText } from "./ai";
+import { classifyHttpError, streamAIText } from "./ai";
 
 describe("AI stream cancellation", () => {
   beforeEach(() => {
@@ -148,5 +148,62 @@ describe("AI stream cancellation", () => {
     const body = JSON.parse((fetchMock.mock.calls[0] as unknown as [string, RequestInit])[1].body as string);
     expect(body).toMatchObject(expected);
     if (provider !== "zhipu") expect(body).not.toHaveProperty("temperature");
+  });
+});
+
+describe("HTTP error classification", () => {
+  beforeEach(() => {
+    Object.assign(selectedAI, { provider: "deepseek", model: "deepseek-v4-flash" });
+    Object.defineProperty(globalThis, "chrome", {
+      configurable: true,
+      value: { i18n: { getMessage: vi.fn((key: string) => key) } },
+    });
+  });
+  afterEach(() => {
+    vi.useRealTimers();
+    vi.unstubAllGlobals();
+    vi.restoreAllMocks();
+  });
+
+  it.each([
+    [401, "", "errorApiKeyInvalid", false],
+    [403, "", "errorApiKeyInvalid", false],
+    [400, '{"error":{"message":"API key not valid. Please pass a valid API key."}}', "errorApiKeyInvalid", false],
+    [402, '{"error":{"message":"Insufficient Balance"}}', "errorApiInsufficientBalance", false],
+    [429, '{"error":{"code":"insufficient_quota"}}', "errorApiInsufficientBalance", false],
+    [429, "", "errorApiRateLimited", true],
+    [400, '{"error":{"message":"This model\'s maximum context length is 131072 tokens"}}', "errorApiContextTooLong", false],
+    [404, "", "errorApiModelNotFound", false],
+    [400, '{"error":{"code":"model_not_found"}}', "errorApiModelNotFound", false],
+    [503, "", "errorAiUnavailable", true],
+    [400, '{"error":"bad request"}', "errorApiRejected", false],
+  ])("maps HTTP %i %s to %s", (status, body, message, retryable) => {
+    expect(classifyHttpError(status, body)).toMatchObject({ message, retryable });
+  });
+
+  it("gives up immediately when Retry-After is too long to wait in the background", () => {
+    expect(classifyHttpError(429, "", "120")).toMatchObject({ retryable: false, retryAfterMs: 120_000 });
+  });
+
+  it("retries a 429 after the requested Retry-After delay", async () => {
+    vi.useFakeTimers();
+    vi.spyOn(console, "debug").mockImplementation(() => {});
+    const fetchMock = vi.fn()
+      .mockResolvedValueOnce(new Response("slow down", { status: 429, headers: { "Retry-After": "5" } }))
+      .mockResolvedValueOnce(new Response(
+        'data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\n',
+        { status: 200, headers: { "Content-Type": "text/event-stream" } },
+      ));
+    vi.stubGlobal("fetch", fetchMock);
+    const result = (async () => {
+      let text = "";
+      for await (const chunk of streamAIText("system", "user", { maxRetries: 1 })) text += chunk;
+      return text;
+    })();
+    await vi.advanceTimersByTimeAsync(4_000);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+    await vi.advanceTimersByTimeAsync(1_500);
+    await expect(result).resolves.toBe("ok");
+    expect(fetchMock).toHaveBeenCalledTimes(2);
   });
 });
