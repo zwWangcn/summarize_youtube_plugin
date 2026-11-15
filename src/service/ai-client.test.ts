@@ -200,13 +200,13 @@ describe("questions about the video", () => {
     const prompt = requests[0].userPrompt;
     expect(prompt.indexOf("<<<START OF VIDEO CAPTIONS>>>"))
       .toBeLessThan(prompt.indexOf("Earlier conversation"));
-    expect(prompt.endsWith("grounded in the captions above.")).toBe(true);
+    expect(prompt.endsWith("using the captions above for the video's content.")).toBe(true);
     // Only the latest 6 turns, each answer clipped.
     expect(prompt).not.toContain("question 1\n");
     expect(prompt).toContain("question 2");
     expect(prompt).toContain("question 7");
     expect(prompt.length).toBeLessThan(30_000);
-    expect(requests[0].systemPrompt).toContain("Answer only from the captions");
+    expect(requests[0].systemPrompt).toContain("Base every statement about the video's content");
     expect(requests[0].systemPrompt).toContain("Simplified Chinese");
   });
 
