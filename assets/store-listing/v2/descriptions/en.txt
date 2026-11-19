@@ -1,0 +1,44 @@
+Understand long videos in minutes. Get AI summaries of YouTube videos, watch with bilingual subtitles right in the player, ask questions about the video, and translate the full transcript section by section. Connect the AI provider of your choice with your own API key.
+
+FEATURES
+
+■ AI video summaries
+Turn a long video into structured key points with one click. Every point has a timestamp you can click to jump to that moment. The summary streams in as it is generated.
+
+■ Bilingual subtitles in the player
+See the original captions and the translation together on the YouTube player, in sync with playback, in normal, theater and fullscreen mode. Upcoming lines are translated ahead of time, and seeking picks up from the new position. Subtitle text is selectable, and source and translation font sizes can be adjusted separately.
+
+■ Learning mode
+Show only the original captions and reveal the translation when you hover over them. Great for language learning. You can also show the translation only.
+
+■ Ask about the video
+Ask follow-up questions such as "what evidence supports this point?" or "where is this topic discussed?". Answers are based only on the video's captions, say so when the captions don't cover something, and include clickable timestamps.
+
+■ Full transcript reading and translation
+Read the complete transcript in the side panel and click any timestamp to jump. Translate the current section or the whole transcript, and switch between source and translation anytime.
+
+■ Custom prompts
+Save prompts for a specific field to keep terminology consistent across summaries and subtitle translation.
+
+■ 14 output languages
+English, Simplified Chinese, Traditional Chinese, Japanese, Korean, Spanish, French, German, Italian, Portuguese, Russian, Vietnamese, Thai and Indonesian. The interface is available in English, Simplified Chinese, Traditional Chinese, Japanese and Korean.
+
+■ Local cache
+Summaries and translations are kept locally for 7 days, so reopening a video doesn't use your API quota again.
+
+HOW TO USE
+
+1. Click the extension icon in the toolbar, pick an AI provider and model, paste your API key and save.
+2. Open a YouTube video that has captions and click the "AI Summary & Translation" button at the top right of the player.
+3. Turn on bilingual subtitles with the translate button next to the player's CC button.
+
+Without an API key you can still read and copy the original transcript.
+
+PRIVACY AND COST
+
+• Your API key is stored only on this device and is not synced by Chrome.
+• Captions and requests go over HTTPS directly to the AI provider you choose. Nothing passes through the developer's servers, and the developer never receives your data.
+• The extension is free. AI usage is billed by your provider according to its pricing.
+• The project is open source. Source code and the full privacy policy are on GitHub.
+
+Feedback and issues: https://github.com/zwWangcn/summarize_youtube_plugin/issues
