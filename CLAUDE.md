@@ -123,7 +123,7 @@ service/model-registry.ts     — 集中式供应商+模型元数据注册表（
 - 切视频、字幕轨道、模型、语言或分块预设时取消过期任务，阻止旧结果写回。播放器通过 `requestVideoFrameCallback` 跟随模型分段的时间同步。
 - 源语言已匹配目标语言时不请求翻译。旧 `semantic-segmentation.ts` 只保留作回归对照，不进入产品主流程。
 - UI 语言表静态打包，不在 YouTube 页 fetch 扩展 JSON 资源；结构、原文、时间和上传边界失败会分类并记录本地日志。自动字幕目标 3–5 秒；可读性参考原文 100 列／译文 64 列（CJK 按 2 列）及有足够文字时的词起始跨度，不把显示寿命当讲话时长，不因纯长度问题丢弃有效译文。
-- `npm run build:test` 生成带测试标识的 1.7.0 扩展；`npm run build` 默认隐藏标识，`VITE_TEST_BUILD=true/false` 可显式覆盖。详见 `docs/1.5-development.md`。
+- `npm run build:test` 生成带测试标识的 1.7.1 扩展；`npm run build` 默认隐藏标识，`VITE_TEST_BUILD=true/false` 可显式覆盖。详见 `docs/1.5-development.md`。
 
 ### 提示词模板（service/prompts.ts）
 
